@@ -89,9 +89,13 @@ Milestone 1 established durable Room persistence, a `Journey` domain model, `ACT
 
 Milestone 1 was physically tested and accepted on a Redmi 14C, including backgrounding, screen lock, reopening, clean completion, and Recents swipe behavior.
 
-The no-location foreground service currently uses a temporary legitimate `specialUse` classification.
+The no-location foreground service used a temporary legitimate `specialUse` classification during Milestone 1.
 
-When real location collection begins, the service classification and permissions must be changed to the proper Android location foreground-service model.
+### 7.1 Milestone 2 Baseline
+
+Milestone 2 replaced the temporary `specialUse` classification with the proper location foreground-service model and uses Google Play Services Fused Location Provider for real location updates.
+
+Telemetry observations are persisted locally in Room. Their event time comes from Android `Location.time`; sequence numbers are allocated per Journey and protected by a database uniqueness guarantee. Battery and connectivity context are recorded with each observation. Internet connectivity is not required for local evidence collection.
 
 ## 8. Journey Domain
 

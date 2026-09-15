@@ -23,17 +23,35 @@ sealed interface CompleteJourneyResult {
     data object NoActiveJourney : CompleteJourneyResult
 }
 
+sealed interface JourneyInputValidation {
+    data object Valid : JourneyInputValidation
+    data object BlankDestination : JourneyInputValidation
+    data object ExpectedArrivalNotFuture : JourneyInputValidation
+}
+
 class JourneyLifecycle(
     private val repository: JourneyRepository,
     private val clock: JourneyClock = JourneyClock(System::currentTimeMillis),
     private val idGenerator: JourneyIdGenerator = JourneyIdGenerator { UUID.randomUUID().toString() },
 ) {
+    fun validate(destination: String, expectedArrivalAt: Long): JourneyInputValidation {
+        if (destination.trim().isEmpty()) return JourneyInputValidation.BlankDestination
+        if (expectedArrivalAt <= clock.nowMillis()) {
+            return JourneyInputValidation.ExpectedArrivalNotFuture
+        }
+        return JourneyInputValidation.Valid
+    }
+
     suspend fun start(destination: String, expectedArrivalAt: Long): StartJourneyResult {
         val normalizedDestination = destination.trim()
-        if (normalizedDestination.isEmpty()) return StartJourneyResult.BlankDestination
+        when (validate(normalizedDestination, expectedArrivalAt)) {
+            JourneyInputValidation.BlankDestination -> return StartJourneyResult.BlankDestination
+            JourneyInputValidation.ExpectedArrivalNotFuture ->
+                return StartJourneyResult.ExpectedArrivalNotFuture
+            JourneyInputValidation.Valid -> Unit
+        }
 
         val startedAt = clock.nowMillis()
-        if (expectedArrivalAt <= startedAt) return StartJourneyResult.ExpectedArrivalNotFuture
 
         val journey = Journey(
             id = idGenerator.newId(),

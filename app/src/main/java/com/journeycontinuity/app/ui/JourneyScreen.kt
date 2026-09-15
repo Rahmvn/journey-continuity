@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -34,21 +36,32 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.journeycontinuity.app.domain.Journey
+import com.journeycontinuity.app.domain.TelemetryObservation
+import com.journeycontinuity.app.telemetry.ForegroundLocationAccess
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.Locale
 import kotlinx.coroutines.delay
 
 private val dateTimeFormatter = DateTimeFormatter.ofPattern("EEE, d MMM yyyy • HH:mm")
+
+data class LocationUiState(
+    val access: ForegroundLocationAccess = ForegroundLocationAccess.NONE,
+    val locationServicesEnabled: Boolean = true,
+)
 
 @Composable
 fun JourneyScreen(
     viewModel: JourneyViewModel,
     notificationsVisible: Boolean,
+    locationUiState: LocationUiState,
     onStartRequested: (String, Long) -> Unit,
+    onRetryMonitoring: () -> Unit,
+    onOpenLocationSettings: () -> Unit,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -65,6 +78,7 @@ fun JourneyScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp, vertical = 20.dp),
             verticalArrangement = Arrangement.Center,
         ) {
@@ -82,12 +96,19 @@ fun JourneyScreen(
                 state.activeJourney != null -> ActiveJourneyContent(
                     journey = checkNotNull(state.activeJourney),
                     notificationsVisible = notificationsVisible,
+                    locationUiState = locationUiState,
+                    telemetryCount = state.telemetryCount,
+                    latestTelemetry = state.latestTelemetry,
                     actionInProgress = state.isActionInProgress,
                     onEnd = viewModel::endJourney,
+                    onRetryMonitoring = onRetryMonitoring,
+                    onOpenLocationSettings = onOpenLocationSettings,
                 )
                 else -> StartJourneyContent(
                     actionInProgress = state.isActionInProgress,
+                    locationServicesEnabled = locationUiState.locationServicesEnabled,
                     onStartRequested = onStartRequested,
+                    onOpenLocationSettings = onOpenLocationSettings,
                 )
             }
         }
@@ -97,7 +118,9 @@ fun JourneyScreen(
 @Composable
 private fun StartJourneyContent(
     actionInProgress: Boolean,
+    locationServicesEnabled: Boolean,
     onStartRequested: (String, Long) -> Unit,
+    onOpenLocationSettings: () -> Unit,
 ) {
     val context = LocalContext.current
     val zone = ZoneId.systemDefault()
@@ -162,6 +185,15 @@ private fun StartJourneyContent(
         ) { Text("Choose time") }
     }
     Spacer(Modifier.height(24.dp))
+    if (!locationServicesEnabled) {
+        Text(
+            "Device Location Services are off. Turn them on before starting a Journey.",
+            color = MaterialTheme.colorScheme.error,
+            style = MaterialTheme.typography.bodySmall,
+        )
+        OutlinedButton(onClick = onOpenLocationSettings) { Text("Open Location settings") }
+        Spacer(Modifier.height(12.dp))
+    }
     Button(
         onClick = { onStartRequested(destination, etaMillis) },
         enabled = !actionInProgress,
@@ -179,8 +211,13 @@ private fun StartJourneyContent(
 private fun ActiveJourneyContent(
     journey: Journey,
     notificationsVisible: Boolean,
+    locationUiState: LocationUiState,
+    telemetryCount: Long,
+    latestTelemetry: TelemetryObservation?,
     actionInProgress: Boolean,
     onEnd: () -> Unit,
+    onRetryMonitoring: () -> Unit,
+    onOpenLocationSettings: () -> Unit,
 ) {
     val zone = ZoneId.systemDefault()
     var now by remember(journey.id) { mutableLongStateOf(System.currentTimeMillis()) }
@@ -204,12 +241,67 @@ private fun ActiveJourneyContent(
     JourneyDetail("Expected arrival", formatTimestamp(journey.expectedArrivalAt, zone))
     JourneyDetail("Elapsed", formatElapsed((now - journey.startedAt).coerceAtLeast(0)))
     if (!notificationsVisible) {
-        Spacer(Modifier.height(12.dp))
         Text(
-            "Notifications are disabled. Android keeps the foreground service visible only in system Active apps controls.",
+            "Notifications are disabled. Android exposes the foreground service through system Active apps controls.",
             color = MaterialTheme.colorScheme.error,
             style = MaterialTheme.typography.bodySmall,
         )
+    }
+    when {
+        locationUiState.access == ForegroundLocationAccess.NONE -> {
+            Text(
+                "Location permission is missing. Monitoring is not running.",
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+            )
+            OutlinedButton(onClick = onRetryMonitoring) { Text("Grant location access") }
+        }
+        !locationUiState.locationServicesEnabled -> {
+            Text(
+                "Device Location Services are off. Monitoring is not running.",
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+            )
+            OutlinedButton(onClick = onOpenLocationSettings) { Text("Open Location settings") }
+        }
+        locationUiState.access == ForegroundLocationAccess.APPROXIMATE -> {
+            Text(
+                "Approximate location only — evidence precision is reduced. Android-reported accuracy is shown below.",
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        else -> Unit
+    }
+    Spacer(Modifier.height(20.dp))
+    Text("Local telemetry evidence", style = MaterialTheme.typography.titleMedium)
+    Spacer(Modifier.height(12.dp))
+    JourneyDetail("Telemetry count", telemetryCount.toString())
+    if (latestTelemetry == null) {
+        Text("Waiting for first location…", style = MaterialTheme.typography.bodyLarge)
+    } else {
+        JourneyDetail("Latest sequence", latestTelemetry.sequence.toString())
+        JourneyDetail("Observation time", formatTimestamp(latestTelemetry.eventTime, zone))
+        JourneyDetail(
+            "Latitude / longitude",
+            String.format(Locale.US, "%.6f, %.6f", latestTelemetry.latitude, latestTelemetry.longitude),
+        )
+        JourneyDetail(
+            "Horizontal accuracy",
+            String.format(Locale.US, "%.1f m", latestTelemetry.accuracyMeters),
+        )
+        JourneyDetail(
+            "Battery",
+            latestTelemetry.batteryPercent?.let { percent ->
+                val charging = when (latestTelemetry.isCharging) {
+                    true -> ", charging"
+                    false -> ", not charging"
+                    null -> ""
+                }
+                "$percent%$charging"
+            } ?: "Unavailable",
+        )
+        JourneyDetail("Connectivity", latestTelemetry.connectivity.name)
     }
     Spacer(Modifier.height(24.dp))
     Button(

@@ -5,6 +5,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -109,6 +110,10 @@ class JourneyLifecycleTest {
             active.value = null
             completed
         }
+
+        override fun observeTelemetry(journeyId: String) = flowOf(TelemetrySummary())
+
+        override suspend fun recordTelemetry(sample: TelemetrySample): TelemetryObservation? = null
 
         fun currentActive(): Journey? = active.value
     }
