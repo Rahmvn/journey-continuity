@@ -61,13 +61,13 @@ GPS, networking, Supabase, AWS, SMS, trusted contacts, AI, Alexa, and route-risk
 
 ## Milestone 2 — Local Device Telemetry
 
-**Status:** NEXT
+**Status:** ACCEPTED
 
 ### Goal
 
 Prove that an active Journey Session can produce a trustworthy local stream of real device observations.
 
-### Expected scope
+### Implemented
 
 - proper Android location foreground-service type;
 - runtime location permission flow;
@@ -93,23 +93,23 @@ Prove that an active Journey Session can produce a trustworthy local stream of r
 - event time must remain distinct from display time;
 - location accuracy must be retained.
 
-### Physical acceptance target
+### Physical acceptance
 
-On the Redmi 14C:
+Passed on the Redmi 14C:
 
-- start a journey;
-- walk or drive through real movement;
-- observe persisted location updates;
-- verify timestamps and sequence progression;
-- temporarily disable mobile data while location continues locally;
-- background/lock the phone;
-- reopen and confirm the same journey/telemetry;
-- end journey and confirm collection stops;
-- confirm no new observations are written after terminal state.
+- real location observations;
+- monotonically increasing persisted sequence numbers;
+- continued collection while backgrounded and screen-locked;
+- continued collection after a Recents swipe;
+- local collection while offline;
+- connectivity state changes across offline and restored-connectivity conditions;
+- honest Precise and Approximate permission behavior;
+- actionable non-monitoring behavior while Location Services are disabled;
+- clean Journey completion with telemetry collection stopping and no later observations.
 
 ## Milestone 3 — Reliable Cloud Synchronization
 
-**Status:** PLANNED
+**Status:** NEXT
 
 ### Goal
 
