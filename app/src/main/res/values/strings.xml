@@ -1,3 +1,7 @@
 <resources>
     <string name="app_name">JourneyContinuity</string>
+    <string name="journey_notification_channel_name">Active journey</string>
+    <string name="journey_notification_channel_description">Shows when a journey session is active</string>
+    <string name="journey_notification_title">Journey monitoring active</string>
+    <string name="journey_notification_waiting">Restoring active journey…</string>
 </resources>
