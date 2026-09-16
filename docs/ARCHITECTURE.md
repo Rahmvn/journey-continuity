@@ -97,6 +97,14 @@ Milestone 2 replaced the temporary `specialUse` classification with the proper l
 
 Telemetry observations are persisted locally in Room. Their event time comes from Android `Location.time`; sequence numbers are allocated per Journey and protected by a database uniqueness guarantee. Battery and connectivity context are recorded with each observation. Internet connectivity is not required for local evidence collection.
 
+### 7.2 Milestone 3 Baseline
+
+Room remains the device-side operational source of truth, while Supabase is the server-side system of record for synchronized Journey evidence. Anonymous Supabase Auth currently provides a temporary identity bootstrap; permanent recoverable authentication or account linking remains required before public release.
+
+Journeys retain their Android UUID in cloud storage, and each telemetry observation is identified by `(journey_id, sequence)`. A durable per-Journey local checkpoint records synchronization progress. WorkManager performs network-constrained, coalesced synchronization, including recovery of offline backlogs and Journeys completed while offline.
+
+`event_time` is the device evidence time and `received_at` is the server arrival time. Journey and telemetry upserts are idempotent, so retries do not create duplicate logical evidence.
+
 ## 8. Journey Domain
 
 Current minimal domain:

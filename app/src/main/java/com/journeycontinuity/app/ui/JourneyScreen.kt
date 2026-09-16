@@ -36,6 +36,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.journeycontinuity.app.domain.Journey
+import com.journeycontinuity.app.domain.JourneySyncState
+import com.journeycontinuity.app.domain.SyncPhase
 import com.journeycontinuity.app.domain.TelemetryObservation
 import com.journeycontinuity.app.telemetry.ForegroundLocationAccess
 import java.time.Instant
@@ -99,6 +101,7 @@ fun JourneyScreen(
                     locationUiState = locationUiState,
                     telemetryCount = state.telemetryCount,
                     latestTelemetry = state.latestTelemetry,
+                    syncState = state.syncState,
                     actionInProgress = state.isActionInProgress,
                     onEnd = viewModel::endJourney,
                     onRetryMonitoring = onRetryMonitoring,
@@ -214,6 +217,7 @@ private fun ActiveJourneyContent(
     locationUiState: LocationUiState,
     telemetryCount: Long,
     latestTelemetry: TelemetryObservation?,
+    syncState: JourneySyncState?,
     actionInProgress: Boolean,
     onEnd: () -> Unit,
     onRetryMonitoring: () -> Unit,
@@ -303,6 +307,31 @@ private fun ActiveJourneyContent(
         )
         JourneyDetail("Connectivity", latestTelemetry.connectivity.name)
     }
+    Spacer(Modifier.height(20.dp))
+    Text("Cloud synchronization", style = MaterialTheme.typography.titleMedium)
+    Spacer(Modifier.height(12.dp))
+    val latestSequence = latestTelemetry?.sequence ?: 0L
+    val syncedThrough = syncState?.highestTelemetrySequenceSynced ?: 0L
+    val pending = (latestSequence - syncedThrough).coerceAtLeast(0L)
+    val syncLabel = when (syncState?.phase) {
+        SyncPhase.SYNCING -> "Syncing"
+        SyncPhase.ERROR -> "Error"
+        SyncPhase.IDLE -> if (pending == 0L) "Synced" else "Pending"
+        SyncPhase.PENDING -> "Waiting for network / worker"
+        null -> "Preparing local checkpoint"
+    }
+    JourneyDetail("Cloud sync", syncLabel)
+    JourneyDetail("Local observations", telemetryCount.toString())
+    JourneyDetail("Cloud-synced through sequence", syncedThrough.toString())
+    JourneyDetail("Pending", pending.toString())
+    syncState?.lastError?.let { error ->
+        Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+        Spacer(Modifier.height(10.dp))
+    }
+    Text(
+        "Sync status describes data transport only; it does not verify Journey safety.",
+        style = MaterialTheme.typography.bodySmall,
+    )
     Spacer(Modifier.height(24.dp))
     Button(
         onClick = onEnd,

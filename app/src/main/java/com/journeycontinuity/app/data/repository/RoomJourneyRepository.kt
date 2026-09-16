@@ -3,32 +3,41 @@ package com.journeycontinuity.app.data.repository
 import android.database.sqlite.SQLiteConstraintException
 import com.journeycontinuity.app.data.local.JourneyDao
 import com.journeycontinuity.app.data.local.TelemetryDao
+import com.journeycontinuity.app.data.local.SyncStateDao
 import com.journeycontinuity.app.data.local.toDomain
 import com.journeycontinuity.app.data.local.toEntity
 import com.journeycontinuity.app.domain.Journey
+import com.journeycontinuity.app.domain.JourneySyncState
 import com.journeycontinuity.app.domain.TelemetryObservation
 import com.journeycontinuity.app.domain.TelemetrySample
 import com.journeycontinuity.app.domain.TelemetrySummary
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
+import com.journeycontinuity.app.sync.SyncScheduler
 
 class RoomJourneyRepository(
     private val journeyDao: JourneyDao,
     private val telemetryDao: TelemetryDao,
+    private val syncStateDao: SyncStateDao,
+    private val syncScheduler: SyncScheduler,
 ) : JourneyRepository {
     override val activeJourney: Flow<Journey?> =
         journeyDao.observeActive().map { it?.toDomain() }
 
     override suspend fun createIfNoActive(journey: Journey): Boolean = try {
-        journeyDao.insertIfNoActive(journey.toEntity())
+        journeyDao.insertIfNoActive(journey.toEntity()).also { created ->
+            if (created) scheduleSyncWithoutAffectingLocalWrite()
+        }
     } catch (_: SQLiteConstraintException) {
         // The unique active slot closes the race between concurrent transactions.
         false
     }
 
     override suspend fun completeActive(completedAt: Long): Journey? =
-        journeyDao.completeActive(completedAt)?.toDomain()
+        journeyDao.completeActive(completedAt)?.toDomain()?.also {
+            scheduleSyncWithoutAffectingLocalWrite()
+        }
 
     override fun observeTelemetry(journeyId: String): Flow<TelemetrySummary> =
         combine(
@@ -39,5 +48,14 @@ class RoomJourneyRepository(
         }
 
     override suspend fun recordTelemetry(sample: TelemetrySample): TelemetryObservation? =
-        telemetryDao.insertForActiveJourney(sample)?.toDomain()
+        telemetryDao.insertForActiveJourney(sample)?.toDomain()?.also {
+            scheduleSyncWithoutAffectingLocalWrite()
+        }
+
+    override fun observeSyncState(journeyId: String): Flow<JourneySyncState?> =
+        syncStateDao.observe(journeyId).map { it?.toDomain() }
+
+    private fun scheduleSyncWithoutAffectingLocalWrite() {
+        runCatching(syncScheduler::schedule)
+    }
 }

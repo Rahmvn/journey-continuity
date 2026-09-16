@@ -44,7 +44,7 @@ class JourneyDatabaseTest {
     @Test
     @Throws(IOException::class)
     fun migrationFrom1To2PreservesExistingJourney() {
-        migrationHelper.createDatabase(TEST_DATABASE, 1).apply {
+        migrationHelper.createDatabase(TEST_DATABASE_1_2, 1).apply {
             execSQL(
                 """INSERT INTO journeys
                     (id, destination, expectedArrivalAt, startedAt, status, completedAt, activeSlot)
@@ -54,7 +54,7 @@ class JourneyDatabaseTest {
         }
 
         val migrated = migrationHelper.runMigrationsAndValidate(
-            TEST_DATABASE,
+            TEST_DATABASE_1_2,
             2,
             true,
             MIGRATION_1_2,
@@ -68,6 +68,55 @@ class JourneyDatabaseTest {
         migrated.query("SELECT COUNT(*) FROM telemetry_observations").use { cursor ->
             assertEquals(true, cursor.moveToFirst())
             assertEquals(0L, cursor.getLong(0))
+        }
+        migrated.close()
+    }
+
+    @Test
+    @Throws(IOException::class)
+    fun migrationFrom2To3PreservesJourneysAndTelemetryAndCreatesCheckpoint() {
+        migrationHelper.createDatabase(TEST_DATABASE_2_3, 2).apply {
+            execSQL(
+                """INSERT INTO journeys
+                    (id, destination, expectedArrivalAt, startedAt, status, completedAt, activeSlot)
+                    VALUES ('existing', 'Abuja', 5000, 1000, 'COMPLETED', 4000, NULL)""",
+            )
+            execSQL(
+                """INSERT INTO telemetry_observations
+                    (journeyId, sequence, eventTime, latitude, longitude, accuracyMeters,
+                     batteryPercent, isCharging, connectivity)
+                    VALUES ('existing', 1, 2000, 9.0, 7.0, 12.0, 75, 0, 'NONE')""",
+            )
+            close()
+        }
+
+        val migrated = migrationHelper.runMigrationsAndValidate(
+            TEST_DATABASE_2_3,
+            3,
+            true,
+            MIGRATION_2_3,
+        )
+
+        migrated.query("SELECT status, completedAt FROM journeys WHERE id = 'existing'").use { cursor ->
+            assertEquals(true, cursor.moveToFirst())
+            assertEquals("COMPLETED", cursor.getString(0))
+            assertEquals(4_000L, cursor.getLong(1))
+        }
+        migrated.query(
+            "SELECT sequence, eventTime FROM telemetry_observations WHERE journeyId = 'existing'",
+        ).use { cursor ->
+            assertEquals(true, cursor.moveToFirst())
+            assertEquals(1L, cursor.getLong(0))
+            assertEquals(2_000L, cursor.getLong(1))
+        }
+        migrated.query(
+            """SELECT highestTelemetrySequenceSynced, phase, workRequested
+               FROM journey_sync_states WHERE journeyId = 'existing'""",
+        ).use { cursor ->
+            assertEquals(true, cursor.moveToFirst())
+            assertEquals(0L, cursor.getLong(0))
+            assertEquals("PENDING", cursor.getString(1))
+            assertEquals(1, cursor.getInt(2))
         }
         migrated.close()
     }
@@ -136,6 +185,7 @@ class JourneyDatabaseTest {
     )
 
     private companion object {
-        const val TEST_DATABASE = "journey-migration-test"
+        const val TEST_DATABASE_1_2 = "journey-migration-1-2-test"
+        const val TEST_DATABASE_2_3 = "journey-migration-2-3-test"
     }
 }

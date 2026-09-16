@@ -109,7 +109,7 @@ Passed on the Redmi 14C:
 
 ## Milestone 3 — Reliable Cloud Synchronization
 
-**Status:** NEXT
+**Status:** ACCEPTED
 
 ### Goal
 
@@ -132,9 +132,24 @@ Move local journey evidence to the cloud reliably without making the cloud requi
 
 Demonstrate normal upload, connectivity loss, continued local recording, restored connectivity, queued backfill, no duplicate logical events, correct ordering by event sequence/time, and coherent journey state.
 
+### Physical and remote acceptance
+
+Passed with the Redmi 14C and the Supabase development project:
+
+- anonymous Supabase authentication;
+- `auth.uid()`-based Journey ownership and RLS enforcement;
+- online Journey and telemetry synchronization;
+- distinct `event_time` and `received_at` persistence in the cloud;
+- continued local telemetry collection and durable backlog while offline;
+- WorkManager recovery after connectivity returned;
+- synchronization recovery across a Recents swipe and process lifecycle;
+- local Journey completion while offline;
+- later synchronization of the Journey's `COMPLETED` state;
+- idempotent telemetry retries with no duplicate logical observations.
+
 ## Milestone 4 — Cloud Watchdog + Verification Engine
 
-**Status:** PLANNED
+**Status:** NEXT
 
 ### Goal
 
