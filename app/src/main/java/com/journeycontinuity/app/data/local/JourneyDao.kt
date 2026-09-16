@@ -15,8 +15,23 @@ abstract class JourneyDao {
     @Query("SELECT * FROM journeys WHERE activeSlot = 1 LIMIT 1")
     abstract suspend fun getActive(): JourneyEntity?
 
+    @Query("SELECT * FROM journeys WHERE id = :journeyId LIMIT 1")
+    abstract suspend fun getById(journeyId: String): JourneyEntity?
+
     @Insert
     protected abstract suspend fun insert(journey: JourneyEntity)
+
+    @Insert
+    protected abstract suspend fun insertSyncState(syncState: JourneySyncStateEntity)
+
+    @Query(
+        """UPDATE journey_sync_states
+           SET changeVersion = changeVersion + 1,
+               phase = CASE WHEN permanentlyBlocked = 1 THEN phase ELSE 'PENDING' END,
+               workRequested = CASE WHEN permanentlyBlocked = 1 THEN workRequested ELSE 1 END
+           WHERE journeyId = :journeyId""",
+    )
+    protected abstract suspend fun markSyncPending(journeyId: String)
 
     @Query(
         """UPDATE journeys
@@ -33,6 +48,7 @@ abstract class JourneyDao {
     open suspend fun insertIfNoActive(journey: JourneyEntity): Boolean {
         if (getActive() != null) return false
         insert(journey)
+        insertSyncState(JourneySyncStateEntity(journeyId = journey.id))
         return true
     }
 
@@ -40,6 +56,7 @@ abstract class JourneyDao {
     open suspend fun completeActive(completedAt: Long): JourneyEntity? {
         val active = getActive() ?: return null
         if (markCompleted(active.id, completedAt, JourneyStatus.COMPLETED) != 1) return null
+        markSyncPending(active.id)
         return active.copy(
             status = JourneyStatus.COMPLETED,
             completedAt = completedAt,

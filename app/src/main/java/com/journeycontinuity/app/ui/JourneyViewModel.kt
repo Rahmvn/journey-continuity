@@ -8,6 +8,7 @@ import com.journeycontinuity.app.domain.CompleteJourneyResult
 import com.journeycontinuity.app.domain.Journey
 import com.journeycontinuity.app.domain.JourneyLifecycle
 import com.journeycontinuity.app.domain.JourneyInputValidation
+import com.journeycontinuity.app.domain.JourneySyncState
 import com.journeycontinuity.app.domain.StartJourneyResult
 import com.journeycontinuity.app.domain.TelemetryObservation
 import com.journeycontinuity.app.service.JourneyServiceController
@@ -16,6 +17,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -27,6 +29,7 @@ data class JourneyUiState(
     val activeJourney: Journey? = null,
     val telemetryCount: Long = 0,
     val latestTelemetry: TelemetryObservation? = null,
+    val syncState: JourneySyncState? = null,
     val isActionInProgress: Boolean = false,
     val message: String? = null,
 )
@@ -45,10 +48,18 @@ class JourneyViewModel(
             repository.activeJourney
                 .flatMapLatest { active ->
                     if (active == null) {
-                        flowOf(Triple<Journey?, Long, TelemetryObservation?>(null, 0, null))
+                        flowOf(ActiveJourneyUiData())
                     } else {
-                        repository.observeTelemetry(active.id).map { summary ->
-                            Triple(active, summary.count, summary.latest)
+                        combine(
+                            repository.observeTelemetry(active.id),
+                            repository.observeSyncState(active.id),
+                        ) { summary, syncState ->
+                            ActiveJourneyUiData(
+                                journey = active,
+                                telemetryCount = summary.count,
+                                latestTelemetry = summary.latest,
+                                syncState = syncState,
+                            )
                         }
                     }
                 }
@@ -57,13 +68,14 @@ class JourneyViewModel(
                         it.copy(isRestoring = false, message = "Could not read saved journey: ${error.message}")
                     }
                 }
-                .collect { (active, count, latest) ->
+                .collect { activeData ->
                     _uiState.update {
                         it.copy(
                             isRestoring = false,
-                            activeJourney = active,
-                            telemetryCount = count,
-                            latestTelemetry = latest,
+                            activeJourney = activeData.journey,
+                            telemetryCount = activeData.telemetryCount,
+                            latestTelemetry = activeData.latestTelemetry,
+                            syncState = activeData.syncState,
                         )
                     }
                 }
@@ -135,6 +147,13 @@ class JourneyViewModel(
 
     private fun setMessage(message: String) = _uiState.update { it.copy(message = message) }
 }
+
+private data class ActiveJourneyUiData(
+    val journey: Journey? = null,
+    val telemetryCount: Long = 0,
+    val latestTelemetry: TelemetryObservation? = null,
+    val syncState: JourneySyncState? = null,
+)
 
 class JourneyViewModelFactory(
     private val repository: JourneyRepository,

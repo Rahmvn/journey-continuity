@@ -115,6 +115,8 @@ class JourneyLifecycleTest {
 
         override suspend fun recordTelemetry(sample: TelemetrySample): TelemetryObservation? = null
 
+        override fun observeSyncState(journeyId: String) = flowOf<JourneySyncState?>(null)
+
         fun currentActive(): Journey? = active.value
     }
 }
