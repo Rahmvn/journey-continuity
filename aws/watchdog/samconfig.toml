@@ -1,0 +1,15 @@
+version = 0.1
+
+[default.deploy.parameters]
+stack_name = "journey-continuity-dev-watchdog"
+resolve_s3 = true
+s3_prefix = "journey-continuity-dev-watchdog"
+region = "eu-north-1"
+profile = "journey-continuity"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = "ScheduleState=\"DISABLED\""
+image_repositories = []
+
+[default.global.parameters]
+region = "eu-north-1"
