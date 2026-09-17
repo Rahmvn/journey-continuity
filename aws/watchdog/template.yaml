@@ -1,0 +1,112 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Journey Continuity deterministic cloud-contact watchdog
+
+Parameters:
+  ScheduleState:
+    Type: String
+    Default: DISABLED
+    AllowedValues: [ENABLED, DISABLED]
+
+Resources:
+  WatchdogSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Description: Supabase URL and server-side sb_secret key for the Journey watchdog
+
+  WatchdogLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${AWS::StackName}-watchdog
+      RetentionInDays: 14
+
+  WatchdogLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: WatchdogRuntime
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !GetAtt WatchdogLogGroup.Arn
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: !Ref WatchdogSecret
+
+  WatchdogFunction:
+    Type: AWS::Serverless::Function
+    DependsOn: WatchdogLogGroup
+    Properties:
+      FunctionName: !Sub ${AWS::StackName}-watchdog
+      CodeUri: function/
+      Handler: index.handler
+      Runtime: nodejs22.x
+      Architectures: [arm64]
+      MemorySize: 128
+      Timeout: 15
+      Role: !GetAtt WatchdogLambdaRole.Arn
+      Environment:
+        Variables:
+          WATCHDOG_SECRET_ARN: !Ref WatchdogSecret
+
+  SchedulerExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: scheduler.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: InvokeWatchdog
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource: !GetAtt WatchdogFunction.Arn
+
+  WatchdogSchedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Description: One shared minute-resolution Journey watchdog evaluation
+      ScheduleExpression: rate(1 minute)
+      FlexibleTimeWindow:
+        Mode: 'OFF'
+      State: !Ref ScheduleState
+      Target:
+        Arn: !GetAtt WatchdogFunction.Arn
+        RoleArn: !GetAtt SchedulerExecutionRole.Arn
+        Input: '{"source":"journey-continuity.watchdog"}'
+        RetryPolicy:
+          MaximumEventAgeInSeconds: 300
+          MaximumRetryAttempts: 2
+
+  SchedulerInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref WatchdogFunction
+      Principal: scheduler.amazonaws.com
+      SourceArn: !GetAtt WatchdogSchedule.Arn
+
+Outputs:
+  WatchdogSecretArn:
+    Description: Populate this secret with SUPABASE_URL and SUPABASE_SECRET_KEY before enabling the schedule
+    Value: !Ref WatchdogSecret
+  WatchdogScheduleName:
+    Value: !Ref WatchdogSchedule
+
