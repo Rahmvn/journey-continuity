@@ -117,6 +117,8 @@ class JourneyLifecycleTest {
 
         override fun observeSyncState(journeyId: String) = flowOf<JourneySyncState?>(null)
 
+        override fun observeMonitoringState(journeyId: String) = flowOf<CloudMonitoringState?>(null)
+
         fun currentActive(): Journey? = active.value
     }
 }

@@ -6,10 +6,27 @@ import com.journeycontinuity.app.domain.JourneyStatus
 import com.journeycontinuity.app.domain.TelemetryObservation
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ReliableSyncEngineTest {
+    @Test
+    fun temporaryTravellerAuthenticationFailureUsesWorkerRetrySemantics() = runBlocking {
+        val local = FakeLocalSyncStore(journey("one"), telemetry("one", 1..2))
+        val remote = FakeCloudGateway(
+            authFailure = CloudSyncException(
+                SyncFailureKind.TRANSIENT,
+                "Cloud authentication is temporarily unavailable while reconnecting.",
+            ),
+        )
+
+        assertEquals(SyncRunResult.Retry, engine(local, remote).synchronize())
+        assertFalse(local.noWorkRequested("one"))
+        assertEquals(0L, local.checkpoint("one"))
+        assertEquals(emptyMap<String, Journey>(), remote.cloudJourneys)
+    }
+
     @Test
     fun offlineFailurePreservesLocalEvidenceAndDoesNotAdvanceCheckpoint() = runBlocking {
         val local = FakeLocalSyncStore(journey("one"), telemetry("one", 1..3))
@@ -47,6 +64,20 @@ class ReliableSyncEngineTest {
         assertEquals(20, remote.cloudTelemetry.size)
         assertEquals((1L..20L).toList(), remote.receivedSequences("one"))
         assertEquals(20L, local.checkpoint("one"))
+    }
+
+    @Test
+    fun duplicateWorkerPassAfterSuccessfulCheckpointIsHarmless() = runBlocking {
+        val local = FakeLocalSyncStore(journey("one"), telemetry("one", 1..3))
+        val remote = FakeCloudGateway()
+
+        assertEquals(SyncRunResult.Success, engine(local, remote).synchronize())
+        local.requestAgain("one")
+        assertEquals(SyncRunResult.Success, engine(local, remote).synchronize())
+
+        assertEquals(3, remote.cloudTelemetry.size)
+        assertEquals((1L..3L).toList(), remote.receivedSequences("one"))
+        assertEquals(3L, local.checkpoint("one"))
     }
 
     @Test
@@ -205,6 +236,13 @@ class ReliableSyncEngineTest {
             }
         }
 
+        fun requestAgain(journeyId: String) {
+            states.getValue(journeyId).apply {
+                version++
+                requested = true
+            }
+        }
+
         fun allTelemetry(journeyId: String) = observations[journeyId].orEmpty()
         fun noWorkRequested(journeyId: String) = !states.getValue(journeyId).requested
     }
@@ -213,13 +251,14 @@ class ReliableSyncEngineTest {
         private var failNextTelemetryAfterAccept: Boolean = false,
         private val alwaysOffline: Boolean = false,
         private val afterFirstJourneyUpsert: (() -> Unit)? = null,
+        private val authFailure: CloudSyncException? = null,
     ) : CloudSyncGateway {
         val cloudJourneys = linkedMapOf<String, Journey>()
         val cloudTelemetry = linkedMapOf<Pair<String, Long>, TelemetryObservation>()
         val telemetryBatchSizes = mutableListOf<Int>()
         private var journeyUpserts = 0
 
-        override suspend fun authenticatedOwnerId(): String = "owner"
+        override suspend fun authenticatedOwnerId(): String = authFailure?.let { throw it } ?: "owner"
 
         override suspend fun upsertJourney(journey: Journey, ownerId: String) {
             cloudJourneys[journey.id] = journey

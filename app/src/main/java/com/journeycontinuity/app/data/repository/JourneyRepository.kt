@@ -2,6 +2,7 @@ package com.journeycontinuity.app.data.repository
 
 import com.journeycontinuity.app.domain.Journey
 import com.journeycontinuity.app.domain.JourneySyncState
+import com.journeycontinuity.app.domain.CloudMonitoringState
 import com.journeycontinuity.app.domain.TelemetryObservation
 import com.journeycontinuity.app.domain.TelemetrySample
 import com.journeycontinuity.app.domain.TelemetrySummary
@@ -14,4 +15,5 @@ interface JourneyRepository {
     fun observeTelemetry(journeyId: String): Flow<TelemetrySummary>
     suspend fun recordTelemetry(sample: TelemetrySample): TelemetryObservation?
     fun observeSyncState(journeyId: String): Flow<JourneySyncState?>
+    fun observeMonitoringState(journeyId: String): Flow<CloudMonitoringState?>
 }

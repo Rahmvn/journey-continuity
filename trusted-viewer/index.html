@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="referrer" content="no-referrer" />
+    <title>JourneyContinuity trusted view</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <p class="eyebrow">JourneyContinuity</p>
+        <h1>Trusted contact view</h1>
+        <p>This view distinguishes device evidence, system-derived monitoring, and human reports.</p>
+      </header>
+
+      <section id="configuration" class="card hidden">
+        <h2>Viewer not configured</h2>
+        <p>Set <code>NEXT_PUBLIC_SUPABASE_URL</code> and <code>NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY</code>.</p>
+      </section>
+
+      <section id="auth" class="card hidden">
+        <h2>Verify your invited email</h2>
+        <p>Invitation possession alone does not reveal Journey evidence. Sign in using the exact email address that was invited.</p>
+        <form id="auth-form">
+          <label for="email">Invited email</label>
+          <input id="email" name="email" type="email" autocomplete="email" required maxlength="320" />
+          <button type="submit">Send secure magic link</button>
+        </form>
+      </section>
+
+      <section id="message" class="notice hidden" role="status"></section>
+
+      <section id="app" class="hidden">
+        <div class="toolbar">
+          <button id="refresh" type="button" class="secondary">Refresh</button>
+          <button id="sign-out" type="button" class="secondary">Sign out</button>
+        </div>
+        <section id="journeys" class="stack"></section>
+        <section id="case" class="stack"></section>
+      </section>
+    </main>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

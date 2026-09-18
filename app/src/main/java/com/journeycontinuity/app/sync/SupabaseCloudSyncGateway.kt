@@ -1,9 +1,11 @@
 package com.journeycontinuity.app.sync
 
+import com.journeycontinuity.app.auth.TravellerIdentityCoordinator
+import com.journeycontinuity.app.auth.TravellerAuthException
+import com.journeycontinuity.app.auth.TravellerAuthFailureKind
 import com.journeycontinuity.app.domain.Journey
 import com.journeycontinuity.app.domain.TelemetryObservation
 import io.github.jan.supabase.SupabaseClient
-import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.auth.exception.AuthRestException
 import io.github.jan.supabase.exceptions.RestException
 import io.github.jan.supabase.postgrest.from
@@ -21,28 +23,14 @@ import kotlinx.serialization.Serializable
 
 class SupabaseCloudSyncGateway(
     private val client: SupabaseClient,
+    private val identityCoordinator: TravellerIdentityCoordinator,
     private val logger: SyncDiagnosticLogger = NoOpSyncDiagnosticLogger,
 ) : CloudSyncGateway {
     override suspend fun authenticatedOwnerId(): String {
-        logger.info("Waiting for Supabase auth initialization")
-        cloudCall(CloudStage.AUTH_INITIALIZATION) {
-            client.auth.awaitInitialization()
+        logger.info("Resolving established traveller identity for cloud synchronization")
+        return cloudCall(CloudStage.AUTH_INITIALIZATION) {
+            identityCoordinator.requireAuthenticatedTraveller().userId
         }
-        val existingSessionPresent = client.auth.currentSessionOrNull() != null
-        logger.info("Existing auth session present: $existingSessionPresent")
-        if (!existingSessionPresent) {
-            logger.info("Starting anonymous sign-in")
-            cloudCall(CloudStage.ANONYMOUS_SIGN_IN) {
-                client.auth.signInAnonymously()
-            }
-            logger.info("Anonymous sign-in succeeded")
-        }
-        return client.auth.currentUserOrNull()?.id
-            ?: throw CloudSyncException(
-                SyncFailureKind.AUTHENTICATION,
-                "Supabase authentication did not produce a reusable user session.",
-                "Authentication session lookup failed: no authenticated user was available.",
-            )
     }
 
     override suspend fun upsertJourney(journey: Journey, ownerId: String) {
@@ -83,9 +71,10 @@ class SupabaseCloudSyncGateway(
 
 internal enum class CloudStage(val label: String) {
     AUTH_INITIALIZATION("Auth initialization"),
-    ANONYMOUS_SIGN_IN("Anonymous sign-in"),
     JOURNEY_UPSERT("Journey upsert"),
     TELEMETRY_UPSERT("Telemetry batch"),
+    HEARTBEAT_RPC("Fresh heartbeat RPC"),
+    TRUSTED_CONTACT_RPC("Trusted contact RPC"),
 }
 
 @Serializable
@@ -136,6 +125,23 @@ private fun TelemetryObservation.toCloudRow() = CloudTelemetryRow(
 
 internal fun Throwable.toCloudSyncException(stage: CloudStage): CloudSyncException {
     val causeChain = generateSequence(this as Throwable?) { it.cause }.toList()
+    val travellerAuthError = causeChain.filterIsInstance<TravellerAuthException>().firstOrNull()
+    if (travellerAuthError != null) {
+        val kind = when (travellerAuthError.failureKind) {
+            TravellerAuthFailureKind.TEMPORARY_UNAVAILABLE -> SyncFailureKind.TRANSIENT
+            TravellerAuthFailureKind.IDENTITY_MISMATCH,
+            TravellerAuthFailureKind.IDENTITY_RECOVERY_REQUIRED,
+            -> SyncFailureKind.AUTHENTICATION
+        }
+        return CloudSyncException(
+            kind = kind,
+            safeMessage = travellerAuthError.message
+                ?: "Traveller authentication is unavailable.",
+            diagnosticSummary = travellerAuthError.message
+                ?: "Traveller authentication is unavailable.",
+            cause = travellerAuthError,
+        )
+    }
     val restException = causeChain
         .filterIsInstance<RestException>()
         .firstOrNull()
@@ -163,7 +169,7 @@ internal fun Throwable.toCloudSyncException(stage: CloudStage): CloudSyncExcepti
             SyncFailureKind.TRANSIENT
         causeChain.any { it is UnknownHostException || it is SSLException || it is IOException } ->
             SyncFailureKind.TRANSIENT
-        authError != null || stage == CloudStage.ANONYMOUS_SIGN_IN || status == 401 ->
+        authError != null || status == 401 ->
             SyncFailureKind.AUTHENTICATION
         isRlsOrAuthorization || isSchemaMismatch || postgrestError != null ->
             SyncFailureKind.PERMANENT
@@ -182,8 +188,8 @@ internal fun Throwable.toCloudSyncException(stage: CloudStage): CloudSyncExcepti
             "${stage.label} failed: network request timed out ($exceptionName)."
         causeChain.any { it is ConnectException } ->
             "${stage.label} failed: network connection to Supabase failed ($exceptionName)."
-        authError != null || stage == CloudStage.ANONYMOUS_SIGN_IN && status != null ->
-            "Anonymous authentication failed: ${statusText ?: "HTTP error"} ($exceptionName)."
+        authError != null ->
+            "Authentication failed: ${statusText ?: "HTTP error"} ($exceptionName)."
         isRlsOrAuthorization ->
             "${stage.label} failed: PostgREST authorization/RLS error (${statusText ?: "HTTP error"}$codeText)."
         isSchemaMismatch ->

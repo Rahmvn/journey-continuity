@@ -37,6 +37,7 @@ class MainActivity : ComponentActivity() {
             repository = app.journeyRepository,
             lifecycle = app.journeyLifecycle,
             serviceController = app.journeyServiceController,
+            trustedContactGateway = app.trustedContactGateway,
         )
     }
 

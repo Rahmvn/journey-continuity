@@ -50,4 +50,12 @@ class DeviceContextReader(private val context: Context) {
             else -> ConnectivityState.UNKNOWN
         }
     }
+
+    fun usableInternet(): Boolean {
+        val manager = context.getSystemService(ConnectivityManager::class.java)
+        val active = manager.activeNetwork ?: return false
+        val capabilities = manager.getNetworkCapabilities(active) ?: return false
+        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+            capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+    }
 }

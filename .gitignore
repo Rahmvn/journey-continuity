@@ -13,3 +13,8 @@
 .externalNativeBuild
 .cxx
 local.properties
+**/.aws-sam/
+**/node_modules/
+**/dist/
+**/.env.local
+*.local.json
