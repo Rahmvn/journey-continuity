@@ -105,6 +105,30 @@ Journeys retain their Android UUID in cloud storage, and each telemetry observat
 
 `event_time` is the device evidence time and `received_at` is the server arrival time. Journey and telemetry upserts are idempotent, so retries do not create duplicate logical evidence.
 
+### 7.3 Milestone 4 Baseline
+
+Telemetry observations and device heartbeats are separate evidence concepts. Telemetry is durable and backfilled after connectivity returns; a heartbeat is fresh device-contact evidence and is never queued or replayed. Heartbeats carry battery percentage, charging state, connectivity state, and the latest telemetry sequence. Heartbeat freshness is based on server-generated `received_at`, not the client clock.
+
+Cloud monitoring phases are `EVIDENCE_FRESH`, `VERIFYING`, and `CLOSED`. The current development verification threshold is a provisional 300 seconds. One Amazon EventBridge schedule invokes one Lambda approximately once per minute, and the Lambda delegates deterministic, idempotent transitions to PostgreSQL. Monitoring transition history is immutable. Delayed telemetry cannot restore fresh contact, and a Journey completed while offline converges to `CLOSED` after its lifecycle state later synchronizes.
+
+Device synchronization uses bounded `PRIMARY` and `WAKE` WorkManager lanes. Routine telemetry remains coalesced, while lifecycle and connectivity wake-ups can bypass stale retry backoff without repeatedly cancelling active synchronization work.
+
+### 7.4 Milestone 5 Baseline
+
+Trusted relationships and Journey authorization are separate records. An accepted relationship is persistent, but every trusted-contact Journey read still requires an explicit `journey_trusted_contact_access` row. For the Milestone 5 development policy, accepted, non-revoked relationships are provisioned idempotently for every newly created Journey, and accepting an invitation also provisions the traveller's current ACTIVE Journey. Future milestones may add per-Journey contact selection.
+
+Invitation tokens are generated server-side with cryptographically secure randomness. Only a SHA-256 hash is retained; the raw token is returned once for manual sharing. The provisional invitation lifetime is centralized at seven days.
+
+When the watchdog changes a Journey from `EVIDENCE_FRESH` to `VERIFYING`, PostgreSQL opens a verification case and snapshots the most recent five telemetry observations already known to Supabase in the same transaction. Its case-opening evidence and recent movement snapshot are immutable records of what the cloud knew at that moment. Later offline backfill remains Journey evidence but cannot rewrite that historical boundary.
+
+Trusted browser access uses verified email Supabase Auth and narrow `SECURITY DEFINER` RPCs. Healthy monitoring does not expose precise location: healthy-Journey responses omit coordinates and movement evidence at the server. Precise location is available only to an authorized contact during verification access and every such reveal is audited.
+
+Verification-case responses label device observations, system-derived transitions, and `trusted_contact_reported` evidence separately. Trusted-contact reports are append-only and cannot modify device telemetry, heartbeat evidence, or monitoring state.
+
+A fresh heartbeat resolves an open case as `DEVICE_CONTACT_RESTORED`; Journey completion resolves it as `JOURNEY_COMPLETED` without inventing restored device contact. Resolved sensitive evidence remains available for a provisional centralized 24-hour grace period, after which the RPC denies access without deleting evidence or audit history.
+
+Android cloud identity is sticky per installation. `TravellerIdentityCoordinator` is the sole authority permitted to establish an anonymous traveller identity, and the expected Supabase user ID is persisted independently of Supabase session storage. A temporary initialization, refresh, token-expiry, or network failure must never create a replacement anonymous identity. Identity mismatch and permanent session loss fail closed, while a shared mutex prevents concurrent first-establishment races.
+
 ## 8. Journey Domain
 
 Current minimal domain:

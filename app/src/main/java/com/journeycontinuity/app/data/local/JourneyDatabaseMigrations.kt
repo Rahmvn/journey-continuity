@@ -58,3 +58,29 @@ val MIGRATION_2_3 = object : Migration(2, 3) {
         )
     }
 }
+
+val MIGRATION_3_4 = object : Migration(3, 4) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """CREATE TABLE IF NOT EXISTS `journey_heartbeat_states` (
+                `journeyId` TEXT NOT NULL,
+                `lastAllocatedHeartbeatSequence` INTEGER NOT NULL,
+                `latestCloudHeartbeatSequence` INTEGER NOT NULL,
+                `lastHeartbeatAttemptAt` INTEGER,
+                `lastSuccessfulHeartbeatAt` INTEGER,
+                `monitoringPhase` TEXT,
+                `lastCloudContactAt` INTEGER,
+                `lastError` TEXT,
+                PRIMARY KEY(`journeyId`),
+                FOREIGN KEY(`journeyId`) REFERENCES `journeys`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION
+            )""",
+        )
+        db.execSQL(
+            """INSERT INTO `journey_heartbeat_states` (
+                `journeyId`, `lastAllocatedHeartbeatSequence`, `latestCloudHeartbeatSequence`, `lastHeartbeatAttemptAt`,
+                `lastSuccessfulHeartbeatAt`, `monitoringPhase`, `lastCloudContactAt`, `lastError`
+            )
+            SELECT `id`, 0, 0, NULL, NULL, NULL, NULL, NULL FROM `journeys`""",
+        )
+    }
+}

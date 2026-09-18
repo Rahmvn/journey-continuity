@@ -149,7 +149,7 @@ Passed with the Redmi 14C and the Supabase development project:
 
 ## Milestone 4 — Cloud Watchdog + Verification Engine
 
-**Status:** NEXT
+**Status:** ACCEPTED
 
 ### Goal
 
@@ -169,9 +169,26 @@ Allow the cloud to independently recognize meaningful telemetry silence and begi
 
 Simulate healthy telemetry, a short harmless gap, longer meaningful silence, restored telemetry, repeated silence, correct state transitions, and no false escalation from a single missed event.
 
+### Physical and cloud acceptance
+
+Passed with the Redmi 14C, Supabase, and the deployed AWS watchdog:
+
+- fresh heartbeat creation with an independent persisted heartbeat sequence;
+- initialization of cloud monitoring as `EVIDENCE_FRESH`;
+- Amazon EventBridge Scheduler invocation of the watchdog Lambda;
+- Lambda delegation to the deterministic Supabase watchdog RPC;
+- automatic `EVIDENCE_FRESH` to `VERIFYING` transition after cloud silence;
+- no duplicate `VERIFYING_STARTED` events across repeated watchdog evaluations;
+- fresh contact recording one `CONTACT_RESTORED` transition and restoring `EVIDENCE_FRESH`;
+- offline Journey completion converging to `CLOSED` after later synchronization;
+- stale telemetry not restoring fresh-contact state;
+- Scheduler operation independently of the Android app;
+- heartbeat battery percentage, charging, connectivity, and latest telemetry context;
+- stale WorkManager retry/backoff recovery through bounded `PRIMARY`/`WAKE` scheduling.
+
 ## Milestone 5 — Trusted Contacts + Incident Record
 
-**Status:** PLANNED
+**Status:** ACCEPTED
 
 ### Goal
 
@@ -190,13 +207,103 @@ Give authorized trusted contacts a useful, temporary, evidence-based view when c
 - incident record;
 - auditability.
 
+### Implemented
+
+- hashed, single-use, expiring invitation model and manual link sharing;
+- verified-email invitation acceptance through Supabase Auth;
+- persistent relationships separated from explicit per-Journey access;
+- automatic Milestone 5 access provisioning for accepted relationships;
+- prompt revocation without deleting evidence history;
+- transactionally opened and deterministically resolved verification cases;
+- immutable opening evidence and five-point recent-location snapshots;
+- append-only provenance-labelled trusted-contact reports;
+- healthy-state server omission of precise location;
+- temporary post-resolution sensitive access;
+- deduplicated server-time access auditing;
+- minimal trusted-contact web viewer;
+- Android traveller management UI;
+- authorization-focused pgTAP coverage.
+
 ### Acceptance target
 
 A trusted contact can understand what is known, what is stale, what is unverified, what attempts have been made, and what the last verified state was. Unauthorized users must not gain location access.
 
+### Physical, cloud, and authorization acceptance
+
+Passed with the Redmi 14C, the Journey Continuity Supabase development project, the deployed AWS watchdog, and the deployed trusted-contact viewer.
+
+Trusted contacts and authorization:
+
+- the traveller created an invitation on the Redmi;
+- a trusted contact authenticated through an email magic link and the correct invited identity accepted successfully;
+- a wrong authenticated identity was denied;
+- the invitation was single-use;
+- the accepted relationship persisted independently of individual Journeys;
+- explicit per-Journey authorization worked;
+- revocation immediately blocked further access.
+
+Healthy Journey privacy:
+
+- an authorized trusted contact could view healthy Journey status;
+- precise location and the movement trail were not exposed while monitoring was `EVIDENCE_FRESH`;
+- an unauthorized authenticated user was denied.
+
+Verification cases:
+
+- the AWS watchdog independently transitioned the Journey to `VERIFYING`;
+- exactly one verification case opened for each `VERIFYING` period;
+- the immutable opening snapshot contained only evidence already known to the cloud;
+- the recent movement snapshot was preserved;
+- delayed telemetry did not rewrite the opening evidence;
+- the trusted viewer used truthful `VERIFYING` language;
+- precise location became available only through authorized verification access.
+
+Trusted-contact reports and resolution:
+
+- an authorized contact submitted evidence with `trusted_contact_reported` provenance;
+- the report changed neither telemetry, heartbeat evidence, nor monitoring freshness;
+- a fresh heartbeat resolved a case as `DEVICE_CONTACT_RESTORED`;
+- later offline Journey completion resolved a case as `JOURNEY_COMPLETED` without creating a false `CONTACT_RESTORED` event.
+
+Audit and sensitive access:
+
+- `JOURNEY_VIEWED`, `VERIFICATION_CASE_VIEWED`, `PRECISE_LOCATION_REVEALED`, and `REPORT_SUBMITTED` were recorded with bounded deduplication;
+- audit records contained no precise coordinates;
+- the 24-hour post-resolution sensitive-access expiry remains provisional;
+- pgTAP verified that sensitive access works before expiry and is denied after expiry without deleting evidence.
+
+Identity continuity defect and final architecture:
+
+- physical testing crossed the Supabase access-token lifetime during a prolonged offline period;
+- the previous use of `currentSessionOrNull() == null` treated `RefreshFailure` as an absent identity, allowing simultaneous callers to create replacement anonymous identities;
+- the resulting ownership mismatch caused Journey and heartbeat `403` / `42501` failures and a false empty trusted-contact state;
+- `TravellerIdentityCoordinator` is now the centralized authority for cloud identity, with `expectedTravellerUserId` persisted independently;
+- anonymous identity creation is permitted only for genuine first establishment;
+- temporary refresh or network failure never creates a replacement identity;
+- mismatch and recovery-required states fail closed;
+- a shared mutex prevents concurrent anonymous-account creation;
+- synchronization retries transient auth failure, heartbeat skips a failed fresh proof without replay, and the trusted-contact UI distinguishes unavailable or error states from a successful empty result.
+
+Physical identity-continuity validation:
+
+- the corrupted installation entered recovery-required state without creating another anonymous account;
+- a clean installation created one controlled traveller identity;
+- the Redmi remained offline beyond the token lifetime without creating a replacement identity;
+- AWS `VERIFYING` and trusted-contact access continued correctly;
+- reconnect restored the same traveller identity, synchronized the backlog, and resumed heartbeat;
+- the trusted relationship remained intact and no `403` / `42501` ownership failures occurred.
+
+Remote deployment acceptance:
+
+- Milestone 3 and Milestone 4 migration history was reconciled after a read-only schema comparison;
+- the Milestone 5 migration was applied successfully to Journey Continuity;
+- existing Journey, telemetry, heartbeat, and monitoring data was preserved;
+- remote authorization smoke tests passed;
+- the trusted viewer deployed successfully.
+
 ## Milestone 6 — Degraded Connectivity + SMS Fallback
 
-**Status:** PLANNED
+**Status:** NEXT
 
 ### Goal
 

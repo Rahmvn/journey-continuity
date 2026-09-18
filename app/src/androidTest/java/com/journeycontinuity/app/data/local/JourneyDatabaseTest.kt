@@ -122,6 +122,57 @@ class JourneyDatabaseTest {
     }
 
     @Test
+    @Throws(IOException::class)
+    fun migrationFrom3To4PreservesEvidenceAndCreatesHeartbeatCounter() {
+        migrationHelper.createDatabase(TEST_DATABASE_3_4, 3).apply {
+            execSQL(
+                """INSERT INTO journeys
+                    (id, destination, expectedArrivalAt, startedAt, status, completedAt, activeSlot)
+                    VALUES ('existing', 'Abuja', 5000, 1000, 'ACTIVE', NULL, 1)""",
+            )
+            execSQL(
+                """INSERT INTO telemetry_observations
+                    (journeyId, sequence, eventTime, latitude, longitude, accuracyMeters,
+                     batteryPercent, isCharging, connectivity)
+                    VALUES ('existing', 1, 2000, 9.0, 7.0, 12.0, 75, 0, 'CELLULAR')""",
+            )
+            execSQL(
+                """INSERT INTO journey_sync_states
+                    (journeyId, highestTelemetrySequenceSynced, lastSuccessfulSyncAt,
+                     lastAttemptAt, phase, lastError, permanentlyBlocked, changeVersion, workRequested)
+                    VALUES ('existing', 1, 2500, 2400, 'IDLE', NULL, 0, 1, 0)""",
+            )
+            close()
+        }
+
+        val migrated = migrationHelper.runMigrationsAndValidate(
+            TEST_DATABASE_3_4,
+            4,
+            true,
+            MIGRATION_3_4,
+        )
+
+        migrated.query("SELECT status FROM journeys WHERE id = 'existing'").use { cursor ->
+            assertEquals(true, cursor.moveToFirst())
+            assertEquals("ACTIVE", cursor.getString(0))
+        }
+        migrated.query("SELECT sequence FROM telemetry_observations WHERE journeyId = 'existing'").use { cursor ->
+            assertEquals(true, cursor.moveToFirst())
+            assertEquals(1L, cursor.getLong(0))
+        }
+        migrated.query(
+            """SELECT lastAllocatedHeartbeatSequence, latestCloudHeartbeatSequence, monitoringPhase
+               FROM journey_heartbeat_states WHERE journeyId = 'existing'""",
+        ).use { cursor ->
+            assertEquals(true, cursor.moveToFirst())
+            assertEquals(0L, cursor.getLong(0))
+            assertEquals(0L, cursor.getLong(1))
+            assertEquals(true, cursor.isNull(2))
+        }
+        migrated.close()
+    }
+
+    @Test
     fun sequencesAreJourneyScopedUniqueAndCompletionRejectsNewTelemetry() = runBlocking {
         val db = createInMemoryDatabase()
         val journeyDao = db.journeyDao()
@@ -156,6 +207,25 @@ class JourneyDatabaseTest {
         }
     }
 
+    @Test
+    fun heartbeatSequencePersistsAndCompletionRejectsFurtherAllocation() = runBlocking {
+        val db = createInMemoryDatabase()
+        val journeyDao = db.journeyDao()
+        val heartbeatDao = db.heartbeatDao()
+
+        assertEquals(true, journeyDao.insertIfNoActive(journey("heartbeat").toEntity()))
+        assertEquals(
+            1L,
+            heartbeatDao.allocateForActiveJourney("heartbeat", 10_000, 0)?.sequence,
+        )
+        assertEquals(
+            2L,
+            heartbeatDao.allocateForActiveJourney("heartbeat", 20_000, 0)?.sequence,
+        )
+        assertNotNull(journeyDao.completeActive(30_000))
+        assertNull(heartbeatDao.allocateForActiveJourney("heartbeat", 40_000, 0))
+    }
+
     private fun createInMemoryDatabase(): JourneyDatabase {
         val context = ApplicationProvider.getApplicationContext<Context>()
         return Room.inMemoryDatabaseBuilder(context, JourneyDatabase::class.java)
@@ -187,5 +257,6 @@ class JourneyDatabaseTest {
     private companion object {
         const val TEST_DATABASE_1_2 = "journey-migration-1-2-test"
         const val TEST_DATABASE_2_3 = "journey-migration-2-3-test"
+        const val TEST_DATABASE_3_4 = "journey-migration-3-4-test"
     }
 }

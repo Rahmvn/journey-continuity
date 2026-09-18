@@ -1,5 +1,7 @@
 package com.journeycontinuity.app.sync
 
+import com.journeycontinuity.app.auth.TravellerAuthException
+import com.journeycontinuity.app.auth.TravellerAuthFailureKind
 import java.io.IOException
 import java.net.UnknownHostException
 import javax.net.ssl.SSLHandshakeException
@@ -10,6 +12,26 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CloudSyncDiagnosticsTest {
+    @Test
+    fun temporaryTravellerAuthFailureRemainsRetryable() {
+        val failure = TravellerAuthException(
+            TravellerAuthFailureKind.TEMPORARY_UNAVAILABLE,
+            "Cloud authentication is temporarily unavailable while reconnecting.",
+        ).toCloudSyncException(CloudStage.AUTH_INITIALIZATION)
+
+        assertEquals(SyncFailureKind.TRANSIENT, failure.kind)
+    }
+
+    @Test
+    fun travellerIdentityMismatchIsAuthenticationBlocked() {
+        val failure = TravellerAuthException(
+            TravellerAuthFailureKind.IDENTITY_MISMATCH,
+            "Cloud identity does not match this installation's established traveller.",
+        ).toCloudSyncException(CloudStage.AUTH_INITIALIZATION)
+
+        assertEquals(SyncFailureKind.AUTHENTICATION, failure.kind)
+    }
+
     @Test
     fun validPublishableConfigurationIsRecognizedWithoutExposingItsValue() {
         val configuration = SupabaseConfiguration(
@@ -39,7 +61,7 @@ class CloudSyncDiagnosticsTest {
     @Test
     fun dnsFailureIsRetryableAndDoesNotCopyRawExceptionMessage() {
         val failure = UnknownHostException("secret-marker").toCloudSyncException(
-            CloudStage.ANONYMOUS_SIGN_IN,
+            CloudStage.AUTH_INITIALIZATION,
         )
 
         assertEquals(SyncFailureKind.TRANSIENT, failure.kind)
@@ -50,7 +72,7 @@ class CloudSyncDiagnosticsTest {
     @Test
     fun tlsFailureIsDistinguishedFromGenericTransportFailure() {
         val failure = SSLHandshakeException("secret-marker").toCloudSyncException(
-            CloudStage.ANONYMOUS_SIGN_IN,
+            CloudStage.AUTH_INITIALIZATION,
         )
 
         assertEquals(SyncFailureKind.TRANSIENT, failure.kind)

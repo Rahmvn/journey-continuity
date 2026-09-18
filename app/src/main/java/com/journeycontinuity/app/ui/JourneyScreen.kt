@@ -2,6 +2,10 @@ package com.journeycontinuity.app.ui
 
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -14,6 +18,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -36,10 +41,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.journeycontinuity.app.domain.Journey
+import com.journeycontinuity.app.domain.CloudMonitoringPhase
+import com.journeycontinuity.app.domain.CloudMonitoringState
 import com.journeycontinuity.app.domain.JourneySyncState
 import com.journeycontinuity.app.domain.SyncPhase
 import com.journeycontinuity.app.domain.TelemetryObservation
 import com.journeycontinuity.app.telemetry.ForegroundLocationAccess
+import com.journeycontinuity.app.trusted.TrustedContactStatus
+import com.journeycontinuity.app.trusted.TrustedContactSummary
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -102,6 +111,7 @@ fun JourneyScreen(
                     telemetryCount = state.telemetryCount,
                     latestTelemetry = state.latestTelemetry,
                     syncState = state.syncState,
+                    monitoringState = state.monitoringState,
                     actionInProgress = state.isActionInProgress,
                     onEnd = viewModel::endJourney,
                     onRetryMonitoring = onRetryMonitoring,
@@ -114,7 +124,149 @@ fun JourneyScreen(
                     onOpenLocationSettings = onOpenLocationSettings,
                 )
             }
+            TrustedContactsSection(
+                contacts = state.trustedContacts,
+                availability = state.trustedContactsAvailability,
+                unavailableMessage = state.trustedContactsUnavailableMessage,
+                actionInProgress = state.trustedContactActionInProgress,
+                invitationShareUrl = state.invitationShareUrl,
+                onCreate = viewModel::createTrustedContact,
+                onRevoke = viewModel::revokeTrustedContact,
+                onRefresh = viewModel::refreshTrustedContacts,
+                onShared = viewModel::clearInvitationShareUrl,
+                onMessage = viewModel::showMessage,
+            )
         }
+    }
+}
+
+@Composable
+private fun TrustedContactsSection(
+    contacts: List<TrustedContactSummary>,
+    availability: TrustedContactsAvailability,
+    unavailableMessage: String?,
+    actionInProgress: Boolean,
+    invitationShareUrl: String?,
+    onCreate: (String, String) -> Unit,
+    onRevoke: (String) -> Unit,
+    onRefresh: () -> Unit,
+    onShared: () -> Unit,
+    onMessage: (String) -> Unit,
+) {
+    val context = LocalContext.current
+    var displayName by rememberSaveable { mutableStateOf("") }
+    var email by rememberSaveable { mutableStateOf("") }
+    Spacer(Modifier.height(28.dp))
+    HorizontalDivider()
+    Spacer(Modifier.height(20.dp))
+    Text("Trusted contacts", style = MaterialTheme.typography.titleLarge)
+    Spacer(Modifier.height(6.dp))
+    Text(
+        "Accepted contacts are authorized explicitly for each new Journey. Precise device evidence is disclosed only while contact is being verified, or briefly after a case closes.",
+        style = MaterialTheme.typography.bodySmall,
+    )
+    Spacer(Modifier.height(16.dp))
+    OutlinedTextField(
+        value = displayName,
+        onValueChange = { displayName = it },
+        modifier = Modifier.fillMaxWidth(),
+        label = { Text("Contact display name") },
+        singleLine = true,
+        enabled = !actionInProgress && availability == TrustedContactsAvailability.AVAILABLE,
+    )
+    Spacer(Modifier.height(10.dp))
+    OutlinedTextField(
+        value = email,
+        onValueChange = { email = it },
+        modifier = Modifier.fillMaxWidth(),
+        label = { Text("Verified email") },
+        singleLine = true,
+        enabled = !actionInProgress && availability == TrustedContactsAvailability.AVAILABLE,
+    )
+    Spacer(Modifier.height(10.dp))
+    Button(
+        onClick = { onCreate(displayName, email) },
+        enabled = !actionInProgress && availability == TrustedContactsAvailability.AVAILABLE,
+        modifier = Modifier.fillMaxWidth(),
+    ) { Text(if (actionInProgress) "Working…" else "Create invitation") }
+
+    invitationShareUrl?.let { url ->
+        Spacer(Modifier.height(14.dp))
+        Text(
+            "This one-time invitation link is shown only now. Send it only to the invited contact.",
+            color = MaterialTheme.colorScheme.primary,
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = {
+                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                clipboard.setPrimaryClip(ClipData.newPlainText("JourneyContinuity invitation", url))
+                onMessage("Invitation link copied.")
+            }) { Text("Copy link") }
+            OutlinedButton(onClick = {
+                val intent = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(
+                        Intent.EXTRA_TEXT,
+                        "You have been invited as a JourneyContinuity trusted contact. Open this one-time link: $url",
+                    )
+                }
+                context.startActivity(Intent.createChooser(intent, "Share trusted-contact invitation"))
+                onShared()
+            }) { Text("Share link") }
+        }
+    }
+
+    Spacer(Modifier.height(20.dp))
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text("Existing contacts", style = MaterialTheme.typography.titleMedium)
+        OutlinedButton(
+            onClick = onRefresh,
+            enabled = availability != TrustedContactsAvailability.LOADING && !actionInProgress,
+        ) {
+            Text("Refresh")
+        }
+    }
+    when {
+        availability == TrustedContactsAvailability.LOADING ->
+            Text("Loading trusted contacts…", style = MaterialTheme.typography.bodySmall)
+        availability == TrustedContactsAvailability.UNAVAILABLE -> Text(
+            unavailableMessage ?: "Trusted contacts are currently unavailable.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        contacts.isEmpty() -> Text("No trusted contacts yet.", style = MaterialTheme.typography.bodySmall)
+        else -> contacts.forEach { contact ->
+            TrustedContactRow(
+                contact = contact,
+                actionInProgress = actionInProgress,
+                onRevoke = onRevoke,
+            )
+        }
+    }
+}
+
+@Composable
+private fun TrustedContactRow(
+    contact: TrustedContactSummary,
+    actionInProgress: Boolean,
+    onRevoke: (String) -> Unit,
+) {
+    val zone = ZoneId.systemDefault()
+    Spacer(Modifier.height(12.dp))
+    Text(contact.displayName, style = MaterialTheme.typography.titleSmall)
+    Text(contact.email, style = MaterialTheme.typography.bodyMedium)
+    JourneyDetail("Status", contact.status.name.lowercase().replaceFirstChar(Char::uppercase))
+    contact.expiresAt?.let { JourneyDetail("Invitation expires", formatTimestamp(it, zone)) }
+    if (contact.status == TrustedContactStatus.PENDING || contact.status == TrustedContactStatus.ACCEPTED) {
+        OutlinedButton(
+            onClick = { onRevoke(contact.id) },
+            enabled = !actionInProgress,
+        ) { Text("Revoke") }
     }
 }
 
@@ -218,6 +370,7 @@ private fun ActiveJourneyContent(
     telemetryCount: Long,
     latestTelemetry: TelemetryObservation?,
     syncState: JourneySyncState?,
+    monitoringState: CloudMonitoringState?,
     actionInProgress: Boolean,
     onEnd: () -> Unit,
     onRetryMonitoring: () -> Unit,
@@ -330,6 +483,32 @@ private fun ActiveJourneyContent(
     }
     Text(
         "Sync status describes data transport only; it does not verify Journey safety.",
+        style = MaterialTheme.typography.bodySmall,
+    )
+    Spacer(Modifier.height(20.dp))
+    Text("Cloud monitoring", style = MaterialTheme.typography.titleMedium)
+    Spacer(Modifier.height(12.dp))
+    val monitoringLabel = when (monitoringState?.phase) {
+        CloudMonitoringPhase.EVIDENCE_FRESH -> "Evidence fresh"
+        CloudMonitoringPhase.VERIFYING -> "Verifying device contact"
+        CloudMonitoringPhase.CLOSED -> "Closed"
+        null -> "Waiting for first fresh heartbeat"
+    }
+    JourneyDetail("Monitoring phase", monitoringLabel)
+    JourneyDetail(
+        "Last cloud contact",
+        monitoringState?.lastCloudContactAt?.let { formatTimestamp(it, zone) } ?: "Not yet available",
+    )
+    JourneyDetail(
+        "Latest heartbeat sequence",
+        monitoringState?.latestCloudHeartbeatSequence?.toString() ?: "0",
+    )
+    monitoringState?.lastError?.let { error ->
+        Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+        Spacer(Modifier.height(10.dp))
+    }
+    Text(
+        "Monitoring reports device/cloud contact only; it does not verify traveller status.",
         style = MaterialTheme.typography.bodySmall,
     )
     Spacer(Modifier.height(24.dp))

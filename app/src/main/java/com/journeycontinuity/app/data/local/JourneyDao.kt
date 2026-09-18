@@ -24,6 +24,9 @@ abstract class JourneyDao {
     @Insert
     protected abstract suspend fun insertSyncState(syncState: JourneySyncStateEntity)
 
+    @Insert
+    protected abstract suspend fun insertHeartbeatState(state: JourneyHeartbeatStateEntity)
+
     @Query(
         """UPDATE journey_sync_states
            SET changeVersion = changeVersion + 1,
@@ -49,6 +52,7 @@ abstract class JourneyDao {
         if (getActive() != null) return false
         insert(journey)
         insertSyncState(JourneySyncStateEntity(journeyId = journey.id))
+        insertHeartbeatState(JourneyHeartbeatStateEntity(journeyId = journey.id))
         return true
     }
 

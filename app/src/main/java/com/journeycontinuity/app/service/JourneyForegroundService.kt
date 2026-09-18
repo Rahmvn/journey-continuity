@@ -12,6 +12,9 @@ import android.content.IntentFilter
 import android.content.pm.ServiceInfo
 import android.location.Location
 import android.location.LocationManager
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
@@ -21,6 +24,9 @@ import com.journeycontinuity.app.JourneyContinuityApplication
 import com.journeycontinuity.app.MainActivity
 import com.journeycontinuity.app.R
 import com.journeycontinuity.app.domain.TelemetrySample
+import com.journeycontinuity.app.heartbeat.HeartbeatConfiguration
+import com.journeycontinuity.app.sync.AndroidSyncDiagnosticLogger
+import com.journeycontinuity.app.sync.SyncRequestUrgency
 import com.journeycontinuity.app.telemetry.DeviceContextReader
 import com.journeycontinuity.app.telemetry.ForegroundLocationAccess
 import com.journeycontinuity.app.telemetry.FusedJourneyLocationSource
@@ -32,12 +38,19 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.util.concurrent.atomic.AtomicBoolean
 
 class JourneyForegroundService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var activeJourneyJob: Job? = null
     private var persistenceJob: Job? = null
+    private var heartbeatJob: Job? = null
+    private var heartbeatTimerJob: Job? = null
+    private var heartbeatSignal: Channel<Unit>? = null
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private var locationChannel: Channel<Location>? = null
     private var currentDestination: String? = null
     private lateinit var locationSource: FusedJourneyLocationSource
@@ -46,6 +59,9 @@ class JourneyForegroundService : Service() {
 
     private val repository
         get() = (application as JourneyContinuityApplication).journeyRepository
+
+    private val heartbeatCoordinator
+        get() = (application as JourneyContinuityApplication).heartbeatCoordinator
 
     private val locationModeReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -140,6 +156,57 @@ class JourneyForegroundService : Service() {
             },
             onFailure = { stopServiceCompletely() },
         )
+        startHeartbeats(journeyId)
+    }
+
+    private fun startHeartbeats(journeyId: String) {
+        val signal = Channel<Unit>(Channel.CONFLATED)
+        heartbeatSignal = signal
+        heartbeatJob = serviceScope.launch(Dispatchers.IO) {
+            for (ignored in signal) {
+                val battery = deviceContextReader.battery()
+                AndroidSyncDiagnosticLogger.info(
+                    "Heartbeat battery snapshot: percentage=${battery.percent}, charging=${battery.isCharging}",
+                )
+                heartbeatCoordinator.sendFreshHeartbeat(
+                    journeyId = journeyId,
+                    batteryPercent = battery.percent,
+                    charging = battery.isCharging,
+                    connectivity = deviceContextReader.connectivity(),
+                    networkUsable = deviceContextReader.usableInternet(),
+                )
+            }
+        }
+        heartbeatTimerJob = serviceScope.launch {
+            while (isActive) {
+                signal.trySend(Unit)
+                delay(HeartbeatConfiguration.INTERVAL_MILLIS)
+            }
+        }
+        val manager = getSystemService(ConnectivityManager::class.java)
+        val usable = AtomicBoolean(false)
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
+                val nowUsable = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                    capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+                if (nowUsable && usable.compareAndSet(false, true)) {
+                    signal.trySend(Unit)
+                    runCatching {
+                        (application as JourneyContinuityApplication).syncScheduler.schedule(
+                            SyncRequestUrgency.URGENT,
+                        )
+                    }
+                }
+                if (!nowUsable) usable.set(false)
+            }
+
+            override fun onLost(network: Network) {
+                usable.set(false)
+            }
+        }
+        networkCallback = callback
+        runCatching { manager.registerDefaultNetworkCallback(callback) }
+            .onFailure { networkCallback = null }
     }
 
     private fun stopCollecting() {
@@ -148,6 +215,18 @@ class JourneyForegroundService : Service() {
         locationChannel = null
         persistenceJob?.cancel()
         persistenceJob = null
+        heartbeatTimerJob?.cancel()
+        heartbeatTimerJob = null
+        heartbeatJob?.cancel()
+        heartbeatJob = null
+        heartbeatSignal?.close()
+        heartbeatSignal = null
+        networkCallback?.let { callback ->
+            runCatching {
+                getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(callback)
+            }
+        }
+        networkCallback = null
     }
 
     private fun showRecordingNotification(destination: String) {

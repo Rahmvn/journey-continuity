@@ -37,6 +37,11 @@ android {
             "SUPABASE_PUBLISHABLE_KEY",
             configuredString("SUPABASE_PUBLISHABLE_KEY"),
         )
+        buildConfigField(
+            "String",
+            "TRUSTED_VIEWER_BASE_URL",
+            configuredString("TRUSTED_VIEWER_BASE_URL"),
+        )
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
