@@ -22,6 +22,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -49,6 +50,7 @@ import com.journeycontinuity.app.domain.TelemetryObservation
 import com.journeycontinuity.app.telemetry.ForegroundLocationAccess
 import com.journeycontinuity.app.trusted.TrustedContactStatus
 import com.journeycontinuity.app.trusted.TrustedContactSummary
+import com.journeycontinuity.app.degraded.SmsFallbackStatus
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -73,6 +75,9 @@ fun JourneyScreen(
     onStartRequested: (String, Long) -> Unit,
     onRetryMonitoring: () -> Unit,
     onOpenLocationSettings: () -> Unit,
+    smsFallbackStatus: SmsFallbackStatus,
+    onRequestSmsPermissions: () -> Unit,
+    onSelectSmsSubscription: (Int) -> Unit,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -124,6 +129,11 @@ fun JourneyScreen(
                     onOpenLocationSettings = onOpenLocationSettings,
                 )
             }
+            SmsFallbackSection(
+                status = smsFallbackStatus,
+                onRequestPermissions = onRequestSmsPermissions,
+                onSelectSubscription = onSelectSmsSubscription,
+            )
             TrustedContactsSection(
                 contacts = state.trustedContacts,
                 availability = state.trustedContactsAvailability,
@@ -138,6 +148,55 @@ fun JourneyScreen(
             )
         }
     }
+}
+
+@Composable
+private fun SmsFallbackSection(
+    status: SmsFallbackStatus,
+    onRequestPermissions: () -> Unit,
+    onSelectSubscription: (Int) -> Unit,
+) {
+    Spacer(Modifier.height(28.dp))
+    HorizontalDivider()
+    Spacer(Modifier.height(20.dp))
+    Text("SMS fallback", style = MaterialTheme.typography.titleLarge)
+    Spacer(Modifier.height(8.dp))
+    JourneyDetail("SMS permission", if (status.sendPermissionGranted) "Granted" else "Not granted")
+    JourneyDetail(
+        "Phone/subscription permission",
+        if (status.phoneStatePermissionGranted) "Granted" else "Not granted",
+    )
+    if (!status.sendPermissionGranted || !status.phoneStatePermissionGranted) {
+        OutlinedButton(onClick = onRequestPermissions) { Text("Enable SMS fallback permissions") }
+        Spacer(Modifier.height(10.dp))
+    }
+    Text("Fallback SIM", style = MaterialTheme.typography.labelMedium)
+    if (status.activeSubscriptions.isEmpty()) {
+        Text("No active SIM choices available.", style = MaterialTheme.typography.bodyLarge)
+    } else {
+        status.activeSubscriptions.forEach { choice ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                RadioButton(
+                    selected = choice.subscriptionId == status.selectedSubscriptionId,
+                    onClick = { onSelectSubscription(choice.subscriptionId) },
+                )
+                Text(choice.safeDisplayName)
+            }
+        }
+    }
+    Spacer(Modifier.height(8.dp))
+    JourneyDetail(
+        "Destination",
+        if (status.destinationConfigured) "Configured" else "Not configured",
+    )
+    JourneyDetail("Transport", if (status.ready) "Ready" else "Unavailable")
+    status.unavailableReason?.let {
+        Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+    }
+    Text(
+        "SMS transport status does not indicate recipient delivery or fresh cloud evidence.",
+        style = MaterialTheme.typography.bodySmall,
+    )
 }
 
 @Composable

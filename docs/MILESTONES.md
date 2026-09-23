@@ -303,7 +303,7 @@ Remote deployment acceptance:
 
 ## Milestone 6 — Degraded Connectivity + SMS Fallback
 
-**Status:** NEXT
+**Status:** IN PROGRESS — PROVISIONING, DURABLE OFFLINE ALLOCATION, AND RECOVERY ACCEPTED; CARRIER HANDOFF AND CLOUD INGESTION OUTSTANDING
 
 ### Goal
 
@@ -319,9 +319,49 @@ Preserve limited continuity when mobile internet becomes unreliable.
 - fallback stop after internet recovery;
 - carrier/provider testing.
 
+### Completed checkpoint — 2026-09-23
+
+- deterministic `HEALTHY`, `INTERRUPTED`, `DEGRADED`, and `RECOVERING` policy with authoritative Room persistence;
+- physical Redmi acceptance of `HEALTHY -> INTERRUPTED -> DEGRADED`, followed by `DEGRADED -> RECOVERING -> backlog sync -> fresh heartbeat -> HEALTHY`;
+- compact production `JC1.` envelope protected with AES-256-GCM using an HKDF-SHA-256-derived Journey key;
+- durable, transactionally allocated fallback attempts with exact protected text and digest retained across Room reload and process restart;
+- installation fallback key wrapping with Android Keystore and an opaque, Journey-scoped binding;
+- hosted fallback provisioning with owner authorization, non-owner rejection, and idempotent retry returning the same key and binding material;
+- hosted migrations applied through `20260921000200_fix_fallback_key_rotation.sql`;
+- corrected hosted provisioning pgTAP suite passing 36/36;
+- one real production-protected JC1 attempt allocated while offline, then terminalized as `SUPERSEDED` after authenticated recovery while its hosted binding remained valid;
+- Android SMS handoff foundation: explicit permission/capability checks, SIM selection, one-segment enforcement, durable handoff state, platform result callback, and bounded retry/uncertainty handling.
+
+### Additive trusted-contact notification slice
+
+Implemented and covered by repository tests without replacing the phone-to-cloud fallback scope:
+
+- contact-owned E.164 number and explicit SMS consent;
+- durable, deduplicated Supabase notification outbox;
+- transactional enqueue from deterministic verification-case transitions;
+- stale verification-started alerts terminalized when a case resolves;
+- bounded claim leases and retry policy;
+- AWS End User Messaging SMS dispatch from the existing watchdog Lambda;
+- minimum-necessary factual message templates and masked logging;
+- provider-accepted state distinguished from handset delivery.
+
+Hosted migration `20260918000200_milestone_6_supersede_stale_sms.sql` is applied. Repository evidence does not yet establish physical carrier receipt for this slice.
+
+### Outstanding
+
+- configure an authorized inbound SMS route;
+- complete physical carrier SMS handoff acceptance from the Redmi;
+- implement and deploy provider-side inbound SMS ingestion;
+- authenticate and decrypt JC1 server-side against the provisioned key and Journey binding;
+- reconcile duplicate, delayed, and out-of-order fallback messages with authoritative cloud evidence;
+- complete the physical failure matrix, including SMS unavailable, dual-SIM ambiguity, low battery, retry, and ambiguous carrier outcomes;
+- complete Milestone 6 end-to-end acceptance.
+
 ### Acceptance target
 
-Test data good/SMS good, data bad/SMS good, data and SMS unavailable, delayed SMS, duplicate SMS, dual-SIM ambiguity, low battery, and recovery to internet.
+The remaining acceptance target covers data good/SMS good, data bad/SMS good, data and SMS unavailable, delayed SMS, duplicate SMS, dual-SIM ambiguity, low battery, and carrier/provider behavior. Internet recovery and supersession have passed physically.
+
+The additive trusted-contact path must also pass healthy-monitoring silence, real watchdog-driven `VERIFYING`, no stale started alert after case resolution, fresh-contact resolution, offline Journey completion, contact opt-out, and transport failure remaining independent of deterministic monitoring state.
 
 No assumption of emergency causation from connectivity loss.
 

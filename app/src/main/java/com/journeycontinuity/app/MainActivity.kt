@@ -21,6 +21,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.journeycontinuity.app.telemetry.ForegroundLocationAccess
 import com.journeycontinuity.app.telemetry.LocationPrerequisites
+import com.journeycontinuity.app.degraded.SmsFallbackStatus
 import com.journeycontinuity.app.ui.JourneyScreen
 import com.journeycontinuity.app.ui.JourneyViewModel
 import com.journeycontinuity.app.ui.JourneyViewModelFactory
@@ -44,6 +45,15 @@ class MainActivity : ComponentActivity() {
     private var notificationsVisible by mutableStateOf(true)
     private var locationUiState by mutableStateOf(LocationUiState())
     private var pendingStart: Pair<String, Long>? = null
+    private var smsFallbackStatus by mutableStateOf(
+        SmsFallbackStatus(false, false, false, emptyList(), null, false, false, "Checking SMS fallback capability."),
+    )
+
+    private val smsPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) {
+        refreshSmsFallbackState()
+    }
 
     private val locationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
@@ -102,6 +112,9 @@ class MainActivity : ComponentActivity() {
                     onStartRequested = ::startAfterPrerequisites,
                     onRetryMonitoring = ::retryMonitoringPrerequisites,
                     onOpenLocationSettings = ::openLocationSettings,
+                    smsFallbackStatus = smsFallbackStatus,
+                    onRequestSmsPermissions = ::requestSmsFallbackPermissions,
+                    onSelectSmsSubscription = ::selectSmsFallbackSubscription,
                 )
             }
         }
@@ -110,6 +123,7 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         refreshPrerequisiteState()
+        refreshSmsFallbackState()
         if (pendingStart != null && locationUiState.locationServicesEnabled) {
             continuePendingStart()
         } else {
@@ -199,5 +213,22 @@ class MainActivity : ComponentActivity() {
             access = LocationPrerequisites.access(this),
             locationServicesEnabled = LocationPrerequisites.locationServicesEnabled(this),
         )
+    }
+
+    private fun refreshSmsFallbackState() {
+        smsFallbackStatus = app.smsFallbackConfiguration.status()
+    }
+
+    private fun requestSmsFallbackPermissions() {
+        smsPermissionLauncher.launch(
+            arrayOf(Manifest.permission.SEND_SMS, Manifest.permission.READ_PHONE_STATE),
+        )
+    }
+
+    private fun selectSmsFallbackSubscription(subscriptionId: Int) {
+        if (!app.smsFallbackConfiguration.selectSubscription(subscriptionId)) {
+            journeyViewModel.showMessage("That SIM is no longer active. Refresh and select an active SIM.")
+        }
+        refreshSmsFallbackState()
     }
 }

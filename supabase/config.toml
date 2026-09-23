@@ -382,6 +382,11 @@ inspector_port = 8643
 # The Deno major version to use.
 deno_version = 2
 
+[functions.provision-fallback]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/provision-fallback/index.ts"
+
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 

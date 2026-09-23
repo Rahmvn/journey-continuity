@@ -7,6 +7,21 @@ Parameters:
     Type: String
     Default: DISABLED
     AllowedValues: [ENABLED, DISABLED]
+  SmsViewerUrl:
+    Type: String
+    Description: HTTPS trusted-viewer base URL included without tokens in factual SMS alerts
+  SmsOriginationIdentity:
+    Type: String
+    Description: Existing End User Messaging SMS sender ID, phone identity, or pool identity
+  SmsConfigurationSetName:
+    Type: String
+    Default: ''
+    Description: Optional existing End User Messaging SMS configuration set
+  SmsDispatchBatchSize:
+    Type: Number
+    Default: 10
+    MinValue: 1
+    MaxValue: 25
 
 Resources:
   WatchdogSecret:
@@ -43,6 +58,9 @@ Resources:
               - Effect: Allow
                 Action: secretsmanager:GetSecretValue
                 Resource: !Ref WatchdogSecret
+              - Effect: Allow
+                Action: sms-voice:SendTextMessage
+                Resource: '*'
 
   WatchdogFunction:
     Type: AWS::Serverless::Function
@@ -54,11 +72,15 @@ Resources:
       Runtime: nodejs22.x
       Architectures: [arm64]
       MemorySize: 128
-      Timeout: 15
+      Timeout: 30
       Role: !GetAtt WatchdogLambdaRole.Arn
       Environment:
         Variables:
           WATCHDOG_SECRET_ARN: !Ref WatchdogSecret
+          SMS_VIEWER_URL: !Ref SmsViewerUrl
+          SMS_ORIGINATION_IDENTITY: !Ref SmsOriginationIdentity
+          SMS_CONFIGURATION_SET_NAME: !Ref SmsConfigurationSetName
+          SMS_DISPATCH_BATCH_SIZE: !Ref SmsDispatchBatchSize
 
   SchedulerExecutionRole:
     Type: AWS::IAM::Role

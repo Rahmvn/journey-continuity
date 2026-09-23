@@ -25,6 +25,7 @@ import com.journeycontinuity.app.MainActivity
 import com.journeycontinuity.app.R
 import com.journeycontinuity.app.domain.TelemetrySample
 import com.journeycontinuity.app.heartbeat.HeartbeatConfiguration
+import com.journeycontinuity.app.heartbeat.HeartbeatAttemptResult
 import com.journeycontinuity.app.sync.AndroidSyncDiagnosticLogger
 import com.journeycontinuity.app.sync.SyncRequestUrgency
 import com.journeycontinuity.app.telemetry.DeviceContextReader
@@ -62,6 +63,12 @@ class JourneyForegroundService : Service() {
 
     private val heartbeatCoordinator
         get() = (application as JourneyContinuityApplication).heartbeatCoordinator
+
+    private val degradedConnectivityCoordinator
+        get() = (application as JourneyContinuityApplication).degradedConnectivityCoordinator
+
+    private val fallbackHandoffCoordinator
+        get() = (application as JourneyContinuityApplication).fallbackHandoffCoordinator
 
     private val locationModeReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -163,45 +170,70 @@ class JourneyForegroundService : Service() {
         val signal = Channel<Unit>(Channel.CONFLATED)
         heartbeatSignal = signal
         heartbeatJob = serviceScope.launch(Dispatchers.IO) {
+            degradedConnectivityCoordinator.activate(
+                journeyId = journeyId,
+                validatedInternetAvailable = deviceContextReader.usableInternet(),
+            )
             for (ignored in signal) {
                 val battery = deviceContextReader.battery()
                 AndroidSyncDiagnosticLogger.info(
                     "Heartbeat battery snapshot: percentage=${battery.percent}, charging=${battery.isCharging}",
                 )
-                heartbeatCoordinator.sendFreshHeartbeat(
+                when (heartbeatCoordinator.sendFreshHeartbeat(
                     journeyId = journeyId,
                     batteryPercent = battery.percent,
                     charging = battery.isCharging,
                     connectivity = deviceContextReader.connectivity(),
                     networkUsable = deviceContextReader.usableInternet(),
-                )
+                )) {
+                    HeartbeatAttemptResult.Sent ->
+                        degradedConnectivityCoordinator.freshHeartbeatSucceeded(journeyId)
+                    HeartbeatAttemptResult.RetryableFailure ->
+                        degradedConnectivityCoordinator.retryableCloudFailure(journeyId)
+                    HeartbeatAttemptResult.Failed,
+                    HeartbeatAttemptResult.Skipped,
+                    -> Unit
+                }
             }
         }
         heartbeatTimerJob = serviceScope.launch {
             while (isActive) {
+                degradedConnectivityCoordinator.timeAdvanced(journeyId)
+                fallbackHandoffCoordinator.processNextReady(journeyId)
                 signal.trySend(Unit)
                 delay(HeartbeatConfiguration.INTERVAL_MILLIS)
             }
         }
         val manager = getSystemService(ConnectivityManager::class.java)
-        val usable = AtomicBoolean(false)
+        val usable = AtomicBoolean(deviceContextReader.usableInternet())
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
                 val nowUsable = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
                     capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
                 if (nowUsable && usable.compareAndSet(false, true)) {
-                    signal.trySend(Unit)
-                    runCatching {
-                        (application as JourneyContinuityApplication).syncScheduler.schedule(
-                            SyncRequestUrgency.URGENT,
-                        )
+                    serviceScope.launch(Dispatchers.IO) {
+                        degradedConnectivityCoordinator.validatedInternetAvailable(journeyId)
+                        runCatching {
+                            (application as JourneyContinuityApplication).syncScheduler.schedule(
+                                SyncRequestUrgency.URGENT,
+                            )
+                        }
+                        signal.trySend(Unit)
                     }
                 }
-                if (!nowUsable) usable.set(false)
+                if (!nowUsable && usable.compareAndSet(true, false)) {
+                    serviceScope.launch(Dispatchers.IO) {
+                        degradedConnectivityCoordinator.validatedInternetLost(journeyId)
+                    }
+                }
             }
 
             override fun onLost(network: Network) {
-                usable.set(false)
+                if (usable.compareAndSet(true, false)) {
+                    serviceScope.launch(Dispatchers.IO) {
+                        degradedConnectivityCoordinator.validatedInternetLost(journeyId)
+                    }
+                }
             }
         }
         networkCallback = callback

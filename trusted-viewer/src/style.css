@@ -21,6 +21,10 @@ form { display: grid; gap: 12px; }
 label { display: grid; gap: 6px; font-weight: 650; }
 input, select, textarea, button { font: inherit; }
 input, select, textarea { width: 100%; border: 1px solid #aebdb5; border-radius: 8px; padding: 10px; background: white; }
+.checkbox-label { grid-template-columns: auto 1fr; align-items: center; }
+.checkbox-label input { width: auto; }
+.field-help { color: #617269; font-size: .9rem; }
+.compact-card { padding: 18px 22px; }
 textarea { min-height: 110px; resize: vertical; }
 button { border: 0; border-radius: 8px; padding: 10px 14px; background: #245b46; color: white; font-weight: 700; cursor: pointer; }
 button.secondary { background: white; color: #245b46; border: 1px solid #729080; }

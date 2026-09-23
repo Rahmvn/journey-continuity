@@ -22,6 +22,19 @@ abstract class TelemetryDao {
 
     @Query(
         """SELECT * FROM telemetry_observations
+           WHERE journeyId = :journeyId
+           ORDER BY sequence DESC LIMIT 1""",
+    )
+    abstract suspend fun getLatest(journeyId: String): TelemetryObservationEntity?
+
+    @Query(
+        """SELECT * FROM telemetry_observations
+           WHERE journeyId = :journeyId AND sequence = :sequence LIMIT 1""",
+    )
+    abstract suspend fun getBySequence(journeyId: String, sequence: Long): TelemetryObservationEntity?
+
+    @Query(
+        """SELECT * FROM telemetry_observations
            WHERE journeyId = :journeyId AND sequence > :afterSequence
            ORDER BY sequence ASC LIMIT :limit""",
     )

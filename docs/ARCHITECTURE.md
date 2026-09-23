@@ -129,6 +129,30 @@ A fresh heartbeat resolves an open case as `DEVICE_CONTACT_RESTORED`; Journey co
 
 Android cloud identity is sticky per installation. `TravellerIdentityCoordinator` is the sole authority permitted to establish an anonymous traveller identity, and the expected Supabase user ID is persisted independently of Supabase session storage. A temporary initialization, refresh, token-expiry, or network failure must never create a replacement anonymous identity. Identity mismatch and permanent session loss fail closed, while a shared mutex prevents concurrent first-establishment races.
 
+### 7.5 Milestone 6 Additive Trusted-Contact SMS Path
+
+Trusted-contact SMS is a supplementary server-side awareness channel, not device evidence or the Android phone-to-cloud fallback transport. Android never sends these trusted-contact alerts. The separate phone-to-cloud fallback path may request narrowly scoped telephony permissions. An authenticated accepted contact owns their E.164 destination and must opt in explicitly for each trusted relationship; the traveller cannot configure that consent.
+
+This additive notification path does not replace the separate device-to-cloud degraded-connectivity SMS direction in Sections 12 and 13. Compact phone-originated fallback payloads, provider ingestion, dual-SIM policy, and fallback reconciliation remain outstanding Milestone 6 responsibilities.
+
+PostgreSQL enqueues notification outbox rows inside the authoritative verification-case opening and resolution transactions. A unique `(verification_case_id, relationship_id, notification_kind)` invariant prevents repeated logical alerts when the watchdog evaluates repeatedly. SMS state is independent of telemetry, heartbeat, monitoring phase, case state, and trusted-contact reports. Enqueue failures are contained so transport cannot corrupt a safety-state transition.
+
+The existing scheduled watchdog Lambda claims a bounded batch with `FOR UPDATE SKIP LOCKED` and expiring leases, then uses AWS End User Messaging SMS with `TRANSACTIONAL` message type. A pending or retrying verification-started alert becomes terminal as `SUPERSEDED` when its case resolves, and claim-time validation independently rejects started alerts for resolved cases. Provider acceptance is stored as `PROVIDER_ACCEPTED`; it is not proof of handset delivery, receipt, or reading. Retryable failures use bounded exponential backoff, permanent failures become terminal, and one destination cannot block the rest of a batch. A process failure after provider acceptance but before database acknowledgement remains an unavoidable at-least-once edge because `SendTextMessage` has no caller idempotency key; leases prevent normal concurrent duplication but cannot prove exactly-once carrier submission.
+
+SMS contains no coordinates or detailed evidence and links only to the normal authenticated viewer. Phone-number changes do not rewrite historical outbox snapshots. Opt-out, relationship revocation, authorization revocation, or a changed destination makes unsent work ineligible. Full product phone-possession verification remains a hardening requirement; Milestone 6 acceptance may use AWS sandbox destination verification for the controlled phone.
+
+### 7.6 Milestone 6 Provisioned Device Fallback Foundation
+
+An authenticated owner provisions an installation fallback key through the deployed `provision-fallback` Edge Function. The raw production KEK remains external secret configuration and is never stored in the repository, SQL migrations, or Android configuration. Supabase retains only encrypted installation-key material and an opaque Journey binding. Repeated provisioning for the same installation and Journey is idempotent; a different owner is rejected.
+
+Android wraps the returned installation key with a non-exportable Android Keystore key before treating the Room binding as usable. A Journey key is derived with HKDF-SHA-256, and the compact `JC1.` envelope is protected with AES-256-GCM. The exact protected text and its SHA-256 digest are durably stored before any transport handoff.
+
+Fallback attempts use explicit durable transport states. `ALLOCATED` means the protected envelope exists locally but has not been submitted to Android telephony. `HANDOFF_IN_PROGRESS` means one generation has been claimed for platform submission and its final outcome is not yet known. `HANDED_OFF` means Android reported successful SMS send handoff; it is not proof of carrier delivery, cloud ingestion, human receipt, or evidence freshness. Retryable, permanently failed, ambiguous, and `SUPERSEDED` outcomes remain distinguishable.
+
+Validated internet recovery moves device state from `DEGRADED` to `RECOVERING`, triggers authoritative backlog synchronization, and requires a genuinely fresh authenticated heartbeat before returning to `HEALTHY`. Recovery supersedes an obsolete unsent fallback attempt without invalidating its hosted Journey binding. Transport state never drives cloud monitoring or establishes fresh evidence.
+
+The Android SMS handoff foundation exists, but its inbound destination is intentionally unconfigured. Provider-side JC1 receipt, authentication, decryption, duplicate handling, ordering, and reconciliation are not implemented yet.
+
 ## 8. Journey Domain
 
 Current minimal domain:
@@ -252,12 +276,10 @@ SMS is not a high-frequency telemetry bus.
 
 It is intended as a sparse resilience mechanism.
 
-Important future constraints:
+Implemented constraints include compact protected payloads, explicit SIM selection, durable handoff state, and separation of platform handoff from evidence freshness. Remaining constraints include:
 
-- payloads must be compact;
-- sensitive details should be minimized;
-- plaintext SMS must not contain unnecessary identity data;
-- dual-SIM behavior must be explicit;
+- provider-side authentication and decryption;
+- duplicate, delayed, and out-of-order reconciliation;
 - provider/carrier behavior must be tested;
 - Google Play SMS permission policy must be respected;
 - no assumption should be made that hackathon credits cover shortcode provisioning.

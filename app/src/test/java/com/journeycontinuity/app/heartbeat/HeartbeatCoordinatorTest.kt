@@ -43,7 +43,7 @@ class HeartbeatCoordinatorTest {
         val coordinator = HeartbeatCoordinator(local, remote, { now })
 
         assertEquals(
-            HeartbeatAttemptResult.Failed,
+            HeartbeatAttemptResult.RetryableFailure,
             coordinator.sendFreshHeartbeat("journey", 70, false, ConnectivityState.CELLULAR, true),
         )
         now += HeartbeatConfiguration.MINIMUM_ATTEMPT_SPACING_MILLIS
@@ -74,6 +74,45 @@ class HeartbeatCoordinatorTest {
         assertEquals(0L, local.sequence)
         assertEquals(emptyList<DeviceHeartbeat>(), remote.received)
         assertNull(local.success)
+    }
+
+    @Test
+    fun permanentAuthenticationFailureIsNotClassifiedAsRetryableConnectivityEvidence() = runBlocking {
+        val coordinator = HeartbeatCoordinator(
+            FakeLocalStore(),
+            FakeGateway(
+                authFailure = CloudSyncException(
+                    SyncFailureKind.AUTHENTICATION,
+                    "Traveller sign-in is required.",
+                ),
+            ),
+            { 20_000L },
+        )
+
+        assertEquals(
+            HeartbeatAttemptResult.Failed,
+            coordinator.sendFreshHeartbeat("journey", 70, false, ConnectivityState.CELLULAR, true),
+        )
+    }
+
+    @Test
+    fun successfulHeartbeatRetriesProvisioningWithoutChangingHeartbeatOutcome() = runBlocking {
+        var provisioningAttempts = 0
+        val coordinator = HeartbeatCoordinator(
+            local = FakeLocalStore(),
+            remote = FakeGateway(),
+            clock = { 20_000L },
+            provisioningObserver = {
+                provisioningAttempts += 1
+                error("provisioning remains unavailable")
+            },
+        )
+
+        assertEquals(
+            HeartbeatAttemptResult.Sent,
+            coordinator.sendFreshHeartbeat("journey", 70, false, ConnectivityState.CELLULAR, true),
+        )
+        assertEquals(1, provisioningAttempts)
     }
 
     private class FakeLocalStore : HeartbeatLocalStore {

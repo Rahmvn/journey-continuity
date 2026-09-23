@@ -43,7 +43,7 @@ android {
             configuredString("TRUSTED_VIEWER_BASE_URL"),
         )
 
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        testInstrumentationRunner = "com.journeycontinuity.app.IsolatedTestRunner"
     }
 
     buildTypes {

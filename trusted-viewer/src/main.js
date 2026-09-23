@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { normalizeE164 } from './smsPreferences.js'
 
 const supabaseUrl = import.meta.env.NEXT_PUBLIC_SUPABASE_URL || import.meta.env.VITE_SUPABASE_URL
 const publishableKey = import.meta.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
@@ -9,9 +10,10 @@ let invitationAcceptedThisPage = false
 const elements = {
   configuration: document.querySelector('#configuration'),
   auth: document.querySelector('#auth'),
-  authForm: document.querySelector('#auth-form'),
+  authForm: /** @type {HTMLFormElement} */ (document.querySelector('#auth-form')),
   message: document.querySelector('#message'),
   app: document.querySelector('#app'),
+  smsPreferences: document.querySelector('#sms-preferences'),
   journeys: document.querySelector('#journeys'),
   case: document.querySelector('#case'),
   refresh: document.querySelector('#refresh'),
@@ -28,7 +30,7 @@ if (!supabaseUrl || !publishableKey) {
 function wireViewer(supabase) {
   elements.authForm.addEventListener('submit', async (event) => {
     event.preventDefault()
-    const email = new FormData(elements.authForm).get('email').trim().toLowerCase()
+    const email = String(new FormData(elements.authForm).get('email') ?? '').trim().toLowerCase()
     setBusy(elements.authForm, true)
     const redirectUrl = new URL(window.location.href)
     redirectUrl.hash = ''
@@ -41,7 +43,7 @@ function wireViewer(supabase) {
     setMessage('Check your email and open the secure sign-in link in this browser.')
   })
 
-  elements.refresh.addEventListener('click', () => loadJourneys(supabase))
+  elements.refresh.addEventListener('click', () => loadViewer(supabase))
   elements.signOut.addEventListener('click', async () => {
     await supabase.auth.signOut()
     window.location.reload()
@@ -74,7 +76,80 @@ async function renderSession(supabase, session) {
     history.replaceState({}, '', window.location.pathname)
     setMessage('Invitation accepted. This identity is now an authorized trusted contact.')
   }
-  await loadJourneys(supabase)
+  await loadViewer(supabase)
+}
+
+async function loadViewer(supabase) {
+  await Promise.all([loadSmsPreferences(supabase), loadJourneys(supabase)])
+}
+
+async function loadSmsPreferences(supabase) {
+  elements.smsPreferences.innerHTML = '<article class="card"><p>Loading SMS preferencesâ€¦</p></article>'
+  const { data, error } = await supabase.rpc('list_trusted_contact_sms_preferences')
+  if (error) {
+    elements.smsPreferences.replaceChildren()
+    return setMessage(`SMS preferences unavailable: ${error.message}`, true)
+  }
+  elements.smsPreferences.replaceChildren()
+  const heading = document.createElement('article')
+  heading.className = 'card compact-card'
+  heading.innerHTML = `
+    <p class="eyebrow">Supplementary alerts</p>
+    <h2>SMS preferences</h2>
+    <p>SMS may be delayed by carrier or network conditions. A message is an awareness alert, not proof of delivery or safety.</p>`
+  elements.smsPreferences.append(heading)
+  if (!data.length) {
+    heading.insertAdjacentHTML('beforeend', '<p>No accepted trusted relationships are available for SMS configuration.</p>')
+    return
+  }
+  for (const preference of data) {
+    elements.smsPreferences.append(smsPreferenceCard(preference, supabase))
+  }
+}
+
+function smsPreferenceCard(preference, supabase) {
+  const article = document.createElement('article')
+  article.className = 'card compact-card'
+  article.innerHTML = `
+    <h3>${escapeText(preference.relationship_display_name)}</h3>
+    <p>Configured number: <strong>${escapeText(preference.masked_phone || 'None')}</strong></p>`
+  const form = document.createElement('form')
+  form.innerHTML = `
+    <label>Phone number in E.164 format
+      <input name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="+2348012345678" />
+    </label>
+    <label class="checkbox-label">
+      <input name="enabled" type="checkbox" ${preference.sms_enabled ? 'checked' : ''} />
+      Enable SMS verification alerts
+    </label>
+    <p class="field-help">Leave the number blank to keep the configured number. Only you can provide this consent.</p>
+    <button type="submit">Save SMS preference</button>`
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault()
+    const values = new FormData(form)
+    const enabled = values.get('enabled') === 'on'
+    let phone = null
+    try {
+      const phoneValue = String(values.get('phone') ?? '')
+      phone = phoneValue.trim() ? normalizeE164(phoneValue) : null
+    } catch (error) {
+      return setMessage(error.message, true)
+    }
+    setBusy(form, true)
+    const { error } = await supabase.rpc('set_trusted_contact_sms_preference', {
+      p_relationship_id: preference.relationship_id,
+      p_phone_e164: phone,
+      p_sms_enabled: enabled,
+    })
+    setBusy(form, false)
+    if (error) return setMessage(`SMS preference was not saved: ${error.message}`, true)
+    setMessage(enabled
+      ? 'SMS verification alerts enabled. Provider acceptance will not prove handset delivery or reading.'
+      : 'SMS alerts disabled for future notifications.')
+    await loadSmsPreferences(supabase)
+  })
+  article.append(form)
+  return article
 }
 
 async function loadJourneys(supabase) {
@@ -190,12 +265,12 @@ function caseCard(verificationCase, supabase) {
     event.preventDefault()
     const values = new FormData(form)
     setBusy(form, true)
-    const contactTime = values.get('contactTime')
+    const contactTime = String(values.get('contactTime') ?? '')
     const { error } = await supabase.rpc('submit_verification_case_report', {
       p_case_id: verificationCase.id,
-      p_report_type: values.get('reportType'),
+      p_report_type: String(values.get('reportType') ?? ''),
       p_contact_time: contactTime ? new Date(contactTime).toISOString() : null,
-      p_note: values.get('note'),
+      p_note: String(values.get('note') ?? ''),
     })
     setBusy(form, false)
     if (error) return setMessage(error.message, true)

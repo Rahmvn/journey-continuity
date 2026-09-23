@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import com.journeycontinuity.app.sync.SyncScheduler
 import com.journeycontinuity.app.sync.SyncRequestUrgency
+import com.journeycontinuity.app.degraded.DegradedConnectivityCoordinator
 
 class RoomJourneyRepository(
     private val journeyDao: JourneyDao,
@@ -25,6 +26,7 @@ class RoomJourneyRepository(
     private val syncStateDao: SyncStateDao,
     private val heartbeatDao: HeartbeatDao,
     private val syncScheduler: SyncScheduler,
+    private val degradedConnectivityCoordinator: DegradedConnectivityCoordinator,
 ) : JourneyRepository {
     override val activeJourney: Flow<Journey?> =
         journeyDao.observeActive().map { it?.toDomain() }
@@ -40,6 +42,7 @@ class RoomJourneyRepository(
 
     override suspend fun completeActive(completedAt: Long): Journey? =
         journeyDao.completeActive(completedAt)?.toDomain()?.also {
+            runCatching { degradedConnectivityCoordinator.journeyCompleted(it.id, completedAt) }
             scheduleSyncWithoutAffectingLocalWrite(SyncRequestUrgency.URGENT)
         }
 
@@ -53,6 +56,7 @@ class RoomJourneyRepository(
 
     override suspend fun recordTelemetry(sample: TelemetrySample): TelemetryObservation? =
         telemetryDao.insertForActiveJourney(sample)?.toDomain()?.also {
+            runCatching { degradedConnectivityCoordinator.telemetryObserved(it) }
             scheduleSyncWithoutAffectingLocalWrite(SyncRequestUrgency.ROUTINE)
         }
 

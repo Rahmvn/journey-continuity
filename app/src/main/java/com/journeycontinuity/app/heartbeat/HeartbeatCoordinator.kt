@@ -8,6 +8,7 @@ import com.journeycontinuity.app.domain.DeviceHeartbeat
 import com.journeycontinuity.app.sync.CloudSyncException
 import com.journeycontinuity.app.sync.NoOpSyncDiagnosticLogger
 import com.journeycontinuity.app.sync.SyncDiagnosticLogger
+import kotlinx.coroutines.CancellationException
 
 object HeartbeatConfiguration {
     const val INTERVAL_MILLIS = 60_000L
@@ -64,6 +65,7 @@ class RoomHeartbeatLocalStore(private val dao: HeartbeatDao) : HeartbeatLocalSto
 sealed interface HeartbeatAttemptResult {
     data object Sent : HeartbeatAttemptResult
     data object Skipped : HeartbeatAttemptResult
+    data object RetryableFailure : HeartbeatAttemptResult
     data object Failed : HeartbeatAttemptResult
 }
 
@@ -72,6 +74,7 @@ class HeartbeatCoordinator(
     private val remote: HeartbeatGateway,
     private val clock: () -> Long = System::currentTimeMillis,
     private val logger: SyncDiagnosticLogger = NoOpSyncDiagnosticLogger,
+    private val provisioningObserver: suspend (journeyId: String) -> Unit = {},
 ) {
     suspend fun sendFreshHeartbeat(
         journeyId: String,
@@ -123,12 +126,22 @@ class HeartbeatCoordinator(
             logger.info("Starting fresh heartbeat sequence ${heartbeat.sequence}")
             val serverState = remote.recordFreshHeartbeat(heartbeat)
             local.recordSuccess(journeyId, clock(), serverState)
+            try {
+                provisioningObserver(journeyId)
+            } catch (error: Throwable) {
+                if (error is CancellationException) throw error
+                logger.warning("Fallback provisioning attempt after heartbeat could not complete.")
+            }
             logger.info("Fresh heartbeat sequence ${heartbeat.sequence} succeeded")
             HeartbeatAttemptResult.Sent
         } catch (error: CloudSyncException) {
             local.recordFailure(journeyId, error.safeMessage)
             logger.warning("Fresh heartbeat sequence ${heartbeat.sequence} failed; it will not be replayed")
-            HeartbeatAttemptResult.Failed
+            if (error.kind == com.journeycontinuity.app.sync.SyncFailureKind.TRANSIENT) {
+                HeartbeatAttemptResult.RetryableFailure
+            } else {
+                HeartbeatAttemptResult.Failed
+            }
         } catch (_: Throwable) {
             local.recordFailure(journeyId, "Fresh heartbeat failed because of an unexpected client error.")
             logger.warning("Fresh heartbeat sequence ${heartbeat.sequence} failed; it will not be replayed")

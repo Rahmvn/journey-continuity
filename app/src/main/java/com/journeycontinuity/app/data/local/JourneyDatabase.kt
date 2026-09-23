@@ -10,8 +10,11 @@ import androidx.room.TypeConverters
         TelemetryObservationEntity::class,
         JourneySyncStateEntity::class,
         JourneyHeartbeatStateEntity::class,
+        JourneyDegradationStateEntity::class,
+        JourneyFallbackBindingEntity::class,
+        FallbackAttemptEntity::class,
     ],
-    version = 4,
+    version = 7,
     exportSchema = true,
 )
 @TypeConverters(
@@ -19,10 +22,13 @@ import androidx.room.TypeConverters
     ConnectivityStateConverter::class,
     SyncPhaseConverter::class,
     CloudMonitoringPhaseConverter::class,
+    DegradedConnectivityConverters::class,
 )
 abstract class JourneyDatabase : RoomDatabase() {
     abstract fun journeyDao(): JourneyDao
     abstract fun telemetryDao(): TelemetryDao
     abstract fun syncStateDao(): SyncStateDao
     abstract fun heartbeatDao(): HeartbeatDao
+    abstract fun degradedConnectivityDao(): DegradedConnectivityDao
+    abstract fun fallbackAttemptDao(): FallbackAttemptDao
 }

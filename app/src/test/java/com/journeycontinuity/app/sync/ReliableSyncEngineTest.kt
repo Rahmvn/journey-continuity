@@ -28,6 +28,30 @@ class ReliableSyncEngineTest {
     }
 
     @Test
+    fun onlyRetryableFailuresAreReportedToDegradationPolicy() = runBlocking {
+        val observed = mutableListOf<String>()
+        val transientAuthLocal = FakeLocalSyncStore(journey("transient-auth"))
+        val transientAuthRemote = FakeCloudGateway(
+            authFailure = CloudSyncException(SyncFailureKind.TRANSIENT, "Temporarily unavailable"),
+        )
+        val permanentLocal = FakeLocalSyncStore(journey("permanent"))
+        val permanentRemote = FakeCloudGateway(
+            authFailure = CloudSyncException(SyncFailureKind.AUTHENTICATION, "Sign-in required"),
+        )
+        val retryableCloudLocal = FakeLocalSyncStore(
+            journey("retryable-cloud"),
+            telemetry("retryable-cloud", 1..1),
+        )
+        val retryableCloudRemote = FakeCloudGateway(alwaysOffline = true)
+
+        engine(transientAuthLocal, transientAuthRemote) { observed += it }.synchronize()
+        engine(permanentLocal, permanentRemote) { observed += it }.synchronize()
+        engine(retryableCloudLocal, retryableCloudRemote) { observed += it }.synchronize()
+
+        assertEquals(listOf("retryable-cloud"), observed)
+    }
+
+    @Test
     fun offlineFailurePreservesLocalEvidenceAndDoesNotAdvanceCheckpoint() = runBlocking {
         val local = FakeLocalSyncStore(journey("one"), telemetry("one", 1..3))
         val remote = FakeCloudGateway(failNextTelemetryAfterAccept = false, alwaysOffline = true)
@@ -127,8 +151,48 @@ class ReliableSyncEngineTest {
         assertTrue(local.noWorkRequested("one"))
     }
 
-    private fun engine(local: FakeLocalSyncStore, remote: FakeCloudGateway) =
-        ReliableSyncEngine(local, remote, SyncClock { 10_000L })
+    @Test
+    fun provisioningRunsOnlyAfterActiveJourneyExistsInCloud() = runBlocking {
+        val local = FakeLocalSyncStore(journey("one"))
+        val remote = FakeCloudGateway()
+        var observedCloudJourney = false
+        val engine = ReliableSyncEngine(
+            local = local,
+            remote = remote,
+            provisioningObserver = { journeyId ->
+                observedCloudJourney = remote.cloudJourneys.containsKey(journeyId)
+            },
+        )
+
+        assertEquals(SyncRunResult.Success, engine.synchronize())
+        assertTrue(observedCloudJourney)
+    }
+
+    @Test
+    fun provisioningFailureDoesNotCorruptSuccessfulTelemetrySync() = runBlocking {
+        val local = FakeLocalSyncStore(journey("one"), telemetry("one", 1..2))
+        val remote = FakeCloudGateway()
+        val engine = ReliableSyncEngine(
+            local = local,
+            remote = remote,
+            provisioningObserver = { error("provisioning unavailable") },
+        )
+
+        assertEquals(SyncRunResult.Success, engine.synchronize())
+        assertEquals(2L, local.checkpoint("one"))
+        assertTrue(local.noWorkRequested("one"))
+    }
+
+    private fun engine(
+        local: FakeLocalSyncStore,
+        remote: FakeCloudGateway,
+        observer: suspend (String) -> Unit = {},
+    ) = ReliableSyncEngine(
+        local = local,
+        remote = remote,
+        clock = SyncClock { 10_000L },
+        attemptObserver = observer,
+    )
 
     private fun journey(id: String) = Journey(
         id = id,

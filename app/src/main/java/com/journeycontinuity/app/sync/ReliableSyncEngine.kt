@@ -1,6 +1,7 @@
 package com.journeycontinuity.app.sync
 
 import kotlinx.coroutines.CancellationException
+import com.journeycontinuity.app.domain.JourneyStatus
 
 object SyncConfiguration {
     const val TELEMETRY_BATCH_SIZE = 50
@@ -11,6 +12,8 @@ class ReliableSyncEngine(
     private val remote: CloudSyncGateway,
     private val clock: SyncClock = SyncClock(System::currentTimeMillis),
     private val logger: SyncDiagnosticLogger = NoOpSyncDiagnosticLogger,
+    private val attemptObserver: suspend (journeyId: String) -> Unit = {},
+    private val provisioningObserver: suspend (journeyId: String) -> Unit = {},
 ) {
     suspend fun synchronize(): SyncRunResult {
         var ownerId: String? = null
@@ -29,6 +32,13 @@ class ReliableSyncEngine(
             } catch (error: CloudSyncException) {
                 val permanent = error.kind != SyncFailureKind.TRANSIENT
                 local.markFailure(candidate.journeyId, error.safeMessage, permanent)
+                // A retryable attempt is degradation evidence only after traveller
+                // authentication succeeded. Auth/configuration/programming failures
+                // must not be reclassified as loss of mobile internet.
+                if (!permanent && ownerId != null) {
+                    runCatching { attemptObserver(candidate.journeyId) }
+                        .onFailure { logger.warning("Retryable sync observation could not be recorded") }
+                }
                 logger.warning(
                     "Synchronization candidate failed; retryable=${!permanent}; " +
                         error.diagnosticSummary,
@@ -57,6 +67,14 @@ class ReliableSyncEngine(
                 "Local synchronization state references a missing Journey.",
             )
         remote.upsertJourney(initialJourney, ownerId)
+        if (initialJourney.status == JourneyStatus.ACTIVE) {
+            try {
+                provisioningObserver(initialJourney.id)
+            } catch (error: Throwable) {
+                if (error is CancellationException) throw error
+                logger.warning("Fallback provisioning attempt could not complete; cloud sync will continue.")
+            }
+        }
 
         var checkpoint = local.checkpoint(candidate.journeyId)
         while (true) {

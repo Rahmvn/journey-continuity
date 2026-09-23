@@ -6,11 +6,16 @@ import com.journeycontinuity.app.data.local.JourneyDatabase
 import com.journeycontinuity.app.data.local.MIGRATION_1_2
 import com.journeycontinuity.app.data.local.MIGRATION_2_3
 import com.journeycontinuity.app.data.local.MIGRATION_3_4
+import com.journeycontinuity.app.data.local.MIGRATION_4_5
+import com.journeycontinuity.app.data.local.MIGRATION_5_6
+import com.journeycontinuity.app.data.local.MIGRATION_6_7
+import com.journeycontinuity.app.data.local.FALLBACK_ATTEMPT_INVARIANT_CALLBACK
 import com.journeycontinuity.app.data.repository.JourneyRepository
 import com.journeycontinuity.app.data.repository.RoomJourneyRepository
 import com.journeycontinuity.app.domain.JourneyLifecycle
 import com.journeycontinuity.app.domain.DeviceHeartbeat
 import com.journeycontinuity.app.auth.SharedPreferencesTravellerIdentityStore
+import com.journeycontinuity.app.auth.SharedPreferencesInstallationIdentityStore
 import com.journeycontinuity.app.auth.SupabaseTravellerAuthBackend
 import com.journeycontinuity.app.auth.TravellerIdentityCoordinator
 import com.journeycontinuity.app.heartbeat.HeartbeatCoordinator
@@ -18,6 +23,25 @@ import com.journeycontinuity.app.heartbeat.HeartbeatGateway
 import com.journeycontinuity.app.heartbeat.HeartbeatServerState
 import com.journeycontinuity.app.heartbeat.RoomHeartbeatLocalStore
 import com.journeycontinuity.app.heartbeat.SupabaseHeartbeatGateway
+import com.journeycontinuity.app.degraded.DegradedConnectivityCoordinator
+import com.journeycontinuity.app.degraded.DegradedConnectivityLabConfiguration
+import com.journeycontinuity.app.degraded.DegradedConnectivityPolicy
+import com.journeycontinuity.app.degraded.AndroidKeystoreFallbackKeyMaterialStore
+import com.journeycontinuity.app.degraded.DurableFallbackAttemptAllocator
+import com.journeycontinuity.app.degraded.FallbackCapabilityReader
+import com.journeycontinuity.app.degraded.FallbackProvisioningCoordinator
+import com.journeycontinuity.app.degraded.AuthenticatedFallbackProvisioningGateway
+import com.journeycontinuity.app.degraded.SupabaseFallbackProvisioningGateway
+import com.journeycontinuity.app.degraded.RoomFallbackProvisioningLocalStore
+import com.journeycontinuity.app.degraded.hasUsableFallbackBinding
+import com.journeycontinuity.app.degraded.RoomDegradedConnectivityStateStore
+import com.journeycontinuity.app.degraded.AndroidSmsFallbackConfiguration
+import com.journeycontinuity.app.degraded.AndroidSmsTelephonyGateway
+import com.journeycontinuity.app.degraded.FallbackHandoffCoordinator
+import com.journeycontinuity.app.degraded.UnconfiguredSmsFallbackRouteProvider
+import com.journeycontinuity.app.degraded.WorkManagerFallbackHandoffScheduler
+import com.journeycontinuity.app.degraded.RoomFallbackHandoffAttemptStore
+import com.journeycontinuity.app.data.local.toDomain
 import com.journeycontinuity.app.service.JourneyServiceController
 import com.journeycontinuity.app.sync.CloudSyncException
 import com.journeycontinuity.app.sync.CloudSyncGateway
@@ -42,7 +66,72 @@ class JourneyContinuityApplication : Application() {
             applicationContext,
             JourneyDatabase::class.java,
             "journey-continuity.db",
-        ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).build()
+        ).addMigrations(
+            MIGRATION_1_2,
+            MIGRATION_2_3,
+            MIGRATION_3_4,
+            MIGRATION_4_5,
+            MIGRATION_5_6,
+            MIGRATION_6_7,
+        ).addCallback(FALLBACK_ATTEMPT_INVARIANT_CALLBACK).build()
+    }
+
+    private val degradedConnectivityPolicy by lazy {
+        DegradedConnectivityPolicy(DegradedConnectivityLabConfiguration.policyConfig())
+    }
+
+    private val fallbackKeyMaterialStore by lazy {
+        AndroidKeystoreFallbackKeyMaterialStore(applicationContext)
+    }
+
+    private val fallbackAttemptAllocator by lazy {
+        DurableFallbackAttemptAllocator(
+            journeyDao = database.journeyDao(),
+            telemetryDao = database.telemetryDao(),
+            degradationDao = database.degradedConnectivityDao(),
+            fallbackAttemptDao = database.fallbackAttemptDao(),
+            keyMaterialStore = fallbackKeyMaterialStore,
+        )
+    }
+
+    val smsFallbackConfiguration by lazy {
+        AndroidSmsFallbackConfiguration(applicationContext, UnconfiguredSmsFallbackRouteProvider)
+    }
+
+    val fallbackHandoffCoordinator by lazy {
+        FallbackHandoffCoordinator(
+            attempts = RoomFallbackHandoffAttemptStore(database.fallbackAttemptDao()),
+            configuration = smsFallbackConfiguration,
+            telephony = AndroidSmsTelephonyGateway(applicationContext),
+            scheduler = WorkManagerFallbackHandoffScheduler(applicationContext),
+        )
+    }
+
+    private val installationIdentityStore by lazy {
+        SharedPreferencesInstallationIdentityStore(applicationContext)
+    }
+
+    val degradedConnectivityCoordinator: DegradedConnectivityCoordinator by lazy {
+        DegradedConnectivityCoordinator(
+            store = RoomDegradedConnectivityStateStore(
+                database = database,
+                dao = database.degradedConnectivityDao(),
+                fallbackAttemptDao = database.fallbackAttemptDao(),
+                allocator = fallbackAttemptAllocator,
+                policy = degradedConnectivityPolicy,
+            ),
+            latestTelemetryReader = { journeyId ->
+                database.telemetryDao().getLatest(journeyId)?.toDomain()
+            },
+            fallbackCapabilityReader = FallbackCapabilityReader { journeyId ->
+                hasUsableFallbackBinding(
+                    database.fallbackAttemptDao().getBinding(journeyId),
+                    fallbackKeyMaterialStore,
+                )
+            },
+            policy = degradedConnectivityPolicy,
+            logger = AndroidSyncDiagnosticLogger,
+        )
     }
 
     val syncScheduler by lazy { WorkManagerSyncScheduler(applicationContext) }
@@ -54,6 +143,7 @@ class JourneyContinuityApplication : Application() {
             syncStateDao = database.syncStateDao(),
             heartbeatDao = database.heartbeatDao(),
             syncScheduler = syncScheduler,
+            degradedConnectivityCoordinator = degradedConnectivityCoordinator,
         )
     }
 
@@ -63,6 +153,19 @@ class JourneyContinuityApplication : Application() {
 
     val journeyServiceController: JourneyServiceController by lazy {
         JourneyServiceController(applicationContext)
+    }
+
+    private val fallbackProvisioningCoordinator: FallbackProvisioningCoordinator by lazy {
+        FallbackProvisioningCoordinator(
+            localStore = RoomFallbackProvisioningLocalStore(database, database.fallbackAttemptDao()),
+            installationIdentityStore = installationIdentityStore,
+            keyMaterialStore = fallbackKeyMaterialStore,
+            gateway = cloudGateways.fallbackProvisioning,
+            capabilityChanged = { journeyId ->
+                degradedConnectivityCoordinator.refreshFallbackCapability(journeyId)
+            },
+            logger = AndroidSyncDiagnosticLogger,
+        )
     }
 
     private val cloudGateways: CloudGateways by lazy {
@@ -102,6 +205,12 @@ class JourneyContinuityApplication : Application() {
                         trustedViewerBaseUrl = com.journeycontinuity.app.BuildConfig.TRUSTED_VIEWER_BASE_URL,
                         logger = logger,
                     ),
+                    fallbackProvisioning = SupabaseFallbackProvisioningGateway(
+                        client = client,
+                        identityCoordinator = identityCoordinator,
+                        supabaseUrl = configuration.url,
+                        publishableKey = configuration.publishableKey,
+                    ),
                 )
             } catch (error: Throwable) {
                 val exceptionName = error::class.simpleName ?: "Exception"
@@ -124,6 +233,12 @@ class JourneyContinuityApplication : Application() {
             ),
             remote = cloudGateways.sync,
             logger = AndroidSyncDiagnosticLogger,
+            attemptObserver = { journeyId ->
+                degradedConnectivityCoordinator.retryableCloudFailure(journeyId)
+            },
+            provisioningObserver = { journeyId ->
+                fallbackProvisioningCoordinator.provisionIfEligible(journeyId)
+            },
         )
     }
 
@@ -132,6 +247,9 @@ class JourneyContinuityApplication : Application() {
             local = RoomHeartbeatLocalStore(database.heartbeatDao()),
             remote = cloudGateways.heartbeat,
             logger = AndroidSyncDiagnosticLogger,
+            provisioningObserver = { journeyId ->
+                fallbackProvisioningCoordinator.provisionIfEligible(journeyId)
+            },
         )
     }
 
@@ -174,6 +292,9 @@ class JourneyContinuityApplication : Application() {
             sync = this,
             heartbeat = this,
             trustedContacts = UnavailableTrustedContactGateway(safeError),
+            fallbackProvisioning = AuthenticatedFallbackProvisioningGateway { _, _ ->
+                throw CloudSyncException(SyncFailureKind.PERMANENT, safeError)
+            },
         )
     }
 
@@ -181,5 +302,6 @@ class JourneyContinuityApplication : Application() {
         val sync: CloudSyncGateway,
         val heartbeat: HeartbeatGateway,
         val trustedContacts: TrustedContactGateway,
+        val fallbackProvisioning: AuthenticatedFallbackProvisioningGateway,
     )
 }
