@@ -157,7 +157,7 @@ The Android SMS handoff foundation exists, but its production inbound destinatio
 
 ### 7.7 Provider-Neutral Inbound JC1 Core
 
-The repository contains a provider-neutral server core, not a public webhook. A future verified provider adapter supplies a bounded provider identifier, provider event ID, exact raw SMS body, optional provider arrival time, and server receive time. Sender phone number is neither an authentication factor nor a binding lookup key. Provider request authentication remains the adapter's responsibility before the core is invoked.
+The repository contains a provider-neutral server core plus a thin, repository-only Africa's Talking sandbox webhook adapter. An adapter supplies a bounded provider identifier, provider event ID, exact raw SMS body, optional provider arrival time, and server receive time. Sender phone number is neither an authentication factor nor a binding lookup key. Provider request authentication remains the adapter's responsibility before the core is invoked.
 
 The core requires canonical JC1 V1 framing and rejects malformed or oversized input before private-key lookup. It resolves only by unsigned `key_id` and the opaque 12-byte Journey handle, decrypts the installation master key through the existing versioned KEK ring, derives the Journey key with the Android-compatible HKDF-SHA-256 contract, and authenticates AES-256-GCM with the clear header as AAD. Active keys are accepted; retired keys remain usable only through an existing valid binding; revoked keys or bindings are rejected. Secret keys, full payloads, and plaintext coordinates are not logged.
 
@@ -167,7 +167,7 @@ SMS-first observations are materialized canonically; internet-first matches atta
 
 Observation event time, provider arrival time, and server receive time remain distinct. A timely authenticated fallback can update `last_authenticated_device_evidence_at` and participate in deterministic watchdog freshness, including resolving an evidence-silence verification. It never updates `last_cloud_contact_at`, claims HTTP recovery, establishes current location, or asserts safety. Historical delayed fallback stays valid provenance but is ineligible to manufacture current freshness.
 
-The additive migration and core are repository-only at this checkpoint. No provider adapter, public ingestion endpoint, hosted migration, or AWS change is part of this implementation. The normalized adapter contract is documented in `MILESTONE_6_INBOUND_JC1_CORE.md`.
+The additive migration, core, and Africa's Talking sandbox adapter are repository-only at this checkpoint. The public adapter accepts only the provider's bounded form callback for the externally configured sandbox shortcode, uses its real message `id`, passes exact `JC1.` text to the core, and discards sender identity. Because the reviewed provider material documents no signed incoming-SMS webhook, it requires a high-entropy URL secret and is explicitly limited to sandbox acceptance. No endpoint, migration, secret, callback route, or AWS change has been deployed. The normalized contract is documented in `MILESTONE_6_INBOUND_JC1_CORE.md`, with the sandbox boundary in `MILESTONE_6_AFRICASTALKING_SANDBOX.md`.
 
 ## 8. Journey Domain
 

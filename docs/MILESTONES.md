@@ -303,7 +303,7 @@ Remote deployment acceptance:
 
 ## Milestone 6 — Degraded Connectivity + SMS Fallback
 
-**Status:** IN PROGRESS — PROVISIONING, DURABLE OFFLINE ALLOCATION, CARRIER HANDOFF, AND RECOVERY ACCEPTED; INBOUND CORE IMPLEMENTED LOCALLY; PROVIDER INTEGRATION OUTSTANDING
+**Status:** IN PROGRESS — PROVISIONING, DURABLE OFFLINE ALLOCATION, CARRIER HANDOFF, AND RECOVERY ACCEPTED; INBOUND CORE AND SANDBOX ADAPTER IMPLEMENTED LOCALLY; PROVIDER DEPLOYMENT AND ACCEPTANCE OUTSTANDING
 
 ### Goal
 
@@ -356,6 +356,17 @@ Implemented in the repository, but not deployed or accepted against a real provi
 
 Migration `20260924000100_milestone_6_inbound_jc1_core.sql` is additive and currently **unapplied to the hosted project**. No AWS or SMS-provider adapter was implemented in this checkpoint.
 
+### Africa's Talking sandbox adapter — repository only, 2026-09-24
+
+- dedicated `africastalking-inbound` Edge Function accepting only bounded form-encoded POST callbacks;
+- external sandbox shortcode check for `35549` and external high-entropy callback URL secret;
+- real Africa's Talking `id` used as the stable provider event ID, with no invented fallback identity;
+- exact `JC1.` text passed unchanged to the core, with no sender-number authentication or persistence;
+- backend core and key-material RPCs remaining service-role-only;
+- adapter coverage for malformed, missing, wrong-shortcode, non-JC1, oversized, duplicate, idempotent, sender-independent, and no-sensitive-logging behavior.
+
+The function, callback URL, secrets, and inbound-core migration are **not deployed or configured**. The reviewed provider material does not document a signed incoming-SMS callback, so the shared URL secret is sandbox-only and must not be represented as production-grade provider authentication.
+
 ### Additive trusted-contact notification slice
 
 Implemented and covered by repository tests without replacing the phone-to-cloud fallback scope:
@@ -374,7 +385,8 @@ Hosted migration `20260918000200_milestone_6_supersede_stale_sms.sql` is applied
 ### Outstanding
 
 - configure an authorized inbound SMS route;
-- implement and authenticate a real provider adapter;
+- deploy and configure the reviewed Africa's Talking sandbox adapter, then observe and accept its actual callback behavior;
+- design a production-grade provider-authentication boundary before any live-provider claim;
 - review and apply the inbound-core migration to the hosted project, then deploy trusted server execution for the core;
 - validate real provider receipt, authentication, decryption, replay handling, delayed/out-of-order reconciliation, and watchdog evidence end to end;
 - complete the physical failure matrix, including SMS unavailable, dual-SIM ambiguity, low battery, retry, and ambiguous carrier outcomes;

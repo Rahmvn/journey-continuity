@@ -35,9 +35,11 @@ The production runtime SMS destination remains deliberately unconfigured through
 
 ## Provider-side inbound state
 
-No inbound provider route for phone-originated JC1 messages is deployed or configured. The repository now contains a provider-neutral authentication and reconciliation core plus additive migration `20260924000100_milestone_6_inbound_jc1_core.sql`; that migration is **not applied to the hosted project**. The core is not an HTTP endpoint and cannot be called by anonymous or authenticated clients. The deployed `provision-fallback` function must not be described as an ingestion endpoint.
+No inbound provider route for phone-originated JC1 messages is deployed or configured. The repository now contains a provider-neutral authentication and reconciliation core, a thin Africa's Talking sandbox Edge Function adapter, and additive migration `20260924000100_milestone_6_inbound_jc1_core.sql`; that migration is **not applied to the hosted project**. The backend core RPCs remain service-role-only and cannot be called by anonymous or authenticated clients. The deployed `provision-fallback` function must not be described as an ingestion endpoint.
 
-The local core strictly parses and authenticates JC1 V1, resolves private key/binding lifecycle, records immutable receipt provenance, reconciles SMS and internet observations, and maintains transport-neutral authenticated-device evidence without changing cloud-contact time. It contains no AWS or Africa's Talking adapter and performs no provider-webhook authentication.
+The local core strictly parses and authenticates JC1 V1, resolves private key/binding lifecycle, records immutable receipt provenance, reconciles SMS and internet observations, and maintains transport-neutral authenticated-device evidence without changing cloud-contact time. The public sandbox adapter is repository-only, accepts the documented Africa's Talking form callback, requires the configured shortcode and a sandbox-only shared URL secret, discards sender identity, and normalizes the real provider message ID and exact `JC1.` text. No Africa's Talking callback, function deployment, AWS change, or hosted ingestion has been performed.
+
+The reviewed provider material does not document a cryptographic signature for incoming SMS callbacks. The shared callback URL secret is therefore a limited sandbox control, not production-grade provider authentication. Required external configuration and the unexecuted deployment procedure are recorded in `MILESTONE_6_AFRICASTALKING_SANDBOX.md`.
 
 Any future inbound deployment requires a separate review of provider authentication, secret handling, replay resistance, binding lookup, key lifecycle, error redaction, idempotency, and evidence provenance.
 
@@ -51,10 +53,10 @@ Repository tests cover the outbox and dispatcher behavior. Physical trusted-cont
 
 When separately authorized:
 
-1. Select and implement a provider adapter that authenticates the provider request before supplying the normalized internal transport model.
+1. Review and authorize the Africa's Talking sandbox adapter and its weaker shared-secret boundary.
 2. Reverify hosted project identity and migration history, then separately authorize and apply `20260924000100`.
-3. Deploy trusted server execution for the reviewed core and configure the approved inbound SMS route without repository secrets.
-4. Validate provider receipt, replay, delayed/out-of-order, reconciliation, evidence-freshness, and failure behavior end to end.
+3. Configure external sandbox secrets, deploy the reviewed adapter, and configure the sandbox Incoming Messages callback URL without repository secrets.
+4. Validate the actual sandbox callback shape and unchanged text, then provider receipt, replay, delayed/out-of-order, reconciliation, evidence-freshness, and failure behavior end to end.
 5. Complete the remaining physical and hosted failure matrix.
 
 Do not mark Milestone 6 accepted until the remaining physical failure matrix and cloud-ingestion sections in `MILESTONE_6_ACCEPTANCE.md` pass.

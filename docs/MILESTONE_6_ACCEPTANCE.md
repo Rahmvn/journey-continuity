@@ -1,6 +1,6 @@
 # Milestone 6 Acceptance Record
 
-Milestone 6 remains **IN PROGRESS**. Provisioning, protected offline allocation, persistence, physical Android SMS carrier handoff, and authenticated internet recovery were accepted on 2026-09-23. A provider-neutral inbound authentication and reconciliation core was implemented and validated locally on 2026-09-24, but no real provider adapter or hosted inbound route exists. Provider acceptance and the remaining physical failure matrix remain outstanding.
+Milestone 6 remains **IN PROGRESS**. Provisioning, protected offline allocation, persistence, physical Android SMS carrier handoff, and authenticated internet recovery were accepted on 2026-09-23. A provider-neutral inbound authentication and reconciliation core and a thin Africa's Talking sandbox adapter were implemented and validated locally on 2026-09-24, but no hosted inbound route exists and no provider callback has reached the core. Sandbox provider acceptance and the remaining physical failure matrix remain outstanding.
 
 ## Completed acceptance — 2026-09-23
 
@@ -112,11 +112,17 @@ Automated repository validation now establishes:
 
 This is local automated evidence only. Migration `20260924000100_milestone_6_inbound_jc1_core.sql` is not hosted, and no provider request has reached this core.
 
+### Africa's Talking sandbox adapter repository evidence — 2026-09-24
+
+The repository now contains a dedicated public Edge Function boundary for a future sandbox callback. Automated tests establish POST-only form parsing, body bounds, required-field and shortcode checks, exact SMS-text forwarding, stable use of Africa's Talking `id`, provider-event idempotency handoff, sender-number non-dependence, generic responses, and no application logging. A callback-specific shared URL secret is required because the reviewed provider documentation does not identify a signed incoming-SMS webhook mechanism.
+
+This is not provider acceptance. The function is not deployed, shortcode `35549` is not configured in Supabase runtime state, the dashboard callback URL is not set, the sandbox's exact callback has not been observed, and migration `20260924000100_milestone_6_inbound_jc1_core.sql` remains **not hosted**.
+
 ### Still required
 
-No provider-side inbound JC1 route is deployed or configured. Real-provider acceptance must verify:
+No provider-side inbound JC1 route is deployed or configured. Sandbox provider acceptance must verify:
 
-1. Provider authenticity and strict request validation before payload processing.
+1. The actual callback form shape and exact unchanged `text`, plus strict request validation and the documented limitations of the sandbox shared-secret boundary.
 2. Journey binding lookup without exposing installation key material.
 3. JC1 authentication and AES-GCM decryption with the provisioned key version.
 4. Rejection of malformed, unknown, revoked, or authentication-failed envelopes.

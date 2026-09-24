@@ -1,6 +1,6 @@
 # Milestone 6 Provider-Neutral Inbound JC1 Core
 
-Milestone 6 remains **IN PROGRESS**. This document defines the boundary between a future authenticated SMS-provider adapter and the provider-neutral JC1 core. It does not authorize deployment and does not describe any provider adapter as implemented.
+Milestone 6 remains **IN PROGRESS**. This document defines the boundary between an SMS-provider adapter and the provider-neutral JC1 core. A thin Africa's Talking sandbox adapter now exists locally, as documented in `MILESTONE_6_AFRICASTALKING_SANDBOX.md`; it is not deployed or configured and is not production provider acceptance.
 
 ## Adapter responsibility
 
@@ -61,13 +61,13 @@ verified SNS or Lambda transport
 -> provider-neutral core
 ```
 
-An Africa's Talking adapter would follow:
+The repository-only Africa's Talking sandbox adapter follows:
 
 ```text
-verified provider webhook
--> provider-specific authentication and replay checks
+bounded form callback plus sandbox-only shared URL secret
+-> provider-specific validation and provider-event identity
 -> normalized inbound model
 -> provider-neutral core
 ```
 
-Neither adapter exists in this checkpoint. Before deployment, the selected adapter requires a separate threat review, hosted migration authorization, secret provisioning, provider acknowledgement policy, operational monitoring, and real delayed/duplicate/failure acceptance.
+No AWS adapter exists. The sandbox adapter is deliberately not described as cryptographically verified because Africa's Talking does not document a signed incoming-SMS webhook in the reviewed material. Before deployment, it still requires hosted migration authorization, secret provisioning, callback configuration, operational monitoring, and real sandbox delayed/duplicate/failure acceptance. A production provider adapter requires a stronger, separately reviewed authentication boundary.

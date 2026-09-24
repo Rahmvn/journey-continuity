@@ -387,6 +387,11 @@ enabled = true
 verify_jwt = true
 entrypoint = "./functions/provision-fallback/index.ts"
 
+[functions.africastalking-inbound]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/africastalking-inbound/index.ts"
+
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 
