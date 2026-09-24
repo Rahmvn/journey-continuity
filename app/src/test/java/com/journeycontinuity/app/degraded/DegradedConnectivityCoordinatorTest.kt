@@ -8,6 +8,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DegradedConnectivityCoordinatorTest {
@@ -88,9 +89,68 @@ class DegradedConnectivityCoordinatorTest {
         assertEquals(1, actions.filterIsInstance<DegradedConnectivityAction.StopOrdinaryFallback>().size)
     }
 
-    private fun coordinator() = DegradedConnectivityCoordinator(
+    @Test
+    fun processAndServiceRestartDoNotReplayFirstFallback() = runBlocking {
+        val coordinator = coordinator(fallbackAvailable = true)
+        coordinator.activate(JOURNEY_ID, validatedInternetAvailable = false)
+        coordinator.telemetryObserved(telemetry(sequence = 1))
+        now += DegradedConnectivityLabConfiguration.DEGRADATION_AFTER_MILLIS
+        coordinator.timeAdvanced(JOURNEY_ID)
+        val first = actions.single() as DegradedConnectivityAction.AllocateFallbackAttempt
+        store.state = DegradedConnectivityPolicy(DegradedConnectivityLabConfiguration.policyConfig())
+            .reduce(
+                requireNotNull(store.state),
+                DegradedConnectivityEvent.FallbackAttemptAllocated(
+                    first.envelopeSequence,
+                    first.telemetrySequence,
+                    now,
+                ),
+            ).state
+        actions.clear()
+
+        coordinator(fallbackAvailable = true).activate(JOURNEY_ID, validatedInternetAvailable = false)
+        coordinator(fallbackAvailable = true).timeAdvanced(JOURNEY_ID)
+
+        assertEquals(ConnectivityPhase.DEGRADED, store.state?.connectivityPhase)
+        assertEquals(FallbackDisposition.ALLOCATED, store.state?.fallbackDisposition)
+        assertTrue(actions.isEmpty())
+    }
+
+    @Test
+    fun recoveryActivationCompletesBeforeTicksWithoutAllocating() = runBlocking {
+        val coordinator = coordinator(fallbackAvailable = true)
+        coordinator.activate(JOURNEY_ID, validatedInternetAvailable = false)
+        coordinator.telemetryObserved(telemetry(sequence = 1))
+        now += DegradedConnectivityLabConfiguration.DEGRADATION_AFTER_MILLIS
+        coordinator.timeAdvanced(JOURNEY_ID)
+        val first = actions.single() as DegradedConnectivityAction.AllocateFallbackAttempt
+        store.state = DegradedConnectivityPolicy(DegradedConnectivityLabConfiguration.policyConfig())
+            .reduce(
+                requireNotNull(store.state),
+                DegradedConnectivityEvent.FallbackAttemptAllocated(
+                    first.envelopeSequence,
+                    first.telemetrySequence,
+                    now,
+                ),
+            ).state
+        actions.clear()
+
+        coordinator(fallbackAvailable = true).activate(JOURNEY_ID, validatedInternetAvailable = true)
+        repeat(3) {
+            now += DegradedConnectivityLabConfiguration.EVALUATION_INTERVAL_MILLIS
+            coordinator(fallbackAvailable = true).timeAdvanced(JOURNEY_ID)
+            coordinator(fallbackAvailable = true).telemetryObserved(telemetry(sequence = 2L + it))
+        }
+
+        assertEquals(ConnectivityPhase.RECOVERING, store.state?.connectivityPhase)
+        assertEquals(FallbackDisposition.INACTIVE, store.state?.fallbackDisposition)
+        assertTrue(actions.isEmpty())
+    }
+
+    private fun coordinator(fallbackAvailable: Boolean = false) = DegradedConnectivityCoordinator(
         store = store,
         latestTelemetryReader = { null },
+        fallbackCapabilityReader = FallbackCapabilityReader { fallbackAvailable },
         policy = DegradedConnectivityPolicy(DegradedConnectivityLabConfiguration.policyConfig()),
         actionObserver = { actions += it },
         clock = { now },

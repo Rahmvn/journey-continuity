@@ -102,6 +102,9 @@ sealed interface DegradedConnectivityEvent {
         override val atMillis: Long,
     ) : DegradedConnectivityEvent
 
+    /** Explicit policy input for a later, sparse fallback in the current episode. */
+    data class SparseFallbackTriggered(override val atMillis: Long) : DegradedConnectivityEvent
+
     data class TimeAdvanced(override val atMillis: Long) : DegradedConnectivityEvent
 
     data class JourneyCompleted(override val atMillis: Long) : DegradedConnectivityEvent
@@ -153,6 +156,7 @@ class DegradedConnectivityPolicy(
                 previous.copy(fallbackBindingProvisioned = event.available)
             is DegradedConnectivityEvent.FallbackAttemptAllocated ->
                 onFallbackAttempt(previous, event)
+            is DegradedConnectivityEvent.SparseFallbackTriggered -> previous
             is DegradedConnectivityEvent.TimeAdvanced -> previous
             is DegradedConnectivityEvent.JourneyCompleted ->
                 previous.copy(
@@ -162,7 +166,11 @@ class DegradedConnectivityPolicy(
                 )
         }
 
-        val evaluated = evaluate(normalizeRateWindow(updated, event.atMillis), event.atMillis)
+        val evaluated = evaluate(
+            state = normalizeRateWindow(updated, event.atMillis),
+            nowMillis = event.atMillis,
+            allowAdditionalFallback = event is DegradedConnectivityEvent.SparseFallbackTriggered,
+        )
         val actions = buildList {
             if (event is DegradedConnectivityEvent.AuthenticatedCloudSuccess &&
                 event.establishesFreshContact && previous.journeyActive
@@ -347,20 +355,13 @@ class DegradedConnectivityPolicy(
     private fun evaluate(
         state: DegradedConnectivityState,
         nowMillis: Long,
+        allowAdditionalFallback: Boolean,
     ): DegradedConnectivityState {
         if (!state.journeyActive) {
             return state.copy(fallbackDisposition = FallbackDisposition.INACTIVE)
         }
 
-        val recoveryTimedOut = state.connectivityPhase == ConnectivityPhase.RECOVERING &&
-            state.degradationEpisodeId != null &&
-            state.recoveryStartedAtMillis?.let { nowMillis - it >= config.recoveryGraceMillis } == true
-        val degraded = if (recoveryTimedOut) {
-            state.copy(
-                connectivityPhase = ConnectivityPhase.DEGRADED,
-                recoveryStartedAtMillis = null,
-            )
-        } else if (state.connectivityPhase == ConnectivityPhase.INTERRUPTED &&
+        val degraded = if (state.connectivityPhase == ConnectivityPhase.INTERRUPTED &&
             shouldEnterDegraded(state, nowMillis)
         ) {
             val episodeId = state.lastDegradationEpisodeId + 1
@@ -382,7 +383,7 @@ class DegradedConnectivityPolicy(
 
         val episodeId = requireNotNull(degraded.degradationEpisodeId)
         val firstAttemptDue = degraded.lastFallbackAttemptEpisodeId != episodeId
-        val resendDue = !firstAttemptDue &&
+        val additionalAttemptDue = allowAdditionalFallback && !firstAttemptDue &&
             degraded.latestTelemetrySequence > (degraded.lastCoveredTelemetrySequence ?: -1) &&
             degraded.lastFallbackAttemptAtMillis?.let {
                 nowMillis - it >= config.minimumFallbackIntervalMillis
@@ -391,7 +392,7 @@ class DegradedConnectivityPolicy(
             config.maximumFallbackAttemptsPerWindow
 
         return degraded.copy(
-            fallbackDisposition = if ((firstAttemptDue || resendDue) && rateAvailable) {
+            fallbackDisposition = if ((firstAttemptDue || additionalAttemptDue) && rateAvailable) {
                 FallbackDisposition.ELIGIBLE
             } else {
                 if (degraded.lastFallbackAttemptEpisodeId != null) {

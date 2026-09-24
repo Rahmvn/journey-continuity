@@ -104,6 +104,22 @@ class FallbackProvisioningCoordinatorTest {
         assertEquals(0, gateway.calls)
     }
 
+    @Test
+    fun nonOwnerFailureCannotReplaceExistingFallbackBinding() = runBlocking {
+        val existing = binding()
+        val local = FakeLocalStore(existingBinding = existing)
+        val keys = FakeKeyStore()
+        val gateway = FakeGateway(failure = IllegalStateException("authorization denied"))
+
+        assertEquals(
+            FallbackProvisioningResult.Unavailable,
+            coordinator(local, keys, gateway).provisionIfEligible(JOURNEY),
+        )
+        assertEquals(existing, local.saved)
+        assertFalse(keys.hasKey(KEY_ID))
+        assertEquals(1, gateway.calls)
+    }
+
     private fun coordinator(
         local: FakeLocalStore,
         keys: FakeKeyStore,
@@ -120,8 +136,9 @@ class FallbackProvisioningCoordinatorTest {
         private val active: Boolean = true,
         private val events: MutableList<String> = mutableListOf(),
         private var failFirstPersist: Boolean = false,
+        existingBinding: JourneyFallbackBindingEntity? = null,
     ) : FallbackProvisioningLocalStore {
-        var saved: JourneyFallbackBindingEntity? = null
+        var saved: JourneyFallbackBindingEntity? = existingBinding
         override suspend fun activeJourneyExists(journeyId: String) = active
         override suspend fun binding(journeyId: String) = saved
         override suspend fun persistBinding(binding: JourneyFallbackBindingEntity) {
@@ -155,11 +172,13 @@ class FallbackProvisioningCoordinatorTest {
         private val keyId: Long = KEY_ID,
         private val keySize: Int = 32,
         private val handleSize: Int = 12,
+        private val failure: Throwable? = null,
     ) : AuthenticatedFallbackProvisioningGateway {
         var calls = 0
         var lastReturnedKey: ByteArray? = null
         override suspend fun provision(journeyId: String, installationId: String): FallbackProvisioningMaterial {
             calls += 1
+            failure?.let { throw it }
             return FallbackProvisioningMaterial(
                 keyId = keyId,
                 installationMasterKey = ByteArray(keySize) { 7 }.also { lastReturnedKey = it },

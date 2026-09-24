@@ -64,6 +64,31 @@ class ReliableSyncEngineTest {
     }
 
     @Test
+    fun nonOwnerAuthorizationFailurePreservesLocalEvidenceAndCorrectOwnerCanResume() = runBlocking {
+        val originalJourney = journey("one")
+        val local = FakeLocalSyncStore(originalJourney, telemetry("one", 1..3))
+        val remote = FakeCloudGateway(
+            authFailure = CloudSyncException(
+                SyncFailureKind.AUTHORIZATION,
+                "Authenticated user is not authorized for this Journey.",
+            ),
+        )
+
+        assertEquals(SyncRunResult.Retry, engine(local, remote).synchronize())
+        assertEquals(originalJourney, local.journey("one"))
+        assertEquals(listOf(1L, 2L, 3L), local.allTelemetry("one").map { it.sequence })
+        assertEquals(0L, local.checkpoint("one"))
+        assertEquals(emptyMap<String, Journey>(), remote.cloudJourneys)
+
+        remote.restoreOwnerSession()
+        local.requestAgain("one")
+        assertEquals(SyncRunResult.Success, engine(local, remote).synchronize())
+        assertEquals(originalJourney, local.journey("one"))
+        assertEquals(3L, local.checkpoint("one"))
+        assertEquals(listOf(1L, 2L, 3L), remote.receivedSequences("one"))
+    }
+
+    @Test
     fun backlogStartsAfterCheckpointAndUsesAscendingBatchesOfFifty() = runBlocking {
         val local = FakeLocalSyncStore(journey("one"), telemetry("one", 1..125))
         local.seedCheckpoint("one", 20)
@@ -315,7 +340,7 @@ class ReliableSyncEngineTest {
         private var failNextTelemetryAfterAccept: Boolean = false,
         private val alwaysOffline: Boolean = false,
         private val afterFirstJourneyUpsert: (() -> Unit)? = null,
-        private val authFailure: CloudSyncException? = null,
+        private var authFailure: CloudSyncException? = null,
     ) : CloudSyncGateway {
         val cloudJourneys = linkedMapOf<String, Journey>()
         val cloudTelemetry = linkedMapOf<Pair<String, Long>, TelemetryObservation>()
@@ -350,5 +375,9 @@ class ReliableSyncEngineTest {
             .filter { it.first == journeyId }
             .map { it.second }
             .sorted()
+
+        fun restoreOwnerSession() {
+            authFailure = null
+        }
     }
 }

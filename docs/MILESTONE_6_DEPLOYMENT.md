@@ -31,7 +31,7 @@ A raw KEK, decrypted installation key, database password, service-role credentia
 
 The application contains authenticated provisioning, Android Keystore wrapping, Room binding and attempt persistence, production JC1 protection, degraded-connectivity recovery, and the Android SMS handoff foundation.
 
-The runtime SMS destination remains deliberately unconfigured through `UnconfiguredSmsFallbackRouteProvider`. No physical carrier handoff is accepted yet.
+The production runtime SMS destination remains deliberately unconfigured through `UnconfiguredSmsFallbackRouteProvider`. Controlled physical carrier acceptance used a test-only, externally injected E.164 route and an explicitly selected active SIM; no destination is stored in Room, logged, committed, or added to production configuration. Attempt 2 / envelope sequence 2 reached `HANDED_OFF` after Android returned `RESULT_OK`, and the recipient confirmed one exact, one-segment copy of the persisted 102-character JC1 text. This handoff did not establish cloud freshness.
 
 ## Provider-side inbound state
 
@@ -50,9 +50,8 @@ Repository tests cover the outbox and dispatcher behavior. Physical trusted-cont
 When separately authorized:
 
 1. Configure an approved inbound SMS route without placing destination or provider secrets in the repository.
-2. Complete controlled Android carrier handoff acceptance.
-3. Implement and review provider-side JC1 ingestion.
-4. Deploy ingestion only after its authorization, cryptographic, idempotency, and reconciliation tests pass.
-5. Complete the remaining physical and hosted failure matrix.
+2. Implement and review provider-side JC1 ingestion.
+3. Deploy ingestion only after its authorization, cryptographic, idempotency, and reconciliation tests pass.
+4. Complete the remaining physical and hosted failure matrix.
 
-Do not mark Milestone 6 accepted until the carrier and cloud-ingestion acceptance sections in `MILESTONE_6_ACCEPTANCE.md` pass.
+Do not mark Milestone 6 accepted until the remaining physical failure matrix and cloud-ingestion sections in `MILESTONE_6_ACCEPTANCE.md` pass.

@@ -30,12 +30,12 @@ class ReliableSyncEngine(
                 }
                 synchronizeCandidate(candidate, authenticatedOwner)
             } catch (error: CloudSyncException) {
-                val permanent = error.kind != SyncFailureKind.TRANSIENT
+                val permanent = error.kind == SyncFailureKind.PERMANENT
                 local.markFailure(candidate.journeyId, error.safeMessage, permanent)
                 // A retryable attempt is degradation evidence only after traveller
                 // authentication succeeded. Auth/configuration/programming failures
                 // must not be reclassified as loss of mobile internet.
-                if (!permanent && ownerId != null) {
+                if (error.kind == SyncFailureKind.TRANSIENT && ownerId != null) {
                     runCatching { attemptObserver(candidate.journeyId) }
                         .onFailure { logger.warning("Retryable sync observation could not be recorded") }
                 }

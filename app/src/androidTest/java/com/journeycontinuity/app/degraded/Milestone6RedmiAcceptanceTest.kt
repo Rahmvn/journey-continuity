@@ -6,6 +6,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.journeycontinuity.app.BuildConfig
 import com.journeycontinuity.app.auth.SharedPreferencesInstallationIdentityStore
+import com.journeycontinuity.app.auth.SharedPreferencesTravellerIdentityStore
 import com.journeycontinuity.app.auth.SupabaseTravellerAuthBackend
 import com.journeycontinuity.app.auth.TravellerIdentityCoordinator
 import com.journeycontinuity.app.auth.TravellerIdentityStore
@@ -63,9 +64,17 @@ class Milestone6RedmiAcceptanceTest {
 
         val client = authenticatedClient(token)
         val ownerId = requireNotNull(client.auth.currentSessionOrNull()?.user?.id)
+        val productionIdentityStore = SharedPreferencesTravellerIdentityStore(context)
+        val establishedOwner = productionIdentityStore.expectedTravellerUserId()
+        require(establishedOwner == null || establishedOwner == ownerId) {
+            "Controlled acceptance owner does not match the installation's established traveller."
+        }
+        if (establishedOwner == null) {
+            assertTrue(productionIdentityStore.persistExpectedTravellerUserIdIfAbsent(ownerId))
+        }
         val identity = TravellerIdentityCoordinator(
             SupabaseTravellerAuthBackend(client),
-            FixedIdentityStore(ownerId),
+            productionIdentityStore,
         )
         val database = database()
         val now = System.currentTimeMillis()
@@ -343,7 +352,7 @@ class Milestone6RedmiAcceptanceTest {
     ) {
         install(Auth) {
             autoLoadFromStorage = false
-            autoSaveToStorage = false
+            autoSaveToStorage = true
             alwaysAutoRefresh = false
         }
         install(Postgrest)

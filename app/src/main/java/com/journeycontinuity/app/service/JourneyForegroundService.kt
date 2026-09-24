@@ -43,6 +43,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.CompletableDeferred
 
 class JourneyForegroundService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -168,12 +169,14 @@ class JourneyForegroundService : Service() {
 
     private fun startHeartbeats(journeyId: String) {
         val signal = Channel<Unit>(Channel.CONFLATED)
+        val degradedStateInitialized = CompletableDeferred<Unit>()
         heartbeatSignal = signal
         heartbeatJob = serviceScope.launch(Dispatchers.IO) {
             degradedConnectivityCoordinator.activate(
                 journeyId = journeyId,
                 validatedInternetAvailable = deviceContextReader.usableInternet(),
             )
+            degradedStateInitialized.complete(Unit)
             for (ignored in signal) {
                 val battery = deviceContextReader.battery()
                 AndroidSyncDiagnosticLogger.info(
@@ -197,6 +200,7 @@ class JourneyForegroundService : Service() {
             }
         }
         heartbeatTimerJob = serviceScope.launch {
+            degradedStateInitialized.await()
             while (isActive) {
                 degradedConnectivityCoordinator.timeAdvanced(journeyId)
                 fallbackHandoffCoordinator.processNextReady(journeyId)

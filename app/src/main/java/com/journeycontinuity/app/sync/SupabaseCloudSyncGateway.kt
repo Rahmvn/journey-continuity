@@ -171,7 +171,8 @@ internal fun Throwable.toCloudSyncException(stage: CloudStage): CloudSyncExcepti
             SyncFailureKind.TRANSIENT
         authError != null || status == 401 ->
             SyncFailureKind.AUTHENTICATION
-        isRlsOrAuthorization || isSchemaMismatch || postgrestError != null ->
+        isRlsOrAuthorization -> SyncFailureKind.AUTHORIZATION
+        isSchemaMismatch || postgrestError != null ->
             SyncFailureKind.PERMANENT
         causeChain.any { it::class.simpleName?.contains("Auth", ignoreCase = true) == true } ->
             SyncFailureKind.AUTHENTICATION

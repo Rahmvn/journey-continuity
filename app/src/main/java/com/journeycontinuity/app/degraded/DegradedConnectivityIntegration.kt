@@ -178,6 +178,9 @@ class DegradedConnectivityCoordinator(
     suspend fun timeAdvanced(journeyId: String) =
         dispatch(journeyId, DegradedConnectivityEvent.TimeAdvanced(clock()))
 
+    suspend fun sparseFallbackTriggered(journeyId: String) =
+        dispatch(journeyId, DegradedConnectivityEvent.SparseFallbackTriggered(clock()))
+
     suspend fun refreshFallbackCapability(journeyId: String) = dispatch(
         journeyId,
         DegradedConnectivityEvent.FallbackCapabilityChanged(

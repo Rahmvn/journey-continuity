@@ -303,7 +303,7 @@ Remote deployment acceptance:
 
 ## Milestone 6 — Degraded Connectivity + SMS Fallback
 
-**Status:** IN PROGRESS — PROVISIONING, DURABLE OFFLINE ALLOCATION, AND RECOVERY ACCEPTED; CARRIER HANDOFF AND CLOUD INGESTION OUTSTANDING
+**Status:** IN PROGRESS — PROVISIONING, DURABLE OFFLINE ALLOCATION, CARRIER HANDOFF, AND RECOVERY ACCEPTED; CLOUD INGESTION OUTSTANDING
 
 ### Goal
 
@@ -330,7 +330,14 @@ Preserve limited continuity when mobile internet becomes unreliable.
 - hosted migrations applied through `20260921000200_fix_fallback_key_rotation.sql`;
 - corrected hosted provisioning pgTAP suite passing 36/36;
 - one real production-protected JC1 attempt allocated while offline, then terminalized as `SUPERSEDED` after authenticated recovery while its hosted binding remained valid;
-- Android SMS handoff foundation: explicit permission/capability checks, SIM selection, one-segment enforcement, durable handoff state, platform result callback, and bounded retry/uncertainty handling.
+- Android SMS handoff foundation: explicit permission/capability checks, SIM selection, one-segment enforcement, durable handoff state, platform result callback, and bounded retry/uncertainty handling;
+- controlled physical Redmi carrier acceptance using an externally injected E.164 route and an explicitly selected active SIM, without persisting or committing the destination;
+- only `SEND_SMS` and `READ_PHONE_STATE` were requested; `READ_SMS`, `RECEIVE_SMS`, and `READ_PHONE_NUMBERS` remained absent;
+- attempt 2 / envelope sequence 2 advanced `ALLOCATED -> HANDOFF_IN_PROGRESS -> HANDED_OFF`, with Android's sent callback returning `RESULT_OK`;
+- the controlled recipient received exactly one 102-character, one-segment `JC1.` message whose text matched the persisted Room text byte-for-byte and retained the same digest and envelope identity;
+- SMS handoff did not establish cloud freshness; recovery still required `DEGRADED -> RECOVERING -> backlog sync -> fresh authenticated heartbeat -> HEALTHY`, and the `HANDED_OFF` attempt remained historical;
+- physical-acceptance corrections now require an explicit `SparseFallbackTriggered` event for a later same-episode attempt, suppress ordinary allocation throughout `RECOVERING`, and make service evaluation wait for coordinator activation and network reconciliation;
+- authentication and authorization mismatches fail closed without mutating local Journey evidence, ownership, or fallback bindings, remain retryable after legitimate owner-session restoration, and are not classified as connectivity degradation.
 
 ### Additive trusted-contact notification slice
 
@@ -350,7 +357,6 @@ Hosted migration `20260918000200_milestone_6_supersede_stale_sms.sql` is applied
 ### Outstanding
 
 - configure an authorized inbound SMS route;
-- complete physical carrier SMS handoff acceptance from the Redmi;
 - implement and deploy provider-side inbound SMS ingestion;
 - authenticate and decrypt JC1 server-side against the provisioned key and Journey binding;
 - reconcile duplicate, delayed, and out-of-order fallback messages with authoritative cloud evidence;
@@ -359,7 +365,7 @@ Hosted migration `20260918000200_milestone_6_supersede_stale_sms.sql` is applied
 
 ### Acceptance target
 
-The remaining acceptance target covers data good/SMS good, data bad/SMS good, data and SMS unavailable, delayed SMS, duplicate SMS, dual-SIM ambiguity, low battery, and carrier/provider behavior. Internet recovery and supersession have passed physically.
+The controlled data-bad/SMS-good carrier handoff path has passed physically. The remaining acceptance target covers the configured inbound route and cloud ingestion, data and SMS unavailable, delayed or ambiguous outcomes, duplicate handling, dual-SIM ambiguity, low battery, retry behavior, and provider reconciliation. Internet recovery and both unsent supersession and handed-off history retention have passed physically.
 
 The additive trusted-contact path must also pass healthy-monitoring silence, real watchdog-driven `VERIFYING`, no stale started alert after case resolution, fresh-contact resolution, offline Journey completion, contact opt-out, and transport failure remaining independent of deterministic monitoring state.
 

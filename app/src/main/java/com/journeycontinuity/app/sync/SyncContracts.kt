@@ -36,6 +36,7 @@ interface CloudSyncGateway {
 enum class SyncFailureKind {
     TRANSIENT,
     AUTHENTICATION,
+    AUTHORIZATION,
     PERMANENT,
 }
 

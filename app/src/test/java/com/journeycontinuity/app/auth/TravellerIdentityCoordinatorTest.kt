@@ -153,6 +153,23 @@ class TravellerIdentityCoordinatorTest {
     }
 
     @Test
+    fun mismatchedSessionPreservesIdentityUntilCorrectOwnerSessionReturns() = runBlocking {
+        val backend = FakeBackend(TravellerSessionState.Authenticated("non-owner"))
+        val store = FakeIdentityStore("owner")
+        val coordinator = coordinator(backend, store)
+
+        assertEquals(TravellerAuthOutcome.TravellerIdentityMismatch, coordinator.resolve())
+        assertEquals("owner", store.expectedTravellerUserId())
+        assertEquals(0, store.persistCount)
+
+        backend.state = TravellerSessionState.Authenticated("owner")
+        assertAuthenticated(coordinator.resolve(), "owner")
+        assertEquals("owner", store.expectedTravellerUserId())
+        assertEquals(0, store.persistCount)
+        assertEquals(0, backend.signInCount)
+    }
+
+    @Test
     fun missingSessionForEstablishedIdentityRequiresRecoveryWithoutAnonymousSignIn() = runBlocking {
         val backend = FakeBackend(TravellerSessionState.NotAuthenticated)
         val store = FakeIdentityStore("expected")

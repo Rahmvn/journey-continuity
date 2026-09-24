@@ -1,6 +1,6 @@
 # Milestone 6 Acceptance Record
 
-Milestone 6 remains **IN PROGRESS**. Provisioning, protected offline allocation, persistence, and authenticated internet recovery were accepted on 2026-09-23. Physical SMS carrier handoff and provider-side cloud ingestion remain outstanding.
+Milestone 6 remains **IN PROGRESS**. Provisioning, protected offline allocation, persistence, physical Android SMS carrier handoff, and authenticated internet recovery were accepted on 2026-09-23. Provider-side cloud ingestion and the remaining physical failure matrix remain outstanding.
 
 ## Completed acceptance — 2026-09-23
 
@@ -34,6 +34,46 @@ These results establish the provisioning and authorization contract. They do not
 - The unsent fallback attempt became `SUPERSEDED`.
 - The provisioned hosted Journey binding and Android Keystore capability remained valid.
 
+### Physical Android SMS carrier handoff
+
+- The controlled destination was supplied externally as a test-only E.164 route. It was not committed, added to production configuration, persisted in Room, or logged.
+- The active SIM was explicitly selected and revalidated before handoff.
+- The application requested `SEND_SMS` and `READ_PHONE_STATE` only. `READ_SMS`, `RECEIVE_SMS`, and `READ_PHONE_NUMBERS` remained absent.
+- Loss of validated internet reproduced the physical `HEALTHY -> INTERRUPTED -> DEGRADED` path.
+- Existing attempt 2 / envelope sequence 2 advanced atomically from `ALLOCATED` to `HANDOFF_IN_PROGRESS` before Android telephony submission.
+- The exact persisted Room text was submitted without regenerating JC1.
+- Android's sent-result callback returned `RESULT_OK`, after which attempt 2 became `HANDED_OFF`.
+- The controlled recipient confirmed exactly one SMS beginning with `JC1.`.
+- The received text was 102 characters and one `SmsManager` segment, matched the persisted Room text byte-for-byte, and retained the same persisted digest and envelope identity.
+- `HANDED_OFF` recorded only Android's successful telephony handoff. It did not establish cloud freshness or prove provider ingestion.
+- Restored internet produced `DEGRADED -> RECOVERING`, authoritative backlog synchronization, a fresh authenticated heartbeat, and then `HEALTHY`.
+- Attempt 2 remained historical as `HANDED_OFF`; it was not changed to `SUPERSEDED` during recovery.
+
+### Defects exposed and corrected
+
+The physical acceptance lifecycle exposed two unexpected later allocations in degradation episode 2:
+
+- Attempt 3 was permitted because ordinary newer telemetry plus the elapsed minimum interval satisfied the former same-episode resend condition. Ordinary telemetry was not a legitimate sparse-fallback trigger.
+- Attempt 4 was permitted after `RECOVERING` timed back into `DEGRADED` while validated internet remained available. Service/process startup ordering could also evaluate policy before activation and current network reconciliation completed.
+
+The corrected policy and integration now enforce:
+
+- ordinary `TimeAdvanced` and `TelemetryObserved` events cannot authorize a later same-episode fallback;
+- a later attempt requires an explicit `SparseFallbackTriggered` event, newer telemetry, the minimum interval, and available rate-window capacity;
+- `RECOVERING` does not degrade merely because the former recovery grace elapsed;
+- ordinary fallback allocation is suppressed throughout `RECOVERING`, including during ticks, backlog work, route availability, and process or coordinator recreation;
+- foreground-service evaluation waits for degraded-connectivity activation and current network reconciliation.
+
+A reduced physical Redmi regression on 2026-09-24 established one first allocation in a new degradation episode, no additional allocation across multiple service evaluation and telemetry cycles or a force-stop/cold restart, no allocation across six `RECOVERING` evaluations and coordinator recreation, and safe recovery to `HEALTHY`. The regression did not send another SMS. The new unsent attempt became `SUPERSEDED`, while attempt 2 remained `HANDED_OFF`.
+
+### Authentication and Journey-owner consistency
+
+- The observed owner-Journey/non-owner-session mismatch was created by the physical harness: hosted calls used the injected owner identity while production Supabase session storage retained a previous anonymous non-owner session.
+- Production cloud operations failed that mismatch closed; RLS and Journey authorization were not bypassed.
+- Authentication and authorization failures are now retryable after legitimate owner-session restoration instead of permanently blocking synchronization, and they are not classified as connectivity degradation.
+- An identity mismatch cannot relabel or delete the local Journey or mutate its evidence, ownership, or fallback binding.
+- The reusable harness now rotates and persists a complete owner session, proves the active Journey is visible through normal hosted RLS, and verifies local Journey, binding, attempt, state, sequence, and digest evidence remains unchanged.
+
 ## Existing trusted-contact SMS evidence
 
 The separate cloud-to-trusted-contact notification slice has repository implementation and automated coverage for:
@@ -47,20 +87,9 @@ The separate cloud-to-trusted-contact notification slice has repository implemen
 
 Hosted migration `20260918000200_milestone_6_supersede_stale_sms.sql` is applied. Repository evidence does not establish physical carrier receipt, handset delivery, or human reading for this slice, so those outcomes are not recorded as accepted.
 
-## Remaining SMS-carrier acceptance
+## Remaining physical SMS failure-matrix acceptance
 
-Before physical execution, configure an authorized inbound SMS destination without committing a phone number, credential, token, or provider secret.
-
-The controlled Redmi acceptance must then verify:
-
-1. Required SMS and phone-state permissions are explicit and denial fails safely.
-2. The intended active SIM is selected; ambiguity or removal blocks handoff rather than silently choosing another SIM.
-3. A persisted `JC1.` payload remains exactly one SMS segment.
-4. One eligible `ALLOCATED` attempt advances through `HANDOFF_IN_PROGRESS` only once per handoff generation.
-5. Android's sent callback records `HANDED_OFF`, retryable, permanent, unavailable, or ambiguous outcomes without claiming carrier delivery.
-6. Retry and uncertainty recovery do not duplicate a successfully acknowledged handoff.
-7. Recovery before handoff leaves the obsolete attempt `SUPERSEDED` and unsent.
-8. Data unavailable/SMS available, both unavailable, delayed callback, duplicate callback, dual-SIM ambiguity, low battery, and process-restart cases behave deterministically.
+The controlled data-unavailable/SMS-available success path is accepted. Remaining physical cases include permission denial, SMS unavailable, both transports unavailable, SIM removal or ambiguity, delayed or missing callback, duplicate callback, retry and unknown-outcome handling, low-battery behavior, and provider/carrier failure outcomes. These cases must preserve durable attempt identity and must not immediately resend after an ambiguous handoff.
 
 For the trusted-contact notification slice, the existing healthy-monitoring silence, watchdog-driven verification, restoration, offline completion, opt-out, and transport-failure checklist also remains physically unrecorded. Carrier receipt must not be generalized as guaranteed delivery, human reading, or evidence of traveller safety.
 
@@ -77,4 +106,4 @@ No provider-side inbound JC1 route is deployed or configured. After that impleme
 7. Clear provenance distinguishing SMS-derived evidence from normal authenticated internet evidence.
 8. Internet recovery stops ordinary fallback without allowing SMS transport state alone to establish `HEALTHY`.
 
-Milestone 6 must not be marked accepted until both remaining sections pass end to end.
+Milestone 6 must not be marked accepted until the remaining physical failure matrix and cloud-ingestion section pass end to end.

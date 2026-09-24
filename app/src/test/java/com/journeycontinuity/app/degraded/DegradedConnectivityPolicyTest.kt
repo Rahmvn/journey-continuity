@@ -107,12 +107,26 @@ class DegradedConnectivityPolicyTest {
     }
 
     @Test
-    fun resendRequiresNewTelemetryIntervalAndRateCapacity() {
+    fun ordinaryTelemetryDoesNotCreateLaterFallbackEvenAfterMinimumInterval() {
         var state = firstAttemptedState()
         state = reduce(state, telemetry(sequence = 2, atMillis = 1_050)).state
 
         assertTrue(reduce(state, DegradedConnectivityEvent.TimeAdvanced(1_099)).actions.isEmpty())
-        var result = reduce(state, DegradedConnectivityEvent.TimeAdvanced(1_100))
+        val result = reduce(state, DegradedConnectivityEvent.TimeAdvanced(2_000))
+        assertTrue(result.actions.isEmpty())
+        assertEquals(FallbackDisposition.ALLOCATED, result.state.fallbackDisposition)
+        assertEquals(2L, result.state.nextFallbackEnvelopeSequence)
+    }
+
+    @Test
+    fun explicitSparseTriggerRequiresNewTelemetryIntervalAndRateCapacity() {
+        var state = firstAttemptedState()
+        state = reduce(state, telemetry(sequence = 2, atMillis = 1_050)).state
+
+        assertTrue(
+            reduce(state, DegradedConnectivityEvent.SparseFallbackTriggered(1_099)).actions.isEmpty(),
+        )
+        var result = reduce(state, DegradedConnectivityEvent.SparseFallbackTriggered(1_100))
         assertEquals(2L, allocation(result).envelopeSequence)
         state = reduce(
             result.state,
@@ -120,11 +134,11 @@ class DegradedConnectivityPolicyTest {
         ).state
         state = reduce(state, telemetry(sequence = 3, atMillis = 1_200)).state
 
-        result = reduce(state, DegradedConnectivityEvent.TimeAdvanced(1_500))
+        result = reduce(state, DegradedConnectivityEvent.SparseFallbackTriggered(1_500))
         assertTrue(result.actions.isEmpty())
         assertEquals(FallbackDisposition.ALLOCATED, result.state.fallbackDisposition)
 
-        result = reduce(result.state, DegradedConnectivityEvent.TimeAdvanced(2_000))
+        result = reduce(result.state, DegradedConnectivityEvent.SparseFallbackTriggered(2_000))
         assertEquals(3L, allocation(result).envelopeSequence)
     }
 
@@ -166,18 +180,20 @@ class DegradedConnectivityPolicyTest {
             firstAttemptedState(),
             DegradedConnectivityEvent.ValidatedInternetAvailable(1_010),
         ).state
-        state = reduce(
+        val success = reduce(
             state,
             DegradedConnectivityEvent.AuthenticatedCloudSuccess(
                 atMillis = 1_020,
                 establishesFreshContact = true,
             ),
-        ).state
+        )
+        state = success.state
 
         assertEquals(ConnectivityPhase.HEALTHY, state.connectivityPhase)
         assertEquals(FallbackDisposition.INACTIVE, state.fallbackDisposition)
         assertEquals(null, state.degradationEpisodeId)
         assertEquals(1_020L, state.lastAuthenticatedCloudSuccessAtMillis)
+        assertTrue(success.actions.none { it is DegradedConnectivityAction.AllocateFallbackAttempt })
     }
 
     @Test
@@ -215,7 +231,7 @@ class DegradedConnectivityPolicyTest {
     }
 
     @Test
-    fun recoveryGraceExpiryResumesSameEpisodeWithoutDeclaringHealth() {
+    fun recoveryTicksNeverResumeDegradedWhileValidatedInternetRemainsAvailable() {
         var state = firstAttemptedState()
         val episode = state.degradationEpisodeId
         state = reduce(
@@ -226,9 +242,53 @@ class DegradedConnectivityPolicyTest {
         state = reduce(state, DegradedConnectivityEvent.TimeAdvanced(1_509)).state
         assertEquals(ConnectivityPhase.RECOVERING, state.connectivityPhase)
 
-        state = reduce(state, DegradedConnectivityEvent.TimeAdvanced(1_510)).state
-        assertEquals(ConnectivityPhase.DEGRADED, state.connectivityPhase)
+        val result = reduce(state, DegradedConnectivityEvent.TimeAdvanced(10_000))
+        state = result.state
+        assertEquals(ConnectivityPhase.RECOVERING, state.connectivityPhase)
+        assertEquals(FallbackDisposition.INACTIVE, state.fallbackDisposition)
         assertEquals(episode, state.degradationEpisodeId)
+        assertTrue(result.actions.isEmpty())
+    }
+
+    @Test
+    fun backlogTelemetryDuringRecoveryCannotAllocateFallback() {
+        var state = reduce(
+            firstAttemptedState(),
+            DegradedConnectivityEvent.ValidatedInternetAvailable(1_010),
+        ).state
+        state = reduce(state, telemetry(sequence = 2, atMillis = 1_100)).state
+
+        val telemetryResult = reduce(state, telemetry(sequence = 3, atMillis = 2_000))
+        val tickResult = reduce(telemetryResult.state, DegradedConnectivityEvent.TimeAdvanced(3_000))
+        val sparseResult = reduce(
+            tickResult.state,
+            DegradedConnectivityEvent.SparseFallbackTriggered(3_000),
+        )
+
+        assertTrue(telemetryResult.actions.isEmpty())
+        assertTrue(tickResult.actions.isEmpty())
+        assertTrue(sparseResult.actions.isEmpty())
+        assertEquals(ConnectivityPhase.RECOVERING, sparseResult.state.connectivityPhase)
+        assertEquals(FallbackDisposition.INACTIVE, sparseResult.state.fallbackDisposition)
+    }
+
+    @Test
+    fun failedRecoveryReturnsToSameEpisodeWithoutReplayingFirstFallback() {
+        var state = firstAttemptedState()
+        val episode = state.degradationEpisodeId
+        state = reduce(
+            state,
+            DegradedConnectivityEvent.ValidatedInternetAvailable(1_010),
+        ).state
+
+        val failure = reduce(state, DegradedConnectivityEvent.RetryableCloudFailure(1_020))
+        val tick = reduce(failure.state, DegradedConnectivityEvent.TimeAdvanced(10_000))
+
+        assertEquals(ConnectivityPhase.DEGRADED, tick.state.connectivityPhase)
+        assertEquals(episode, tick.state.degradationEpisodeId)
+        assertEquals(FallbackDisposition.ALLOCATED, tick.state.fallbackDisposition)
+        assertTrue(failure.actions.isEmpty())
+        assertTrue(tick.actions.isEmpty())
     }
 
     @Test

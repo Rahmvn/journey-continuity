@@ -129,7 +129,7 @@ class FallbackAttemptDatabaseTest {
             coordinator.telemetryObserved(it.toDomain())
         }
         now = 1_200
-        coordinator.timeAdvanced(JOURNEY_ID)
+        coordinator.sparseFallbackTriggered(JOURNEY_ID)
 
         val attempts = database.fallbackAttemptDao().allForJourney(JOURNEY_ID)
         assertEquals(listOf(1L, 2L), attempts.map { it.envelopeSequence })
@@ -152,7 +152,7 @@ class FallbackAttemptDatabaseTest {
             coordinator.telemetryObserved(it.toDomain())
         }
         now = 1_200
-        coordinator.timeAdvanced(JOURNEY_ID)
+        coordinator.sparseFallbackTriggered(JOURNEY_ID)
         coordinator.freshHeartbeatSucceeded(JOURNEY_ID)
 
         val attempts = database.fallbackAttemptDao().allForJourney(JOURNEY_ID)
@@ -160,6 +160,38 @@ class FallbackAttemptDatabaseTest {
         assertEquals(FallbackTransportState.SUPERSEDED, attempts[1].transportState)
         assertEquals(1_020L, attempts[0].terminalAt)
         assertEquals(1_200L, attempts[1].terminalAt)
+    }
+
+    @Test
+    fun recoveryTicksTelemetryAndRestartAllocateNothingAndPreserveHandedOffHistory() = runBlocking {
+        var coordinator = coordinator()
+        coordinator.activate(JOURNEY_ID, false)
+        now = 1_000
+        coordinator.timeAdvanced(JOURNEY_ID)
+        val first = database.fallbackAttemptDao().allForJourney(JOURNEY_ID).single()
+        assertEquals(1, database.fallbackAttemptDao().claimForHandoff(first.localAttemptId, 1_010))
+        assertEquals(1, database.fallbackAttemptDao().markHandedOff(first.localAttemptId, 1, 1_020, -1))
+
+        now = 1_100
+        coordinator.validatedInternetAvailable(JOURNEY_ID)
+        database.telemetryDao().insertForActiveJourney(sample(sequenceTime = 6_000))!!.also {
+            coordinator.telemetryObserved(it.toDomain())
+        }
+        repeat(3) {
+            now += 500
+            coordinator.timeAdvanced(JOURNEY_ID)
+        }
+        coordinator = coordinator()
+        coordinator.activate(JOURNEY_ID, true)
+        coordinator.timeAdvanced(JOURNEY_ID)
+
+        val attempts = database.fallbackAttemptDao().allForJourney(JOURNEY_ID)
+        assertEquals(1, attempts.size)
+        assertEquals(FallbackTransportState.HANDED_OFF, attempts.single().transportState)
+        assertEquals(
+            com.journeycontinuity.app.degraded.ConnectivityPhase.RECOVERING,
+            database.degradedConnectivityDao().get(JOURNEY_ID)!!.connectivityPhase,
+        )
     }
 
     @Test
