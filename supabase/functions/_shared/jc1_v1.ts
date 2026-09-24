@@ -160,7 +160,7 @@ export function bytesToHex(bytes: Uint8Array): string {
   );
 }
 
-async function deriveJourneyKey(
+export async function deriveJourneyKey(
   masterKey: Uint8Array,
   journeyHandle: Uint8Array,
 ): Promise<Uint8Array> {

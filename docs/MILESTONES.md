@@ -303,7 +303,7 @@ Remote deployment acceptance:
 
 ## Milestone 6 — Degraded Connectivity + SMS Fallback
 
-**Status:** IN PROGRESS — PROVISIONING, DURABLE OFFLINE ALLOCATION, CARRIER HANDOFF, AND RECOVERY ACCEPTED; INBOUND CORE AND SANDBOX ADAPTER IMPLEMENTED LOCALLY; PROVIDER DEPLOYMENT AND ACCEPTANCE OUTSTANDING
+**Status:** IN PROGRESS — PROVISIONING, DURABLE OFFLINE ALLOCATION, CARRIER HANDOFF, AND RECOVERY ACCEPTED; SANDBOX CALLBACK RECEIPT VERIFIED; INBOUND KEY-UNWRAP CORRECTION LOCAL AND AUTHENTICATION ACCEPTANCE OUTSTANDING
 
 ### Goal
 
@@ -354,9 +354,9 @@ Implemented in the repository, but not deployed or accepted against a real provi
 - service-role-only backend RPCs and no public generic ingestion endpoint;
 - a documented provider-adapter contract that requires provider authentication before normalization and core invocation.
 
-Migration `20260924000100_milestone_6_inbound_jc1_core.sql` is additive and currently **unapplied to the hosted project**. No AWS or SMS-provider adapter was implemented in this checkpoint.
+Migration `20260924000100_milestone_6_inbound_jc1_core.sql` is hosted. The subsequent local correction `20260924000200_fix_inbound_key_unwrap_identity.sql` is **NOT HOSTED**. No AWS adapter exists.
 
-### Africa's Talking sandbox adapter — repository only, 2026-09-24
+### Africa's Talking sandbox adapter — hosted receipt, 2026-09-24
 
 - dedicated `africastalking-inbound` Edge Function accepting only bounded form-encoded POST callbacks;
 - external sandbox shortcode check for `35549` and external high-entropy callback URL secret;
@@ -365,7 +365,9 @@ Migration `20260924000100_milestone_6_inbound_jc1_core.sql` is additive and curr
 - backend core and key-material RPCs remaining service-role-only;
 - adapter coverage for malformed, missing, wrong-shortcode, non-JC1, oversized, duplicate, idempotent, sender-independent, and no-sensitive-logging behavior.
 
-The function, callback URL, secrets, and inbound-core migration are **not deployed or configured**. The reviewed provider material does not document a signed incoming-SMS callback, so the shared URL secret is sandbox-only and must not be represented as production-grade provider authentication.
+The sandbox function, callback, external secrets, and inbound-core migration are deployed/configured. The exact production attempt-5 payload reached immutable receipt storage but was classified `AUTHENTICATION_FAILED`. Diagnosis identified use of the internal installation UUID instead of the provisioning identifier in key-unwrapping AAD. The local correction explicitly separates those identifiers, splits unwrap/envelope failure classifications, and adds a shared Kotlin/TypeScript synthetic vector. Its deployment and corrected hosted acceptance remain outstanding; see `MILESTONE_6_KEY_UNWRAP_FIX.md`.
+
+The reviewed provider material does not document a signed incoming-SMS callback, so the shared URL secret is sandbox-only and must not be represented as production-grade provider authentication.
 
 ### Additive trusted-contact notification slice
 
@@ -384,10 +386,9 @@ Hosted migration `20260918000200_milestone_6_supersede_stale_sms.sql` is applied
 
 ### Outstanding
 
-- configure an authorized inbound SMS route;
-- deploy and configure the reviewed Africa's Talking sandbox adapter, then observe and accept its actual callback behavior;
+- deploy the reviewed installation-identifier unwrap correction after separate authorization;
+- verify existing key health and repeat the existing envelope under a new real sandbox provider event after separate acceptance authorization;
 - design a production-grade provider-authentication boundary before any live-provider claim;
-- review and apply the inbound-core migration to the hosted project, then deploy trusted server execution for the core;
 - validate real provider receipt, authentication, decryption, replay handling, delayed/out-of-order reconciliation, and watchdog evidence end to end;
 - complete the physical failure matrix, including SMS unavailable, dual-SIM ambiguity, low battery, retry, and ambiguous carrier outcomes;
 - complete Milestone 6 end-to-end acceptance.

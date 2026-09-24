@@ -3,7 +3,9 @@ import assert from "node:assert/strict";
 import {
   base64UrlDecode,
   base64UrlEncode,
+  decryptFallbackMasterKey,
   encryptFallbackMasterKey,
+  hexDecode,
   randomBytes,
 } from "./fallback_crypto.ts";
 import {
@@ -15,7 +17,8 @@ import {
 import { ingestVerifiedJc1Transport } from "./fallback_inbound_core.ts";
 
 const ownerId = "10000000-0000-4000-8000-000000000001";
-const installationId = "11111111-1111-4111-8111-111111111111";
+const installationRowId = "22222222-2222-4222-8222-222222222222";
+const installationIdentifier = "11111111-1111-4111-8111-111111111111";
 const journeyId = "20000000-0000-4000-8000-000000000001";
 const bindingId = "30000000-0000-4000-8000-000000000001";
 const keyId = 4_000_000_001;
@@ -177,7 +180,7 @@ test("malformed and authentication failures persist classifications without raw 
   });
   const failed = await ingest(tampered, "tampered", repository);
   assert.equal(malformed.classification, "MALFORMED");
-  assert.equal(failed.classification, "AUTHENTICATION_FAILED");
+  assert.equal(failed.classification, "ENVELOPE_AUTHENTICATION_FAILED");
   assert.equal("rawSmsBody" in repository.recorded[0], false);
   assert.equal("rawSmsBody" in repository.recorded[1], false);
 });
@@ -237,7 +240,7 @@ class FakeRepository {
       masterKey,
       kek,
       ownerId,
-      installationId,
+      installationIdentifier,
       keyId,
       1,
     );
@@ -245,7 +248,8 @@ class FakeRepository {
       bindingId,
       journeyId,
       ownerId,
-      installationId,
+      installationRowId,
+      installationIdentifier,
       keyId,
       journeyHandleHex: bytesToHex(handle),
       bindingStatus: "ACTIVE",
@@ -309,6 +313,75 @@ class FakeRepository {
     return response;
   }
 }
+
+test("production inbound uses the provisioning identifier when the row UUID differs", async () => {
+  const repository = await FakeRepository.create();
+  const material = repository.resolution;
+  assert.notEqual(material.installationRowId, material.installationIdentifier);
+  const encrypted = {
+    ciphertext: hexDecode(material.encryptedMasterKeyHex),
+    iv: hexDecode(material.encryptionIvHex),
+    encryptionVersion: material.encryptionVersion,
+  };
+  const unwrapped = await decryptFallbackMasterKey(
+    encrypted,
+    kek,
+    ownerId,
+    material.installationIdentifier,
+    keyId,
+  );
+  assert.deepEqual(unwrapped, masterKey);
+  unwrapped.fill(0);
+  await assert.rejects(decryptFallbackMasterKey(
+    encrypted,
+    kek,
+    ownerId,
+    material.installationRowId,
+    keyId,
+  ));
+  const result = await ingest(
+    await makeJc1(),
+    "identifier-regression",
+    repository,
+  );
+  assert.equal(result.classification, "AUTHENTICATED_NEW");
+});
+
+test("unwrap failure is classified separately without exception or plaintext key material", async () => {
+  const repository = await FakeRepository.create({
+    installationIdentifier: installationRowId,
+  });
+  const result = await ingest(await makeJc1(), "wrong-wrap-aad", repository);
+  assert.equal(result.classification, "KEY_UNWRAP_FAILED");
+  assert.equal(repository.recorded[0].body, undefined);
+  assert.equal("error" in repository.recorded[0], false);
+  assert.equal("installationMasterKey" in repository.recorded[0], false);
+});
+
+test("historical failed event stays failed; same envelope with a new event may authenticate", async () => {
+  const repository = await FakeRepository.create();
+  repository.receipts.set("verified-test-adapter:historic-event", {
+    receiptId: "historical-receipt",
+    classification: "AUTHENTICATION_FAILED",
+    duplicateProviderEvent: false,
+    duplicateEnvelope: false,
+    reconciliation: null,
+    evidenceAdvanced: false,
+  });
+  const sms = await makeJc1();
+  const repeated = await ingest(sms, "historic-event", repository);
+  assert.equal(repeated.classification, "AUTHENTICATION_FAILED");
+  assert.equal(repeated.duplicateProviderEvent, true);
+  assert.equal(repository.recordCalls, 0);
+  assert.equal(
+    (await ingest(sms, "new-event", repository)).classification,
+    "AUTHENTICATED_NEW",
+  );
+  assert.equal(
+    (await ingest(sms, "another-event", repository)).classification,
+    "AUTHENTICATED_DUPLICATE",
+  );
+});
 
 async function makeJc1({ eventType = 1, envelopeSequence = 7 } = {}) {
   const header = new Uint8Array(33);

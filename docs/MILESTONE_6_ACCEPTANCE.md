@@ -110,17 +110,19 @@ Automated repository validation now establishes:
 - delayed historical fallback remaining valid evidence without falsely resolving current silence;
 - deterministic completion handling and service-role-only ingestion RPC access.
 
-This is local automated evidence only. Migration `20260924000100_milestone_6_inbound_jc1_core.sql` is not hosted, and no provider request has reached this core.
+These initial assertions are local automated evidence. Migration `20260924000100` was subsequently hosted and a real sandbox callback reached the core, as recorded below. Corrected hosted cryptographic acceptance is still outstanding.
 
 ### Africa's Talking sandbox adapter repository evidence — 2026-09-24
 
 The repository now contains a dedicated public Edge Function boundary for a future sandbox callback. Automated tests establish POST-only form parsing, body bounds, required-field and shortcode checks, exact SMS-text forwarding, stable use of Africa's Talking `id`, provider-event idempotency handoff, sender-number non-dependence, generic responses, and no application logging. A callback-specific shared URL secret is required because the reviewed provider documentation does not identify a signed incoming-SMS webhook mechanism.
 
-This is not provider acceptance. The function is not deployed, shortcode `35549` is not configured in Supabase runtime state, the dashboard callback URL is not set, the sandbox's exact callback has not been observed, and migration `20260924000100_milestone_6_inbound_jc1_core.sql` remains **not hosted**.
+The sandbox function, shortcode configuration, callback, and migration `20260924000100` are now hosted. On 2026-09-24, the exact existing attempt-5 JC1 produced one matching 102-character receipt: provider arrival 18:53:44 UTC; server receive 18:53:46.963 UTC. Strict framing and active key/binding lookup succeeded. The receipt is `AUTHENTICATION_FAILED`; decryption/reconciliation and delayed authenticated-evidence acceptance were not reached. No freshness update was attributed to this SMS. HTTP 200 is the adapter's classified-persistence response; an actual response status was not independently obtained from invocation metadata.
+
+Diagnosis found a different installation UUID in inbound key-unwrapping AAD than in provisioning. The correction and new migration `20260924000200` remain **NOT HOSTED / NOT DEPLOYED**. Existing ciphertext and the historical receipt are preserved. See `MILESTONE_6_KEY_UNWRAP_FIX.md` for regression evidence and the separately authorized retest procedure.
 
 ### Still required
 
-No provider-side inbound JC1 route is deployed or configured. Sandbox provider acceptance must verify:
+The sandbox route is configured, but complete provider acceptance must still verify:
 
 1. The actual callback form shape and exact unchanged `text`, plus strict request validation and the documented limitations of the sandbox shared-secret boundary.
 2. Journey binding lookup without exposing installation key material.

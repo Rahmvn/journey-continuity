@@ -13,6 +13,12 @@ The Journey Continuity hosted project has migrations applied through:
 - `20260918000200_milestone_6_supersede_stale_sms.sql`
 - `20260921000100_milestone_6_fallback_provisioning.sql`
 - `20260921000200_fix_fallback_key_rotation.sql`
+- `20260924000100_milestone_6_inbound_jc1_core.sql`
+
+Migration `20260924000200_fix_inbound_key_unwrap_identity.sql` is **NOT HOSTED**.
+The matching unwrap/classification correction is **NOT DEPLOYED**. See
+`MILESTONE_6_KEY_UNWRAP_FIX.md` for the coordinated deployment and safe retest
+procedure. This correction requires no key rotation or ciphertext rewrite.
 
 The authenticated `provision-fallback` Edge Function is deployed. Owner provisioning returned HTTP 200, an idempotent retry returned the same key and binding material, and non-owner provisioning returned HTTP 403. The corrected hosted provisioning pgTAP suite passed 36/36 on 2026-09-23.
 
@@ -35,11 +41,11 @@ The production runtime SMS destination remains deliberately unconfigured through
 
 ## Provider-side inbound state
 
-No inbound provider route for phone-originated JC1 messages is deployed or configured. The repository now contains a provider-neutral authentication and reconciliation core, a thin Africa's Talking sandbox Edge Function adapter, and additive migration `20260924000100_milestone_6_inbound_jc1_core.sql`; that migration is **not applied to the hosted project**. The backend core RPCs remain service-role-only and cannot be called by anonymous or authenticated clients. The deployed `provision-fallback` function must not be described as an ingestion endpoint.
+The Africa's Talking sandbox adapter is deployed with JWT verification disabled, external callback-secret/shortcode configuration, and a configured callback. Migration `20260924000100` is hosted. The backend core RPCs remain service-role-only; `provision-fallback` remains a provisioning endpoint.
 
-The local core strictly parses and authenticates JC1 V1, resolves private key/binding lifecycle, records immutable receipt provenance, reconciles SMS and internet observations, and maintains transport-neutral authenticated-device evidence without changing cloud-contact time. The public sandbox adapter is repository-only, accepts the documented Africa's Talking form callback, requires the configured shortcode and a sandbox-only shared URL secret, discards sender identity, and normalizes the real provider message ID and exact `JC1.` text. No Africa's Talking callback, function deployment, AWS change, or hosted ingestion has been performed.
+On 2026-09-24 the exact production attempt-5 JC1 reached the adapter and was durably classified `AUTHENTICATION_FAILED`. Parsing and active binding/key resolution succeeded; master-key unwrap received the internal installation UUID instead of the provisioning identifier. Authentication and reconciliation acceptance remain blocked pending the local correction and a separately authorized retest. No AWS integration was added.
 
-The reviewed provider material does not document a cryptographic signature for incoming SMS callbacks. The shared callback URL secret is therefore a limited sandbox control, not production-grade provider authentication. Required external configuration and the unexecuted deployment procedure are recorded in `MILESTONE_6_AFRICASTALKING_SANDBOX.md`.
+The reviewed provider material does not document a cryptographic signature for incoming SMS callbacks. The shared callback URL secret is therefore a limited sandbox control, not production-grade provider authentication. The original configuration procedure is recorded in `MILESTONE_6_AFRICASTALKING_SANDBOX.md`; the pending correction procedure is in `MILESTONE_6_KEY_UNWRAP_FIX.md`.
 
 Any future inbound deployment requires a separate review of provider authentication, secret handling, replay resistance, binding lookup, key lifecycle, error redaction, idempotency, and evidence provenance.
 
@@ -53,10 +59,10 @@ Repository tests cover the outbox and dispatcher behavior. Physical trusted-cont
 
 When separately authorized:
 
-1. Review and authorize the Africa's Talking sandbox adapter and its weaker shared-secret boundary.
-2. Reverify hosted project identity and migration history, then separately authorize and apply `20260924000100`.
-3. Configure external sandbox secrets, deploy the reviewed adapter, and configure the sandbox Incoming Messages callback URL without repository secrets.
-4. Validate the actual sandbox callback shape and unchanged text, then provider receipt, replay, delayed/out-of-order, reconciliation, evidence-freshness, and failure behavior end to end.
+1. Review the installation-identifier correction and reverify hosted project identity/history.
+2. Separately authorize and apply `20260924000200`, then deploy matching adapter/core code in a controlled window.
+3. Perform the read-only attempt-5 key-health preflight described in `MILESTONE_6_KEY_UNWRAP_FIX.md`.
+4. Separately authorize the same-envelope/new-provider-event sandbox retest, then complete replay, delayed/out-of-order, reconciliation, evidence-freshness, and failure acceptance.
 5. Complete the remaining physical and hosted failure matrix.
 
 Do not mark Milestone 6 accepted until the remaining physical failure matrix and cloud-ingestion sections in `MILESTONE_6_ACCEPTANCE.md` pass.

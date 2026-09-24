@@ -1,6 +1,6 @@
 # Milestone 6 Africa's Talking Sandbox Adapter
 
-Milestone 6 remains **IN PROGRESS**. This document describes a repository-only sandbox adapter. It is not deployed, the callback is not configured, migration `20260924000100_milestone_6_inbound_jc1_core.sql` is not hosted, and no real provider callback has been accepted yet.
+Milestone 6 remains **IN PROGRESS**. The sandbox adapter and callback are deployed/configured and migration `20260924000100` is hosted. The exact 102-character production attempt-5 JC1 reached durable receipt storage on 2026-09-24, but authentication failed because inbound unwrap used the internal installation UUID. The correction in `20260924000200_fix_inbound_key_unwrap_identity.sql` and matching function code is **NOT HOSTED / NOT DEPLOYED**; see `MILESTONE_6_KEY_UNWRAP_FIX.md`.
 
 ## Documented callback contract
 
@@ -16,7 +16,7 @@ Africa's Talking documents incoming SMS callbacks as `POST` requests using `appl
 
 The adapter requires one non-empty `date`, `from`, `id`, `text`, and `to` value and permits at most one bounded `linkId` and `networkCode`. It accepts only the configured sandbox shortcode, currently `35549` through external configuration. The real provider `id` becomes `provider_event_id`; no fallback identity is invented.
 
-Africa's Talking documents `text` as the received message body. No sandbox documentation reviewed for this slice says that a routing keyword is inserted into or removed from the callback text for a dedicated sandbox shortcode. The adapter therefore requires `text` to begin with `JC1.` and passes that value unchanged to the provider-neutral core. It performs no trimming, keyword stripping, case conversion, or JC1 rewriting. Whether the sandbox simulator returns this exact text is a deployment-time observation still to be recorded.
+Africa's Talking documents `text` as the received message body. The attempt-5 hosted receipt matched the exact persisted 102-character text by SHA-256, confirming unchanged text for this sandbox delivery without a routing prefix. The adapter requires `text` to begin with `JC1.` and performs no trimming, keyword stripping, case conversion, or JC1 rewriting.
 
 The sender value is required only because it is part of the provider callback shape. It is discarded after boundary validation: it is not logged, persisted, supplied to the core, used for authentication, or used for Journey/key resolution.
 

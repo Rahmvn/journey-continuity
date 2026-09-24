@@ -22,7 +22,8 @@ export type FallbackKeyResolution = {
   bindingId: string;
   journeyId: string;
   ownerId: string;
-  installationId: string;
+  installationRowId: string;
+  installationIdentifier: string;
   keyId: number;
   journeyHandleHex: string;
   bindingStatus: "ACTIVE" | "REVOKED";
@@ -40,6 +41,8 @@ export type InboundClassification =
   | "BINDING_REVOKED"
   | "KEK_UNAVAILABLE"
   | "AUTHENTICATION_FAILED"
+  | "KEY_UNWRAP_FAILED"
+  | "ENVELOPE_AUTHENTICATION_FAILED"
   | "AUTHENTICATED";
 
 export type InboundReceiptClassification =
@@ -160,7 +163,7 @@ export async function ingestVerifiedJc1Transport(
     });
   }
 
-  let installationMasterKey: Uint8Array | null = null;
+  let installationMasterKey: Uint8Array;
   try {
     installationMasterKey = await decryptFallbackMasterKey(
       {
@@ -170,20 +173,25 @@ export async function ingestVerifiedJc1Transport(
       },
       kek,
       resolution.ownerId,
-      resolution.installationId,
+      resolution.installationIdentifier,
       resolution.keyId,
     );
-    const body = await authenticateAndDecryptJc1V1(
-      frame,
-      installationMasterKey,
-    );
+  } catch (error) {
+    if (!(error instanceof DOMException)) throw error;
     return repository.recordResult({
       ...base,
       header,
       resolution,
-      body,
-      classification: "AUTHENTICATED",
+      classification: "KEY_UNWRAP_FAILED",
     });
+  }
+
+  let body: Jc1Body;
+  try {
+    body = await authenticateAndDecryptJc1V1(
+      frame,
+      installationMasterKey,
+    );
   } catch (error) {
     if (
       !(error instanceof Jc1AuthenticationError ||
@@ -195,11 +203,18 @@ export async function ingestVerifiedJc1Transport(
       ...base,
       header,
       resolution,
-      classification: "AUTHENTICATION_FAILED",
+      classification: "ENVELOPE_AUTHENTICATION_FAILED",
     });
   } finally {
-    installationMasterKey?.fill(0);
+    installationMasterKey.fill(0);
   }
+  return repository.recordResult({
+    ...base,
+    header,
+    resolution,
+    body,
+    classification: "AUTHENTICATED",
+  });
 }
 
 function validateTransport(input: VerifiedInboundTransport) {

@@ -44,7 +44,8 @@ export class SupabaseFallbackInboundRepository
       bindingId: string(row.binding_id),
       journeyId: string(row.journey_id),
       ownerId: string(row.owner_id),
-      installationId: string(row.installation_id),
+      installationRowId: string(row.installation_row_id),
+      installationIdentifier: string(row.installation_identifier),
       keyId: number(row.key_id),
       journeyHandleHex: byteaHex(row.journey_handle),
       bindingStatus: string(

@@ -69,6 +69,15 @@ insert into private.journey_fallback_bindings (
     ('50000000-0000-4000-8000-000000000095', '20000000-0000-4000-8000-000000000095', '10000000-0000-4000-8000-000000000091', '30000000-0000-4000-8000-000000000091', '40000000-0000-4000-8000-000000000091', 1001, decode(repeat('a5', 12), 'hex'), 'ACTIVE', null),
     ('50000000-0000-4000-8000-000000000096', '20000000-0000-4000-8000-000000000096', '10000000-0000-4000-8000-000000000091', '30000000-0000-4000-8000-000000000091', '40000000-0000-4000-8000-000000000091', 1001, decode(repeat('a6', 12), 'hex'), 'ACTIVE', null);
 
+create temporary table resolved_material as
+select * from public.resolve_fallback_ingestion_material_backend(1001, decode(repeat('a1', 12), 'hex'));
+select is((select installation_row_id from resolved_material), '30000000-0000-4000-8000-000000000091'::uuid, 'resolver identifies the internal installation row explicitly');
+select is((select installation_identifier from resolved_material), '31000000-0000-4000-8000-000000000091'::uuid, 'resolver returns the original provisioning identifier for wrap AAD');
+select ok((select installation_row_id <> installation_identifier from resolved_material), 'regression fixture has distinct internal and provisioning identifiers');
+select ok(not has_function_privilege('anon', 'public.resolve_fallback_ingestion_material_backend(bigint,bytea)', 'EXECUTE'), 'anonymous clients cannot resolve key material');
+select ok(not has_function_privilege('authenticated', 'public.resolve_fallback_ingestion_material_backend(bigint,bytea)', 'EXECUTE'), 'authenticated clients cannot resolve key material');
+select ok(has_function_privilege('service_role', 'public.resolve_fallback_ingestion_material_backend(bigint,bytea)', 'EXECUTE'), 'service role can resolve the corrected material');
+
 insert into public.journey_monitoring_state (
     journey_id, owner_id, phase, last_cloud_contact_at, latest_heartbeat_sequence,
     last_authenticated_device_evidence_at, last_authenticated_device_evidence_transport,
@@ -247,6 +256,35 @@ select throws_ok(
 select throws_ok(
     $$delete from private.fallback_authenticated_envelopes where key_id = 1001$$,
     '55000', 'Fallback transport evidence is immutable', 'authenticated envelope evidence cannot be deleted'
+);
+
+-- Failure receipts are terminal by provider identity, including historical vocabulary.
+create temporary table classified_failures as
+select f.failure, result.*
+from (values ('AUTHENTICATION_FAILED'), ('KEY_UNWRAP_FAILED'), ('ENVELOPE_AUTHENTICATION_FAILED')) f(failure)
+cross join lateral public.record_fallback_inbound_result_backend(
+    'verified-test-adapter', 'failure-' || f.failure, now(), now(), 102,
+    decode(repeat('ab', 32), 'hex'), f.failure, 'OBSERVATION', 1001,
+    decode(repeat('a1', 12), 'hex'), 500
+) result;
+select is((select count(*) from classified_failures), 3::bigint, 'historical and stage-specific failure classifications persist');
+select ok((select bool_and(classification = failure and not evidence_advanced) from classified_failures), 'failures do not advance evidence');
+select is((select count(*) from private.fallback_authenticated_envelopes where envelope_sequence = 500), 0::bigint, 'failures create no authenticated envelope');
+select is((select count(*) from private.fallback_observation_reconciliation_events where receipt_id in (select receipt_id from classified_failures)), 0::bigint, 'failures do not reach reconciliation');
+create temporary table repeated_failed_event as
+select * from pg_temp.record_jc1('failure-AUTHENTICATION_FAILED', 1001, repeat('a1', 12), 500, 500, now() - interval '1 hour', repeat('ab', 32));
+select is((select classification from repeated_failed_event), 'AUTHENTICATION_FAILED', 'old provider event remains idempotently failed after fix');
+select ok((select duplicate_provider_event from repeated_failed_event), 'old failed provider event is not reprocessed');
+create temporary table new_event_after_failure as
+select * from pg_temp.record_jc1('new-event-after-failure', 1001, repeat('a1', 12), 500, 500, date_trunc('second', now() - interval '30 minutes'), repeat('ab', 32));
+select is((select classification from new_event_after_failure), 'AUTHENTICATED_NEW', 'same previously failed envelope can authenticate under a new provider event');
+create temporary table another_event_after_failure as
+select * from pg_temp.record_jc1('another-event-after-failure', 1001, repeat('a1', 12), 500, 500, date_trunc('second', now() - interval '30 minutes'), repeat('ab', 32));
+select is((select classification from another_event_after_failure), 'AUTHENTICATED_DUPLICATE', 'another event cannot duplicate the authenticated envelope');
+select is((select count(*) from public.telemetry_observations where journey_id='20000000-0000-4000-8000-000000000091' and sequence=500), 1::bigint, 'new event after failure creates only one canonical observation');
+select throws_ok(
+    $$update private.fallback_inbound_receipts set result_classification='KEY_UNWRAP_FAILED' where provider_event_id='failure-AUTHENTICATION_FAILED'$$,
+    '55000', 'Fallback transport evidence is immutable', 'historical failure receipt cannot be rewritten'
 );
 
 select * from finish();

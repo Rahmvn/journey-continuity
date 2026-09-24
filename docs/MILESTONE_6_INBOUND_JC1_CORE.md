@@ -1,6 +1,6 @@
 # Milestone 6 Provider-Neutral Inbound JC1 Core
 
-Milestone 6 remains **IN PROGRESS**. This document defines the boundary between an SMS-provider adapter and the provider-neutral JC1 core. A thin Africa's Talking sandbox adapter now exists locally, as documented in `MILESTONE_6_AFRICASTALKING_SANDBOX.md`; it is not deployed or configured and is not production provider acceptance.
+Milestone 6 remains **IN PROGRESS**. This document defines the boundary between an SMS-provider adapter and the provider-neutral JC1 core. The Africa's Talking sandbox adapter is deployed and has persisted a real callback, but production JC1 authentication exposed the installation-identifier unwrap defect. Its correction is local only; see `MILESTONE_6_KEY_UNWRAP_FIX.md`. This is not production provider acceptance.
 
 ## Adapter responsibility
 
@@ -30,11 +30,11 @@ The core performs these steps in order:
 4. Strictly parse canonical JC1 V1 framing before key lookup.
 5. Resolve the private installation key and Journey binding by `key_id` plus opaque handle only.
 6. Enforce key and binding lifecycle.
-7. Decrypt the installation master key through the external KEK ring, derive the Journey key, and authenticate/decrypt JC1.
+7. Decrypt the installation master key through the external KEK ring using the explicitly resolved provisioning `installation_identifier` for AAD, derive the Journey key, and authenticate/decrypt JC1. The separate `installation_row_id` is never a crypto input.
 8. Transactionally record the immutable receipt, authenticated envelope, canonical reconciliation, and eligible transport-neutral evidence.
 9. Clear transient plaintext key arrays where the runtime permits.
 
-Malformed, unknown, revoked, unavailable-KEK, and authentication-failed results retain bounded classification and digest evidence without storing the complete raw body. Full JC1 text, KEKs, master keys, derived keys, and plaintext coordinates must not enter logs.
+Malformed, unknown, revoked, unavailable-KEK, and authentication-failed results retain bounded classification and digest evidence without storing the complete raw body. The local correction distinguishes `KEY_UNWRAP_FAILED` from `ENVELOPE_AUTHENTICATION_FAILED`; historical `AUTHENTICATION_FAILED` receipts remain valid and immutable. Full JC1 text, KEKs, master keys, derived keys, exception strings, and plaintext coordinates must not enter logs or receipt diagnostics.
 
 ## Persistence and reconciliation
 
@@ -61,7 +61,7 @@ verified SNS or Lambda transport
 -> provider-neutral core
 ```
 
-The repository-only Africa's Talking sandbox adapter follows:
+The Africa's Talking sandbox adapter follows:
 
 ```text
 bounded form callback plus sandbox-only shared URL secret
@@ -70,4 +70,4 @@ bounded form callback plus sandbox-only shared URL secret
 -> provider-neutral core
 ```
 
-No AWS adapter exists. The sandbox adapter is deliberately not described as cryptographically verified because Africa's Talking does not document a signed incoming-SMS webhook in the reviewed material. Before deployment, it still requires hosted migration authorization, secret provisioning, callback configuration, operational monitoring, and real sandbox delayed/duplicate/failure acceptance. A production provider adapter requires a stronger, separately reviewed authentication boundary.
+No AWS adapter exists. The sandbox adapter is deliberately not described as cryptographically verified because Africa's Talking does not document a signed incoming-SMS webhook in the reviewed material. Deployment/configuration and exact-text receipt are evidenced; corrected JC1 authentication, reconciliation, and real sandbox delayed/duplicate/failure acceptance remain outstanding. A production provider adapter requires a stronger, separately reviewed authentication boundary.
