@@ -73,7 +73,9 @@ select lives_ok($$select * from public.evaluate_due_journeys()$$, 'watchdog eval
 select is((select phase from public.journey_monitoring_state), 'EVIDENCE_FRESH', 'fresh state remains before threshold');
 
 update public.journey_monitoring_state
-set last_cloud_contact_at = now() - interval '6 minutes';
+set last_cloud_contact_at = now() - interval '6 minutes',
+    last_authenticated_device_evidence_at = now() - interval '6 minutes',
+    last_authenticated_device_evidence_received_at = now() - interval '6 minutes';
 select lives_ok($$select * from public.evaluate_due_journeys()$$, 'watchdog evaluates stale contact');
 select is((select phase from public.journey_monitoring_state), 'VERIFYING', 'stale fresh contact enters verifying');
 select is((select count(*) from public.journey_monitoring_events where event_type = 'VERIFYING_STARTED'), 1::bigint, 'verifying event is recorded once');
@@ -92,7 +94,10 @@ select results_eq(
 select is((select count(*) from public.journey_monitoring_events where event_type = 'CONTACT_RESTORED'), 1::bigint, 'contact restored event is recorded once');
 
 reset role;
-update public.journey_monitoring_state set last_cloud_contact_at = now() - interval '6 minutes';
+update public.journey_monitoring_state
+set last_cloud_contact_at = now() - interval '6 minutes',
+    last_authenticated_device_evidence_at = now() - interval '6 minutes',
+    last_authenticated_device_evidence_received_at = now() - interval '6 minutes';
 select lives_ok($$select * from public.evaluate_due_journeys()$$, 'watchdog re-enters verifying after another silence');
 insert into public.telemetry_observations (
     journey_id, sequence, event_time, latitude, longitude, accuracy_meters,

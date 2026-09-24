@@ -133,7 +133,7 @@ Android cloud identity is sticky per installation. `TravellerIdentityCoordinator
 
 Trusted-contact SMS is a supplementary server-side awareness channel, not device evidence or the Android phone-to-cloud fallback transport. Android never sends these trusted-contact alerts. The separate phone-to-cloud fallback path may request narrowly scoped telephony permissions. An authenticated accepted contact owns their E.164 destination and must opt in explicitly for each trusted relationship; the traveller cannot configure that consent.
 
-This additive notification path does not replace the separate device-to-cloud degraded-connectivity SMS direction in Sections 12 and 13. Compact phone-originated fallback payloads, provider ingestion, dual-SIM policy, and fallback reconciliation remain outstanding Milestone 6 responsibilities.
+This additive notification path does not replace the separate device-to-cloud degraded-connectivity SMS direction in Sections 12 and 13. Compact phone-originated fallback payloads and local handoff exist, and the provider-neutral inbound core is implemented locally; a real authenticated provider adapter, hosted ingestion deployment, and end-to-end provider acceptance remain outstanding Milestone 6 responsibilities.
 
 PostgreSQL enqueues notification outbox rows inside the authoritative verification-case opening and resolution transactions. A unique `(verification_case_id, relationship_id, notification_kind)` invariant prevents repeated logical alerts when the watchdog evaluates repeatedly. SMS state is independent of telemetry, heartbeat, monitoring phase, case state, and trusted-contact reports. Enqueue failures are contained so transport cannot corrupt a safety-state transition.
 
@@ -153,7 +153,21 @@ The first eligible fallback in a degradation episode is allocated once. Ordinary
 
 Validated internet recovery moves device state from `DEGRADED` to `RECOVERING`, triggers authoritative backlog synchronization, and requires a genuinely fresh authenticated heartbeat before returning to `HEALTHY`. `RECOVERING` does not time back into `DEGRADED` merely because a grace interval elapsed, and ordinary fallback allocation remains suppressed during recovery despite queued telemetry, ticks, route availability, or process recreation. Foreground-service evaluation begins only after coordinator activation and current network reconciliation. Recovery supersedes an obsolete unsent fallback attempt without invalidating its hosted Journey binding, while an already `HANDED_OFF` attempt remains historical. Transport state never drives cloud monitoring or establishes fresh evidence.
 
-The Android SMS handoff foundation exists, but its production inbound destination is intentionally unconfigured. Controlled carrier acceptance used a test-only externally injected E.164 route, an explicitly selected active SIM, and only `SEND_SMS` plus `READ_PHONE_STATE`. `READ_SMS`, `RECEIVE_SMS`, and `READ_PHONE_NUMBERS` are absent. Android reported `RESULT_OK` for one persisted attempt, and the recipient confirmed one 102-character, one-segment JC1 message matching the persisted Room text byte-for-byte. Provider-side JC1 receipt, authentication, decryption, duplicate handling, ordering, and reconciliation are not implemented yet.
+The Android SMS handoff foundation exists, but its production inbound destination is intentionally unconfigured. Controlled carrier acceptance used a test-only externally injected E.164 route, an explicitly selected active SIM, and only `SEND_SMS` plus `READ_PHONE_STATE`. `READ_SMS`, `RECEIVE_SMS`, and `READ_PHONE_NUMBERS` are absent. Android reported `RESULT_OK` for one persisted attempt, and the recipient confirmed one 102-character, one-segment JC1 message matching the persisted Room text byte-for-byte.
+
+### 7.7 Provider-Neutral Inbound JC1 Core
+
+The repository contains a provider-neutral server core, not a public webhook. A future verified provider adapter supplies a bounded provider identifier, provider event ID, exact raw SMS body, optional provider arrival time, and server receive time. Sender phone number is neither an authentication factor nor a binding lookup key. Provider request authentication remains the adapter's responsibility before the core is invoked.
+
+The core requires canonical JC1 V1 framing and rejects malformed or oversized input before private-key lookup. It resolves only by unsigned `key_id` and the opaque 12-byte Journey handle, decrypts the installation master key through the existing versioned KEK ring, derives the Journey key with the Android-compatible HKDF-SHA-256 contract, and authenticates AES-256-GCM with the clear header as AAD. Active keys are accepted; retired keys remain usable only through an existing valid binding; revoked keys or bindings are rejected. Secret keys, full payloads, and plaintext coordinates are not logged.
+
+Private immutable receipts preserve provider-event identity, provider arrival time, server receive time, JC1 digest, cryptographic identity, result classification, and resolved Journey provenance. `(provider, provider_event_id)` provides transport idempotency; `(key_id, journey_handle, envelope_sequence)` provides authenticated-envelope identity. Distinct provider events may remain as separate receipt evidence while converging on one envelope and one canonical `(journey_id, telemetry_sequence)` observation.
+
+SMS-first observations are materialized canonically; internet-first matches attach provenance without duplication. Later matching internet telemetry converges on the SMS-created observation. Conflicts are recorded and cannot silently overwrite canonical fields. Delayed and out-of-order receipts remain historical evidence but cannot regress current sequence or freshness state. Completion messages apply only to an active Journey under monotonic sequence and event-time rules and cannot reopen or rewrite a later terminal state.
+
+Observation event time, provider arrival time, and server receive time remain distinct. A timely authenticated fallback can update `last_authenticated_device_evidence_at` and participate in deterministic watchdog freshness, including resolving an evidence-silence verification. It never updates `last_cloud_contact_at`, claims HTTP recovery, establishes current location, or asserts safety. Historical delayed fallback stays valid provenance but is ineligible to manufacture current freshness.
+
+The additive migration and core are repository-only at this checkpoint. No provider adapter, public ingestion endpoint, hosted migration, or AWS change is part of this implementation. The normalized adapter contract is documented in `MILESTONE_6_INBOUND_JC1_CORE.md`.
 
 ## 8. Journey Domain
 
@@ -278,10 +292,10 @@ SMS is not a high-frequency telemetry bus.
 
 It is intended as a sparse resilience mechanism.
 
-Implemented constraints include compact protected payloads, explicit SIM selection, durable handoff state, and separation of platform handoff from evidence freshness. Remaining constraints include:
+Implemented constraints include compact protected payloads, explicit SIM selection, durable handoff state, separation of platform handoff from evidence freshness, and a local provider-neutral authentication/reconciliation core. Remaining constraints include:
 
-- provider-side authentication and decryption;
-- duplicate, delayed, and out-of-order reconciliation;
+- authenticated real-provider adapter and hosted deployment;
+- end-to-end provider validation of authentication, decryption, duplicate, delayed, and out-of-order reconciliation;
 - provider/carrier behavior must be tested;
 - Google Play SMS permission policy must be respected;
 - no assumption should be made that hackathon credits cover shortcode provisioning.

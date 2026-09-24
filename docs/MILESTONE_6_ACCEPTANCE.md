@@ -1,6 +1,6 @@
 # Milestone 6 Acceptance Record
 
-Milestone 6 remains **IN PROGRESS**. Provisioning, protected offline allocation, persistence, physical Android SMS carrier handoff, and authenticated internet recovery were accepted on 2026-09-23. Provider-side cloud ingestion and the remaining physical failure matrix remain outstanding.
+Milestone 6 remains **IN PROGRESS**. Provisioning, protected offline allocation, persistence, physical Android SMS carrier handoff, and authenticated internet recovery were accepted on 2026-09-23. A provider-neutral inbound authentication and reconciliation core was implemented and validated locally on 2026-09-24, but no real provider adapter or hosted inbound route exists. Provider acceptance and the remaining physical failure matrix remain outstanding.
 
 ## Completed acceptance — 2026-09-23
 
@@ -95,7 +95,26 @@ For the trusted-contact notification slice, the existing healthy-monitoring sile
 
 ## Remaining cloud-ingestion acceptance
 
-No provider-side inbound JC1 route is deployed or configured. After that implementation exists, acceptance must verify:
+### Repository evidence — 2026-09-24
+
+Automated repository validation now establishes:
+
+- strict canonical JC1 V1 parsing before key lookup and AES-256-GCM authentication with the existing KEK/HKDF contracts;
+- active and retired-bound key acceptance plus revoked key/binding rejection;
+- immutable transport receipts, provider-event idempotency, and envelope replay/conflict classification;
+- SMS-first and internet-first convergence on one `(journey_id, telemetry_sequence)` observation;
+- discrepancy preservation instead of silent overwrite for conflicting same-sequence observations;
+- delayed and out-of-order evidence retention without regressing current evidence;
+- separate observation, provider-arrival, and server-receive timestamps;
+- timely fallback evidence participating in watchdog freshness while never updating `last_cloud_contact_at` or asserting internet restoration;
+- delayed historical fallback remaining valid evidence without falsely resolving current silence;
+- deterministic completion handling and service-role-only ingestion RPC access.
+
+This is local automated evidence only. Migration `20260924000100_milestone_6_inbound_jc1_core.sql` is not hosted, and no provider request has reached this core.
+
+### Still required
+
+No provider-side inbound JC1 route is deployed or configured. Real-provider acceptance must verify:
 
 1. Provider authenticity and strict request validation before payload processing.
 2. Journey binding lookup without exposing installation key material.

@@ -303,7 +303,7 @@ Remote deployment acceptance:
 
 ## Milestone 6 — Degraded Connectivity + SMS Fallback
 
-**Status:** IN PROGRESS — PROVISIONING, DURABLE OFFLINE ALLOCATION, CARRIER HANDOFF, AND RECOVERY ACCEPTED; CLOUD INGESTION OUTSTANDING
+**Status:** IN PROGRESS — PROVISIONING, DURABLE OFFLINE ALLOCATION, CARRIER HANDOFF, AND RECOVERY ACCEPTED; INBOUND CORE IMPLEMENTED LOCALLY; PROVIDER INTEGRATION OUTSTANDING
 
 ### Goal
 
@@ -339,6 +339,23 @@ Preserve limited continuity when mobile internet becomes unreliable.
 - physical-acceptance corrections now require an explicit `SparseFallbackTriggered` event for a later same-episode attempt, suppress ordinary allocation throughout `RECOVERING`, and make service evaluation wait for coordinator activation and network reconciliation;
 - authentication and authorization mismatches fail closed without mutating local Journey evidence, ownership, or fallback bindings, remain retryable after legitimate owner-session restoration, and are not classified as connectivity degradation.
 
+### Provider-neutral inbound core checkpoint — 2026-09-24
+
+Implemented in the repository, but not deployed or accepted against a real provider:
+
+- strict canonical `JC1.` V1 parsing with exact frame bounds before private-key lookup;
+- server-side installation-key decryption through the existing versioned KEK ring, Android-compatible HKDF-SHA-256 Journey-key derivation, and AES-256-GCM authentication;
+- key and opaque Journey-binding resolution using only `key_id` plus the 12-byte handle, with active, retired, revoked, and binding lifecycle enforcement;
+- immutable provider transport receipts and authenticated-envelope evidence with independent provider-event and cryptographic-envelope idempotency;
+- one canonical observation per `(journey_id, telemetry_sequence)`, with SMS-first, internet-first, matching, conflicting, duplicate, delayed, and out-of-order reconciliation;
+- distinct observation event time, provider arrival time, and server receive time;
+- transport-neutral authenticated-device evidence that can prevent or resolve evidence silence when timely, without changing `last_cloud_contact_at`, claiming internet recovery, or asserting safety;
+- deterministic completion handling that cannot reopen or rewrite a newer terminal Journey state;
+- service-role-only backend RPCs and no public generic ingestion endpoint;
+- a documented provider-adapter contract that requires provider authentication before normalization and core invocation.
+
+Migration `20260924000100_milestone_6_inbound_jc1_core.sql` is additive and currently **unapplied to the hosted project**. No AWS or SMS-provider adapter was implemented in this checkpoint.
+
 ### Additive trusted-contact notification slice
 
 Implemented and covered by repository tests without replacing the phone-to-cloud fallback scope:
@@ -357,9 +374,9 @@ Hosted migration `20260918000200_milestone_6_supersede_stale_sms.sql` is applied
 ### Outstanding
 
 - configure an authorized inbound SMS route;
-- implement and deploy provider-side inbound SMS ingestion;
-- authenticate and decrypt JC1 server-side against the provisioned key and Journey binding;
-- reconcile duplicate, delayed, and out-of-order fallback messages with authoritative cloud evidence;
+- implement and authenticate a real provider adapter;
+- review and apply the inbound-core migration to the hosted project, then deploy trusted server execution for the core;
+- validate real provider receipt, authentication, decryption, replay handling, delayed/out-of-order reconciliation, and watchdog evidence end to end;
 - complete the physical failure matrix, including SMS unavailable, dual-SIM ambiguity, low battery, retry, and ambiguous carrier outcomes;
 - complete Milestone 6 end-to-end acceptance.
 

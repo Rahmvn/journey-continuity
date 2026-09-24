@@ -35,7 +35,9 @@ The production runtime SMS destination remains deliberately unconfigured through
 
 ## Provider-side inbound state
 
-No inbound provider route for phone-originated JC1 messages is deployed or configured. Server-side JC1 authentication, decryption, deduplication, ordering, and reconciliation remain future Milestone 6 work. The deployed `provision-fallback` function must not be described as an ingestion endpoint.
+No inbound provider route for phone-originated JC1 messages is deployed or configured. The repository now contains a provider-neutral authentication and reconciliation core plus additive migration `20260924000100_milestone_6_inbound_jc1_core.sql`; that migration is **not applied to the hosted project**. The core is not an HTTP endpoint and cannot be called by anonymous or authenticated clients. The deployed `provision-fallback` function must not be described as an ingestion endpoint.
+
+The local core strictly parses and authenticates JC1 V1, resolves private key/binding lifecycle, records immutable receipt provenance, reconciles SMS and internet observations, and maintains transport-neutral authenticated-device evidence without changing cloud-contact time. It contains no AWS or Africa's Talking adapter and performs no provider-webhook authentication.
 
 Any future inbound deployment requires a separate review of provider authentication, secret handling, replay resistance, binding lookup, key lifecycle, error redaction, idempotency, and evidence provenance.
 
@@ -49,9 +51,10 @@ Repository tests cover the outbox and dispatcher behavior. Physical trusted-cont
 
 When separately authorized:
 
-1. Configure an approved inbound SMS route without placing destination or provider secrets in the repository.
-2. Implement and review provider-side JC1 ingestion.
-3. Deploy ingestion only after its authorization, cryptographic, idempotency, and reconciliation tests pass.
-4. Complete the remaining physical and hosted failure matrix.
+1. Select and implement a provider adapter that authenticates the provider request before supplying the normalized internal transport model.
+2. Reverify hosted project identity and migration history, then separately authorize and apply `20260924000100`.
+3. Deploy trusted server execution for the reviewed core and configure the approved inbound SMS route without repository secrets.
+4. Validate provider receipt, replay, delayed/out-of-order, reconciliation, evidence-freshness, and failure behavior end to end.
+5. Complete the remaining physical and hosted failure matrix.
 
 Do not mark Milestone 6 accepted until the remaining physical failure matrix and cloud-ingestion sections in `MILESTONE_6_ACCEPTANCE.md` pass.

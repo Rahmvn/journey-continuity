@@ -105,7 +105,10 @@ select lives_ok(
     'traveller initializes cloud heartbeat'
 );
 reset role;
-update public.journey_monitoring_state set last_cloud_contact_at = now() - interval '6 minutes';
+update public.journey_monitoring_state
+set last_cloud_contact_at = now() - interval '6 minutes',
+    last_authenticated_device_evidence_at = now() - interval '6 minutes',
+    last_authenticated_device_evidence_received_at = now() - interval '6 minutes';
 select lives_ok($$select * from public.evaluate_due_journeys()$$, 'watchdog opens verification case');
 select is((select count(*) from public.verification_cases where status = 'OPEN'), 1::bigint, 'one open case exists');
 select is((select latest_known_telemetry_sequence from public.verification_cases), 7::bigint, 'case freezes latest cloud-known telemetry sequence');
@@ -176,7 +179,10 @@ select throws_ok(
 reset role;
 update public.verification_cases set sensitive_access_expires_at = now() + interval '23 hours';
 
-update public.journey_monitoring_state set last_cloud_contact_at = now() - interval '6 minutes';
+update public.journey_monitoring_state
+set last_cloud_contact_at = now() - interval '6 minutes',
+    last_authenticated_device_evidence_at = now() - interval '6 minutes',
+    last_authenticated_device_evidence_received_at = now() - interval '6 minutes';
 select lives_ok($$select * from public.evaluate_due_journeys()$$, 'a later silence opens a distinct second case');
 select is((select count(*) from public.verification_cases where status = 'OPEN'), 1::bigint, 'only the second case is open');
 update public.journeys

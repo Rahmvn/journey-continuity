@@ -124,7 +124,9 @@ reset role;
 select is((select count(*) from public.trusted_contact_notification_outbox), 0::bigint, 'healthy Journey queues no SMS notification');
 
 update public.journey_monitoring_state
-set last_cloud_contact_at = now() - interval '6 minutes'
+set last_cloud_contact_at = now() - interval '6 minutes',
+    last_authenticated_device_evidence_at = now() - interval '6 minutes',
+    last_authenticated_device_evidence_received_at = now() - interval '6 minutes'
 where journey_id = '20000000-0000-0000-0000-000000000061';
 select lives_ok($$select * from public.evaluate_due_journeys()$$, 'watchdog opens the first verification case');
 select is((select count(*) from public.verification_cases where journey_id = '20000000-0000-0000-0000-000000000061' and status = 'OPEN'), 1::bigint, 'VERIFYING still opens exactly one case');
@@ -214,7 +216,9 @@ select lives_ok(
 );
 reset role;
 update public.journey_monitoring_state
-set last_cloud_contact_at = now() - interval '6 minutes'
+set last_cloud_contact_at = now() - interval '6 minutes',
+    last_authenticated_device_evidence_at = now() - interval '6 minutes',
+    last_authenticated_device_evidence_received_at = now() - interval '6 minutes'
 where journey_id = '20000000-0000-0000-0000-000000000062';
 select lives_ok($$select * from public.evaluate_due_journeys()$$, 'second Journey enters VERIFYING');
 update public.journeys set status = 'COMPLETED', completed_at = now()
@@ -246,7 +250,10 @@ select lives_ok(
     'provider-accepted history Journey initializes monitoring'
 );
 reset role;
-update public.journey_monitoring_state set last_cloud_contact_at = now() - interval '6 minutes'
+update public.journey_monitoring_state
+set last_cloud_contact_at = now() - interval '6 minutes',
+    last_authenticated_device_evidence_at = now() - interval '6 minutes',
+    last_authenticated_device_evidence_received_at = now() - interval '6 minutes'
 where journey_id = '20000000-0000-0000-0000-000000000064';
 select lives_ok($$select * from public.evaluate_due_journeys()$$, 'provider-accepted history Journey enters VERIFYING');
 update public.trusted_contact_notification_outbox set next_attempt_at = now() + interval '1 hour';
@@ -305,7 +312,10 @@ select lives_ok(
     'claim-overlap Journey initializes monitoring'
 );
 reset role;
-update public.journey_monitoring_state set last_cloud_contact_at = now() - interval '6 minutes'
+update public.journey_monitoring_state
+set last_cloud_contact_at = now() - interval '6 minutes',
+    last_authenticated_device_evidence_at = now() - interval '6 minutes',
+    last_authenticated_device_evidence_received_at = now() - interval '6 minutes'
 where journey_id = '20000000-0000-0000-0000-000000000065';
 select lives_ok($$select * from public.evaluate_due_journeys()$$, 'claim-overlap Journey enters VERIFYING');
 update public.trusted_contact_notification_outbox set next_attempt_at = now() + interval '1 hour';
@@ -442,7 +452,10 @@ select lives_ok(
     'opt-out test Journey initializes normally'
 );
 reset role;
-update public.journey_monitoring_state set last_cloud_contact_at = now() - interval '6 minutes'
+update public.journey_monitoring_state
+set last_cloud_contact_at = now() - interval '6 minutes',
+    last_authenticated_device_evidence_at = now() - interval '6 minutes',
+    last_authenticated_device_evidence_received_at = now() - interval '6 minutes'
 where journey_id = '20000000-0000-0000-0000-000000000063';
 select lives_ok($$select * from public.evaluate_due_journeys()$$, 'verification still opens after contact opts out');
 select is((select count(*) from public.verification_cases where journey_id = '20000000-0000-0000-0000-000000000063'), 1::bigint, 'opt-out does not affect deterministic verification case creation');
