@@ -375,6 +375,8 @@ The reviewed provider material does not document a signed incoming-SMS callback,
 
 Controlled hosted Edge-path acceptance passed on 2026-09-25 using synthetic/test Journeys and keys: ACTIVE authentication (`AUTHENTICATED_NEW` / `SMS_CREATED_CANONICAL`), `KEY_REVOKED`, `BINDING_REVOKED`, `KEY_UNWRAP_FAILED`, `ENVELOPE_AUTHENTICATION_FAILED`, internet-first `SMS_MATCHED_INTERNET`, and same-sequence `SMS_CONFLICT`. Generic public responses, immutable internet provenance, canonical uniqueness, and unchanged freshness/verification/notification state were verified. Retained evidence comprises seven immutable receipts, three authenticated envelopes, three canonical observations, and three reconciliation records. All test keys are revoked and all synthetic Journeys are closed. This was direct deployed-function acceptance, not Africa's Talking delivery; see `MILESTONE_6_ACCEPTANCE.md`.
 
+The subsequent controlled hosted timely-evidence run accepted `AUTHENTICATED_NEW` / `SMS_CREATED_CANONICAL` and advanced transport-neutral `FALLBACK_SMS` evidence. The watchdog's 300-second silence rule uses the newer of cloud contact and authenticated device evidence; JC1 eligibility requires observation age at most five minutes, future-clock tolerance of one minute, and strictly newer eligible envelope/telemetry/event-time progression. Timely evidence prevented false silence and resolved a real open verification (`AUTHENTICATED_DEVICE_EVIDENCE_TIMEOUT`) through exactly one `CONTACT_RESTORED` event with reason `AUTHENTICATED_FALLBACK_EVIDENCE`; the existing case resolution enum is `DEVICE_CONTACT_RESTORED`. Stale and duplicate envelopes did not refresh evidence. `last_cloud_contact_at` stayed unchanged, and no internet recovery, safety/danger, or present-location conclusion followed. Seven receipts, five authenticated envelopes, five canonical observations, seven reconciliation records, and one resolved case remain as controlled evidence; both synthetic Journeys were closed and their keys/bindings revoked.
+
 ### Additive trusted-contact notification slice
 
 Implemented and covered by repository tests without replacing the phone-to-cloud fallback scope:
@@ -393,7 +395,7 @@ Hosted migration `20260918000200_milestone_6_supersede_stale_sms.sql` is applied
 ### Outstanding
 
 - design a production-grade provider-authentication boundary before any live-provider claim;
-- validate timely authenticated fallback evidence and verification/watchdog transitions, plus JC1 completion behavior, through hosted acceptance;
+- validate JC1 completion behavior through hosted acceptance;
 - complete the physical failure matrix, including SMS unavailable, dual-SIM ambiguity, low battery, retry, and ambiguous carrier outcomes;
 - complete the additive trusted-contact notification acceptance matrix separately;
 - record live-provider/carrier acceptance only if a suitable production-grade provider route becomes available; sandbox evidence cannot establish it;
@@ -401,7 +403,7 @@ Hosted migration `20260918000200_milestone_6_supersede_stale_sms.sql` is applied
 
 ### Acceptance target
 
-The controlled data-bad/SMS-good carrier handoff path and sandbox inbound authentication, duplicate-envelope handling, historical ordering, and SMS-first reconciliation have passed. Controlled hosted Edge-path failure classifications, internet-first matching, and conflict preservation have also passed. The remaining target covers hosted timely-evidence/verification/watchdog transitions and JC1 completion behavior; production-grade provider authentication and real carrier-to-provider delivery/retry/latency; both transports unavailable, ambiguous outcomes, dual-SIM ambiguity, low battery, retry behavior, and the final physical failure matrix. Internet recovery and both unsent supersession and handed-off history retention have passed physically. Milestone 6 remains **IN PROGRESS**.
+The controlled data-bad/SMS-good carrier handoff path and sandbox inbound authentication, duplicate-envelope handling, historical ordering, and SMS-first reconciliation have passed. Controlled hosted Edge-path failure classifications, internet-first matching, conflict preservation, and timely fallback evidence/watchdog transitions have also passed. The remaining target covers hosted JC1 completion behavior; production-grade provider authentication and real carrier-to-provider delivery/retry/latency; both transports unavailable, ambiguous outcomes, dual-SIM ambiguity, low battery, retry behavior, and the final physical failure matrix. Internet recovery and both unsent supersession and handed-off history retention have passed physically. Milestone 6 remains **IN PROGRESS**.
 
 The additive trusted-contact path must also pass healthy-monitoring silence, real watchdog-driven `VERIFYING`, no stale started alert after case resolution, fresh-contact resolution, offline Journey completion, contact opt-out, and transport failure remaining independent of deterministic monitoring state.
 
