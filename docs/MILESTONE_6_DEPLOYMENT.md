@@ -14,11 +14,9 @@ The Journey Continuity hosted project has migrations applied through:
 - `20260921000100_milestone_6_fallback_provisioning.sql`
 - `20260921000200_fix_fallback_key_rotation.sql`
 - `20260924000100_milestone_6_inbound_jc1_core.sql`
+- `20260924000200_fix_inbound_key_unwrap_identity.sql`
 
-Migration `20260924000200_fix_inbound_key_unwrap_identity.sql` is **NOT HOSTED**.
-The matching unwrap/classification correction is **NOT DEPLOYED**. See
-`MILESTONE_6_KEY_UNWRAP_FIX.md` for the coordinated deployment and safe retest
-procedure. This correction requires no key rotation or ciphertext rewrite.
+The matching unwrap/classification correction is deployed in the Africa's Talking sandbox function. It required no key rotation or ciphertext rewrite. The original failed receipt is retained alongside later successful and duplicate receipts.
 
 The authenticated `provision-fallback` Edge Function is deployed. Owner provisioning returned HTTP 200, an idempotent retry returned the same key and binding material, and non-owner provisioning returned HTTP 403. The corrected hosted provisioning pgTAP suite passed 36/36 on 2026-09-23.
 
@@ -41,11 +39,11 @@ The production runtime SMS destination remains deliberately unconfigured through
 
 ## Provider-side inbound state
 
-The Africa's Talking sandbox adapter is deployed with JWT verification disabled, external callback-secret/shortcode configuration, and a configured callback. Migration `20260924000100` is hosted. The backend core RPCs remain service-role-only; `provision-fallback` remains a provisioning endpoint.
+The Africa's Talking sandbox adapter is deployed with JWT verification disabled, external callback-secret/shortcode configuration, and a configured callback. Both inbound migrations through `20260924000200` are hosted. The backend core RPCs remain service-role-only; `provision-fallback` remains a provisioning endpoint.
 
-On 2026-09-24 the exact production attempt-5 JC1 reached the adapter and was durably classified `AUTHENTICATION_FAILED`. Parsing and active binding/key resolution succeeded; master-key unwrap received the internal installation UUID instead of the provisioning identifier. Authentication and reconciliation acceptance remain blocked pending the local correction and a separately authorized retest. No AWS integration was added.
+On 2026-09-24 the initial production attempt-5 JC1 was durably classified `AUTHENTICATION_FAILED` because unwrap used the internal installation UUID. After the hosted correction, the same existing JC1 authenticated under a new genuine provider event and created one canonical observation; another genuine provider event was `AUTHENTICATED_DUPLICATE` without duplicating the envelope or observation. Existing earlier attempt 4 authenticated later as historical evidence without regressing freshness. No AWS adapter was added.
 
-The reviewed provider material does not document a cryptographic signature for incoming SMS callbacks. The shared callback URL secret is therefore a limited sandbox control, not production-grade provider authentication. The original configuration procedure is recorded in `MILESTONE_6_AFRICASTALKING_SANDBOX.md`; the pending correction procedure is in `MILESTONE_6_KEY_UNWRAP_FIX.md`.
+The reviewed provider material does not document a cryptographic signature for incoming SMS callbacks. The shared callback URL secret is therefore a limited sandbox control, not production-grade provider authentication. Configuration and the historical correction procedure are recorded in `MILESTONE_6_AFRICASTALKING_SANDBOX.md` and `MILESTONE_6_KEY_UNWRAP_FIX.md`.
 
 Any future inbound deployment requires a separate review of provider authentication, secret handling, replay resistance, binding lookup, key lifecycle, error redaction, idempotency, and evidence provenance.
 
@@ -55,14 +53,8 @@ The cloud-to-trusted-contact slice includes its Supabase outbox migrations, stal
 
 Repository tests cover the outbox and dispatcher behavior. Physical trusted-contact carrier receipt is not evidenced in the repository and must not be inferred from provider acceptance or automated tests.
 
-## Remaining deployment sequence
+## Remaining deployment and acceptance boundaries
 
-When separately authorized:
-
-1. Review the installation-identifier correction and reverify hosted project identity/history.
-2. Separately authorize and apply `20260924000200`, then deploy matching adapter/core code in a controlled window.
-3. Perform the read-only attempt-5 key-health preflight described in `MILESTONE_6_KEY_UNWRAP_FIX.md`.
-4. Separately authorize the same-envelope/new-provider-event sandbox retest, then complete replay, delayed/out-of-order, reconciliation, evidence-freshness, and failure acceptance.
-5. Complete the remaining physical and hosted failure matrix.
+No further deployment is authorized by this record. The sandbox-only inbound route is accepted for production-JC1 authentication, duplicate-envelope handling, SMS-first reconciliation, and historical ordering. Remaining work requires separate authorization for a production-grade provider boundary and live route, hosted failure/internet-first/conflict/timely-evidence cases, the physical SMS failure matrix, and trusted-contact notification acceptance. Some live-provider-only tests cannot be completed in the Africa's Talking sandbox and may remain explicitly pending for the hackathon.
 
 Do not mark Milestone 6 accepted until the remaining physical failure matrix and cloud-ingestion sections in `MILESTONE_6_ACCEPTANCE.md` pass.

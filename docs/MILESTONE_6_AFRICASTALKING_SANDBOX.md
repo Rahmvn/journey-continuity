@@ -1,6 +1,6 @@
 # Milestone 6 Africa's Talking Sandbox Adapter
 
-Milestone 6 remains **IN PROGRESS**. The sandbox adapter and callback are deployed/configured and migration `20260924000100` is hosted. The exact 102-character production attempt-5 JC1 reached durable receipt storage on 2026-09-24, but authentication failed because inbound unwrap used the internal installation UUID. The correction in `20260924000200_fix_inbound_key_unwrap_identity.sql` and matching function code is **NOT HOSTED / NOT DEPLOYED**; see `MILESTONE_6_KEY_UNWRAP_FIX.md`.
+Milestone 6 remains **IN PROGRESS**. The sandbox adapter/callback, migrations through `20260924000200`, and corrected function code are hosted. The original attempt-5 receipt remains `AUTHENTICATION_FAILED`; a new genuine provider event after the correction authenticated that same production JC1, a later event proved duplicate-envelope handling, and existing earlier attempt 4 proved historical out-of-order handling. See `MILESTONE_6_ACCEPTANCE.md`. This is sandbox, not live-provider, acceptance.
 
 ## Documented callback contract
 
@@ -22,7 +22,7 @@ The sender value is required only because it is part of the provider callback sh
 
 ## Public adapter boundary
 
-After deployment, the only provider-facing surface for this sandbox slice will be:
+The only provider-facing surface for this sandbox slice is:
 
 ```text
 POST https://<project-ref>.supabase.co/functions/v1/africastalking-inbound?token=<callback-secret>
@@ -59,23 +59,22 @@ These values belong in Supabase Edge Function secrets or platform-provided runti
 
 An Africa's Talking API key is not required to receive this inbound callback and must not be added to the adapter.
 
-## Future deployment procedure — not executed
+## Hosted sandbox state and limit
 
-After separate authorization:
+The initial inbound migration and the later installation-identifier correction
+are hosted. Supabase CLI function deployment was blocked by account privileges;
+the corrected single-file bundle was deployed through the Dashboard. JWT
+verification remains disabled for this public callback boundary. The callback
+secret, shortcode, and KEK ring are configured externally. The sandbox callback
+is registered, and real simulator deliveries have exercised authentication,
+duplicate-envelope handling, and historical ordering. Do not place a callback
+URL containing its token in source, logs, tickets, screenshots, or command
+history.
 
-1. Reverify the Supabase project identity and hosted migration ledger.
-2. Separately authorize and apply `20260924000100_milestone_6_inbound_jc1_core.sql`.
-3. In Supabase Dashboard, set `AFRICASTALKING_SANDBOX_CALLBACK_SECRET` to a newly generated high-entropy value and `AFRICASTALKING_SANDBOX_SHORTCODE` to `35549`. Confirm the existing KEK secrets remain configured without revealing them.
-4. Deploy only the reviewed function:
-
-   ```powershell
-   supabase functions deploy africastalking-inbound --no-verify-jwt --project-ref <project-ref>
-   ```
-
-5. In the Africa's Talking sandbox dashboard, set the Incoming Messages callback URL to the function URL with the secret token query parameter. Do not place the URL containing the token in source, logs, tickets, screenshots, or command history.
-6. Use the Africa's Talking sandbox simulator, not a handset, to submit a controlled JC1 message to sandbox shortcode `35549` and record the actual callback field names, text preservation, response, receipt, deduplication, and reconciliation results without printing sensitive values.
-
-This procedure is documentation only. No secret was configured, function deployed, callback registered, or hosted migration applied in this slice.
+Observed sandbox webhook delivery delay varied substantially, including roughly
+13–20 minutes for some deliveries. This precedes JOURNEY processing and is not
+a production carrier/provider latency measurement. This sandbox result does not
+establish signed webhook authentication or live-provider acceptance.
 
 ## Provider references reviewed
 

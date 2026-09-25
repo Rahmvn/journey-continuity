@@ -303,7 +303,7 @@ Remote deployment acceptance:
 
 ## Milestone 6 — Degraded Connectivity + SMS Fallback
 
-**Status:** IN PROGRESS — PROVISIONING, DURABLE OFFLINE ALLOCATION, CARRIER HANDOFF, AND RECOVERY ACCEPTED; SANDBOX CALLBACK RECEIPT VERIFIED; INBOUND KEY-UNWRAP CORRECTION LOCAL AND AUTHENTICATION ACCEPTANCE OUTSTANDING
+**Status:** IN PROGRESS — PROVISIONING, OFFLINE ALLOCATION, PHYSICAL CARRIER HANDOFF, RECOVERY, AND SANDBOX JC1 AUTHENTICATION/REPLAY/ORDERING ACCEPTED; PRODUCTION-GRADE PROVIDER AND FAILURE-MATRIX ACCEPTANCE OUTSTANDING
 
 ### Goal
 
@@ -341,7 +341,7 @@ Preserve limited continuity when mobile internet becomes unreliable.
 
 ### Provider-neutral inbound core checkpoint — 2026-09-24
 
-Implemented in the repository, but not deployed or accepted against a real provider:
+Implemented in the repository and deployed for Africa's Talking sandbox acceptance; this is not live-provider acceptance:
 
 - strict canonical `JC1.` V1 parsing with exact frame bounds before private-key lookup;
 - server-side installation-key decryption through the existing versioned KEK ring, Android-compatible HKDF-SHA-256 Journey-key derivation, and AES-256-GCM authentication;
@@ -354,7 +354,7 @@ Implemented in the repository, but not deployed or accepted against a real provi
 - service-role-only backend RPCs and no public generic ingestion endpoint;
 - a documented provider-adapter contract that requires provider authentication before normalization and core invocation.
 
-Migration `20260924000100_milestone_6_inbound_jc1_core.sql` is hosted. The subsequent local correction `20260924000200_fix_inbound_key_unwrap_identity.sql` is **NOT HOSTED**. No AWS adapter exists.
+Migrations `20260924000100_milestone_6_inbound_jc1_core.sql` and `20260924000200_fix_inbound_key_unwrap_identity.sql` are hosted. The corrected function is deployed. No AWS adapter exists.
 
 ### Africa's Talking sandbox adapter — hosted receipt, 2026-09-24
 
@@ -365,7 +365,9 @@ Migration `20260924000100_milestone_6_inbound_jc1_core.sql` is hosted. The subse
 - backend core and key-material RPCs remaining service-role-only;
 - adapter coverage for malformed, missing, wrong-shortcode, non-JC1, oversized, duplicate, idempotent, sender-independent, and no-sensitive-logging behavior.
 
-The sandbox function, callback, external secrets, and inbound-core migration are deployed/configured. The exact production attempt-5 payload reached immutable receipt storage but was classified `AUTHENTICATION_FAILED`. Diagnosis identified use of the internal installation UUID instead of the provisioning identifier in key-unwrapping AAD. The local correction explicitly separates those identifiers, splits unwrap/envelope failure classifications, and adds a shared Kotlin/TypeScript synthetic vector. Its deployment and corrected hosted acceptance remain outstanding; see `MILESTONE_6_KEY_UNWRAP_FIX.md`.
+The sandbox function, callback, external secrets, and both inbound migrations are deployed/configured. The first production attempt-5 receipt remains immutably `AUTHENTICATION_FAILED`: inbound unwrap had used the internal installation row UUID rather than the provisioning identifier as AAD. The deployed correction separates those identifiers and unwrap/envelope failure classifications; a shared Kotlin/TypeScript synthetic vector covers interoperability. Subsequent genuine sandbox events authenticated the same existing attempt-5 JC1 as `AUTHENTICATED_NEW` with `SMS_CREATED_CANONICAL`, then `AUTHENTICATED_DUPLICATE` with `DUPLICATE_ENVELOPE`. One envelope and one canonical observation remained. Existing attempt 4 (envelope 4 / telemetry 33) arrived after attempt 5 (5 / 38), authenticated as historical evidence, and created one older canonical observation without regressing current evidence. See `MILESTONE_6_ACCEPTANCE.md`.
+
+Sandbox webhook delivery varied substantially, including roughly 13–20-minute delays. This is observed sandbox delivery latency, not JOURNEY processing latency or a production carrier/provider performance claim.
 
 The reviewed provider material does not document a signed incoming-SMS callback, so the shared URL secret is sandbox-only and must not be represented as production-grade provider authentication.
 
@@ -386,16 +388,16 @@ Hosted migration `20260918000200_milestone_6_supersede_stale_sms.sql` is applied
 
 ### Outstanding
 
-- deploy the reviewed installation-identifier unwrap correction after separate authorization;
-- verify existing key health and repeat the existing envelope under a new real sandbox provider event after separate acceptance authorization;
 - design a production-grade provider-authentication boundary before any live-provider claim;
-- validate real provider receipt, authentication, decryption, replay handling, delayed/out-of-order reconciliation, and watchdog evidence end to end;
+- validate remaining hosted failure/security cases and timely fallback evidence, internet-first convergence, and conflict handling end to end;
 - complete the physical failure matrix, including SMS unavailable, dual-SIM ambiguity, low battery, retry, and ambiguous carrier outcomes;
+- complete the additive trusted-contact notification acceptance matrix separately;
+- record live-provider/carrier acceptance only if a suitable production-grade provider route becomes available; sandbox evidence cannot establish it;
 - complete Milestone 6 end-to-end acceptance.
 
 ### Acceptance target
 
-The controlled data-bad/SMS-good carrier handoff path has passed physically. The remaining acceptance target covers the configured inbound route and cloud ingestion, data and SMS unavailable, delayed or ambiguous outcomes, duplicate handling, dual-SIM ambiguity, low battery, retry behavior, and provider reconciliation. Internet recovery and both unsent supersession and handed-off history retention have passed physically.
+The controlled data-bad/SMS-good carrier handoff path and sandbox inbound authentication, duplicate-envelope handling, historical ordering, and SMS-first reconciliation have passed. The remaining target covers production-grade provider authentication/routing, untested inbound failure and internet-first/conflict cases, both transports unavailable, ambiguous outcomes, dual-SIM ambiguity, low battery, retry behavior, and the final physical failure matrix. Internet recovery and both unsent supersession and handed-off history retention have passed physically.
 
 The additive trusted-contact path must also pass healthy-monitoring silence, real watchdog-driven `VERIFYING`, no stale started alert after case resolution, fresh-contact resolution, offline Journey completion, contact opt-out, and transport failure remaining independent of deterministic monitoring state.
 

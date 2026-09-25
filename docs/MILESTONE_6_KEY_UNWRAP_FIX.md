@@ -2,8 +2,9 @@
 
 Milestone 6 remains **IN PROGRESS**. Migration
 `20260924000200_fix_inbound_key_unwrap_identity.sql` and the matching function
-code are local only: **NOT HOSTED / NOT DEPLOYED**. This document authorizes no
-deployment, key rotation, data rewrite, or sandbox resend.
+code are hosted. The original failed receipt and all existing key ciphertext
+were preserved. This document authorizes no further deployment, key rotation,
+data rewrite, or sandbox resend.
 
 ## Diagnosis and correction
 
@@ -45,9 +46,9 @@ still propagate as unavailable; public adapter responses remain generic
 200 after classified persistence versus 503 on unavailable processing.
 
 No existing ciphertext, IV, KEK version, master key, binding, receipt, JC1 wire
-format, or Android production code is changed. Existing encrypted keys should
-remain valid when unwrapped with the original AAD. A real production unwrap
-and attempt-5 decryption have not yet been performed with this correction.
+format, or Android production code was changed. The corrected hosted path
+subsequently unwrapped the existing key and authenticated the real attempt-5
+JC1 without rotation or re-provisioning.
 
 ## Regression and interoperability evidence
 
@@ -83,52 +84,22 @@ was reset or migrated.
   the code does not reprocess or rewrite it.
 - Raw JC1 text is intentionally absent from the database. The failed receipt
   cannot supply the payload for automatic reprocessing.
-- After correction and separately authorized sandbox acceptance, a fresh manual
-  send of the exact same JC1 can supply a new genuine Africa's Talking event ID.
-  Never fabricate a provider event ID or bypass the old receipt.
-- No authenticated envelope currently exists for attempt 5. A successful new
-  event can create that identity once. Subsequent distinct events attach duplicate
-  receipts; they cannot duplicate the envelope or canonical observation.
+- After correction, a separately authorized manual send of the exact same JC1
+  supplied a new genuine Africa's Talking event ID. Never fabricate a provider
+  event ID or bypass the old receipt.
+- Exactly one authenticated envelope now exists for attempt 5. A subsequent
+  genuine distinct provider event was `AUTHENTICATED_DUPLICATE`, with a separate
+  immutable receipt and no second envelope or canonical observation.
 - Both unique constraints and all immutable-evidence triggers remain in force.
 
-## Safe hosted acceptance procedure (not executed)
+## Hosted acceptance outcome
 
-1. Reverify hosted project identity, migration history, and the expected failed
-   receipt by its known digest using read-only queries. Record only counts,
-   lifecycle state, timestamps, and fingerprints. Preserve the old receipt.
-2. With separate deployment authorization, apply only the new migration and
-   deploy the matching adapter/core together in a controlled window. The old
-   adapter expects the removed ambiguous field and will fail closed until the
-   new code is deployed. Do not deliver callbacks during that window. Rebuild
-   any Dashboard single-file artifact from the corrected source; the existing
-   local artifact predates this fix and must not be reused.
-3. For a read-only cryptographic preflight, use a trusted local diagnostic
-   process with an externally supplied copy of the exact existing KEK version
-   held only in process memory. Hosted secrets cannot be read back via ordinary
-   secret-listing tools. If that KEK is unavailable, stop; do not rotate,
-   reprovision, retrieve secrets through a public endpoint, or change hosted data.
-4. Supply the exact persisted attempt-5 JC1 through a private in-memory input,
-   never a command-line argument or log. Validate its known digest, canonical
-   102-character shape, and sequence 5. Call only the read-only resolver for its
-   header key ID/handle. Verify `installation_identifier` equals the original
-   installation's client identifier; never use `installation_row_id` as AAD.
-5. Call `decryptFallbackMasterKey` with the returned ciphertext/IV/version,
-   configured KEK, owner ID, explicit installation identifier, and key ID.
-   Output only unwrap status, key ID/version, and SHA-256 of the 32-byte result.
-   Use `deriveJourneyKey` and `authenticateAndDecryptJc1V1` directly next;
-   output only derived-key fingerprint, AAD fingerprint, authentication status,
-   and whether telemetry sequence equals 38. Do not call
-   `ingestVerifiedJc1Transport` or the recording RPC in this read-only preflight.
-   Do not output body fields, coordinates, handles, key bytes, or full payload.
-   Clear transient key arrays and close the diagnostic process afterward.
-6. Only after successful preflight and explicit authorization, manually send
-   that same existing envelope once through the simulator under a new real
-   provider event ID. Do not allocate a new Android envelope.
-7. Inspect the new receipt: authenticated envelope sequence 5 / telemetry 38,
-   one canonical observation (or attachment to an observation already synced),
-   provenance/conflict classification, and distinct event/provider/receive times.
-   The old failed receipt must remain unchanged. Historical evidence must not
-   manufacture freshness or alter cloud-contact time. Record actual HTTP status
-   only from sanitized status metadata; never report a secret-bearing URL.
-8. Stop on any mismatch. Duplicate/replay/out-of-order acceptance follows only
-   after this corrected single-envelope acceptance succeeds.
+The planned read-only hosted crypto preflight could not run: no existing
+non-mutating deployed interface could access the hosted KEK and exact JC1
+without creating a provider event. No diagnostic endpoint was added. After
+separate authorization, the existing device JC1 was manually submitted under a
+new genuine sandbox provider event ID. It became `AUTHENTICATED_NEW`, proving
+the corrected unwrap and envelope authentication path against existing
+production key material. The original failed receipt remained unchanged.
+Subsequent genuine sandbox events established duplicate-envelope and older
+out-of-order behavior; see `MILESTONE_6_ACCEPTANCE.md`.
