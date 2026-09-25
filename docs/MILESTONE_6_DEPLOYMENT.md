@@ -47,6 +47,8 @@ The reviewed provider material does not document a cryptographic signature for i
 
 Any future inbound deployment requires a separate review of provider authentication, secret handling, replay resistance, binding lookup, key lifecycle, error redaction, idempotency, and evidence provenance.
 
+On 2026-09-25, controlled synthetic/test Journeys exercised the deployed Edge path directly: ACTIVE authentication, revoked key/binding rejection, distinct `KEY_UNWRAP_FAILED` and `ENVELOPE_AUTHENTICATION_FAILED`, internet-first matching, and same-sequence conflict all passed with generic public responses. Canonical internet provenance and freshness/verification state were preserved. Seven immutable receipts, three authenticated envelopes, three canonical observations, and three reconciliation records remain as acceptance evidence; all test keys are revoked and all synthetic Journeys are closed. This acceptance required no deployment and did not use Africa's Talking delivery. See `MILESTONE_6_ACCEPTANCE.md` for results.
+
 ## Trusted-contact notification slice
 
 The cloud-to-trusted-contact slice includes its Supabase outbox migrations, stale-started-alert supersession correction, trusted-viewer preference UI, and AWS watchdog dispatch implementation. Hosted migration `20260918000200` is applied.
@@ -55,6 +57,6 @@ Repository tests cover the outbox and dispatcher behavior. Physical trusted-cont
 
 ## Remaining deployment and acceptance boundaries
 
-No further deployment is authorized by this record. The sandbox-only inbound route is accepted for production-JC1 authentication, duplicate-envelope handling, SMS-first reconciliation, and historical ordering. Remaining work requires separate authorization for a production-grade provider boundary and live route, hosted failure/internet-first/conflict/timely-evidence cases, the physical SMS failure matrix, and trusted-contact notification acceptance. Some live-provider-only tests cannot be completed in the Africa's Talking sandbox and may remain explicitly pending for the hackathon.
+No further deployment is authorized by this record. The sandbox-only inbound route is accepted for production-JC1 authentication, duplicate-envelope handling, SMS-first reconciliation, and historical ordering; controlled hosted Edge-path failure classifications, internet-first matching, and conflict preservation have also passed. Remaining deterministic hosted acceptance covers timely authenticated fallback evidence and verification/watchdog transitions, plus JC1 completion behavior. Physical/live work remains for the telephony failure matrix, production-grade provider authentication, real carrier-to-provider delivery/retry/latency, and trusted-contact notification receipt. Some live-provider-only tests cannot be completed in the Africa's Talking sandbox and may remain explicitly pending for the hackathon. Milestone 6 remains **IN PROGRESS**.
 
 Do not mark Milestone 6 accepted until the remaining physical failure matrix and cloud-ingestion sections in `MILESTONE_6_ACCEPTANCE.md` pass.

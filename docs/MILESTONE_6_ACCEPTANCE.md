@@ -110,7 +110,7 @@ Automated repository validation now establishes:
 - delayed historical fallback remaining valid evidence without falsely resolving current silence;
 - deterministic completion handling and service-role-only ingestion RPC access.
 
-These initial assertions are local automated evidence. Migrations `20260924000100` and `20260924000200` were subsequently hosted, and genuine sandbox events exercised the corrected crypto and reconciliation paths as recorded below. Other failure and convergence cases remain local-test evidence only.
+These initial assertions are local automated evidence. Migrations `20260924000100` and `20260924000200` were subsequently hosted. Genuine sandbox events and the controlled hosted Edge-path cases below now establish the recorded authentication, failure, and reconciliation outcomes. Timely-evidence transitions and JC1 completion behavior still require hosted acceptance.
 
 ### Africa's Talking sandbox adapter repository evidence — 2026-09-24
 
@@ -129,23 +129,40 @@ Diagnosis found a different installation UUID in inbound key-unwrapping AAD than
 - Provider-event uniqueness, envelope-identity uniqueness, canonical observation uniqueness, and immutable receipt/envelope/reconciliation triggers are active. Same-provider-event retry is covered locally by Node and pgTAP; a fabricated hosted provider retry is not required for this slice.
 - Sandbox webhook delivery latency varied substantially, including roughly 13–20 minutes in some runs. These delays occurred before JOURNEY received the callbacks. They are not JOURNEY processing latency and are not evidence of live-provider or production-carrier performance.
 
+### Controlled hosted valid-key Edge-path acceptance — 2026-09-25
+
+All cases below passed through the deployed `africastalking-inbound` Edge Function using isolated synthetic/test Journeys and provisioned test keys. Requests were submitted directly to the function; this run did not use Africa's Talking delivery or alter the production Journey/binding. Every callback used a unique synthetic provider event ID and returned generic HTTP 200 `accepted` after durable handling, without exposing internal or cryptographic failure details.
+
+| Case | Durable classification | Reconciliation |
+| --- | --- | --- |
+| ACTIVE key, valid binding, valid JC1 | `AUTHENTICATED_NEW` | `SMS_CREATED_CANONICAL` |
+| Revoked key | `KEY_REVOKED` | None |
+| Revoked binding | `BINDING_REVOKED` | None |
+| Invalid synthetic key wrap | `KEY_UNWRAP_FAILED` | None |
+| Tampered envelope | `ENVELOPE_AUTHENTICATION_FAILED` | None |
+| Internet-first matching observation | `AUTHENTICATED_NEW` | `SMS_MATCHED_INTERNET` |
+| Same-sequence conflict | `AUTHENTICATED_NEW` | `SMS_CONFLICT` |
+
+Preservation/freshness invariants passed across all callbacks: no silent overwrite, no duplicate canonical observation, no false authenticated-device freshness, and no verification or notification transition attributable to negative/conflict cases. Original internet observations and receipt timestamps remained unchanged. Negative cases created no authenticated envelope or new canonical observation; matching/conflicting SMS provenance remained attached through immutable reconciliation records. Historical SMS did not overwrite cloud-contact time or infer internet recovery, current location, safety, or danger.
+
+Retain the controlled acceptance evidence: **7 immutable receipts, 3 authenticated envelopes, 3 canonical observations, and 3 reconciliation records**. All four test keys were revoked and all five synthetic Journeys were closed, including one setup-only fixture with no key or inbound receipt. No active trusted-contact access or notification rows remained for these fixtures. These records are acceptance evidence and should not be deleted.
+
 ### Still required
 
-Accepted here: genuine sandbox callback shape/text preservation, active binding/key resolution, real JC1 authentication, SMS-first canonicalization, distinct-provider-event duplicate handling, historical out-of-order retention, and stale-evidence/watchdog safety. Still required for production-quality completion:
+Accepted here: genuine sandbox callback shape/text preservation, active binding/key resolution, real JC1 authentication, SMS-first canonicalization, distinct-provider-event duplicate handling, historical out-of-order retention, and stale-evidence/watchdog safety. The earlier deployed reject-path checks and controlled valid-key cases also complete the scoped hosted failure/security and internet-first/conflict acceptance. They do not establish production-grade provider authentication. Still required for production-quality completion:
 
-1. Hosted failure/security acceptance for malformed, unknown, revoked, and authentication-failed envelopes without sensitive disclosure; local tests already cover these paths.
-2. Hosted internet-first matching and conflicting same-sequence reconciliation; accepted sandbox events exercised SMS-first and historical out-of-order paths.
-3. Timely authenticated fallback evidence and verification resolution without treating SMS as cloud contact or safety evidence; the accepted real envelopes were historical and correctly ineligible for current freshness.
-4. The remaining physical SMS/telephony failure matrix, including both transports unavailable, ambiguous callback/outcome, SIM ambiguity/removal, low battery, and bounded retry behavior.
-5. A production-grade provider authentication and operational route before any live-provider claim. The Africa's Talking sandbox shared URL secret is not a signed provider webhook. Live-carrier/provider delivery, provider failure behavior, and latency acceptance may remain explicitly pending for the hackathon.
-6. The separate cloud-to-trusted-contact notification physical checklist; inbound traveller fallback does not prove trusted-contact handset receipt or human reading.
+1. Hosted JC1 completion behavior, including current completion and delayed completion that must not rewrite newer terminal state.
+2. Timely authenticated fallback evidence and verification/watchdog transitions without treating SMS as cloud contact or safety evidence; the accepted real envelopes were historical and correctly ineligible for current freshness.
+3. The remaining physical SMS/telephony failure matrix, including both transports unavailable, ambiguous callback/outcome, SIM ambiguity/removal, low battery, and bounded retry behavior.
+4. A production-grade provider authentication and operational route before any live-provider claim. The Africa's Talking sandbox shared URL secret is not a signed provider webhook. Live-carrier/provider delivery, provider failure behavior, and latency acceptance may remain explicitly pending for the hackathon.
+5. The separate cloud-to-trusted-contact notification physical checklist; inbound traveller fallback does not prove trusted-contact handset receipt or human reading.
 
 ### Remaining acceptance matrix
 
 | Boundary | Accepted | Still required |
 | --- | --- | --- |
 | Device and carrier send | Provisioning, Keystore, durable offline JC1, explicit SIM/permission route, one-segment Android `RESULT_OK` handoff, controlled recipient byte equality, recovery and historical handoff retention | Physical failure matrix: permission/SMS/data unavailability, SIM removal or ambiguity, low battery, missing or ambiguous sent callback, retry/unknown outcome, and no unintended resend |
-| Hosted provider-neutral ingestion | Real sandbox production-JC1 authentication after unwrap correction; SMS-first canonicalization; immutable failed/new/duplicate receipts; distinct-provider-event replay; older envelope 4 arriving after 5 without freshness regression | Hosted malformed/unknown/revoked/auth-failure handling, internet-first match and conflict preservation, timely evidence/verification transitions, and terminal completion behavior beyond local tests |
+| Hosted provider-neutral ingestion | Real sandbox production-JC1 authentication, SMS-first canonicalization, duplicate/historical ordering; deployed reject-path checks; controlled ACTIVE/revoked key/binding and distinct unwrap/envelope failure classifications; internet-first match and conflict preservation with generic responses and unchanged freshness | Timely authenticated fallback evidence and verification/watchdog transitions; JC1 completion behavior |
 | Trusted-contact notification | Outbox/supersession implementation and hosted migrations | Physical notification failure/receipt checklist; provider acceptance does not prove handset delivery or human reading |
 | Live provider | No production-provider claim | A provider-authenticated live inbound route and operational acceptance; real carrier-to-provider delivery, provider retry/failure behavior, and latency characterization cannot be established with this sandbox and may remain explicitly pending for the hackathon |
 
