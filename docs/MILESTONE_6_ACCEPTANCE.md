@@ -1,6 +1,6 @@
 # Milestone 6 Acceptance Record
 
-Milestone 6 remains **IN PROGRESS**. Provisioning, protected offline allocation, persistence, physical Android SMS carrier handoff, and authenticated internet recovery were accepted on 2026-09-23. The provider-neutral inbound core and Africa's Talking sandbox adapter are hosted; real production JC1 authentication, duplicate-envelope handling, SMS-first reconciliation, and historical out-of-order acceptance passed on 2026-09-24–25. This is sandbox acceptance, not production-provider or complete Milestone 6 acceptance.
+Milestone 6 remains **IN PROGRESS**. Provisioning, protected offline allocation, persistence, physical Android SMS carrier handoff, and authenticated internet recovery were accepted on 2026-09-23. The provider-neutral inbound core and Africa's Talking sandbox adapter are hosted; real production JC1 authentication, duplicate-envelope handling, SMS-first reconciliation, and historical out-of-order acceptance passed on 2026-09-24–25. Subsequent controlled Edge-path tests completed the scoped deterministic hosted acceptance. This does not establish production-provider or complete Milestone 6 acceptance.
 
 ## Completed acceptance — 2026-09-23
 
@@ -93,7 +93,7 @@ The controlled data-unavailable/SMS-available success path is accepted. Remainin
 
 For the trusted-contact notification slice, the existing healthy-monitoring silence, watchdog-driven verification, restoration, offline completion, opt-out, and transport-failure checklist also remains physically unrecorded. Carrier receipt must not be generalized as guaranteed delivery, human reading, or evidence of traveller safety.
 
-## Remaining cloud-ingestion acceptance
+## Cloud-ingestion acceptance
 
 ### Repository evidence — 2026-09-24
 
@@ -110,7 +110,7 @@ Automated repository validation now establishes:
 - delayed historical fallback remaining valid evidence without falsely resolving current silence;
 - deterministic completion handling and service-role-only ingestion RPC access.
 
-These initial assertions are local automated evidence. Migrations `20260924000100` and `20260924000200` were subsequently hosted. Genuine sandbox events and the controlled hosted Edge-path cases below now establish the recorded authentication, failure, reconciliation, and timely-evidence outcomes. JC1 completion behavior still requires hosted acceptance.
+These initial assertions are local automated evidence. Migrations `20260924000100` and `20260924000200` were subsequently hosted. Genuine sandbox events and the controlled hosted Edge-path cases below now establish the recorded authentication, failure, reconciliation, timely-evidence, and completion outcomes.
 
 ### Africa's Talking sandbox adapter repository evidence — 2026-09-24
 
@@ -160,22 +160,37 @@ Two additional controlled synthetic Journeys used normal owner provisioning, aut
 
 Retain the separate controlled evidence from this run: **7 immutable receipts, 5 authenticated envelopes, 5 canonical observations, 7 reconciliation records, and 1 resolved verification case**. Both synthetic Journeys were closed; both test keys and bindings were revoked. No notification rows remained. This is hosted deterministic acceptance, not live-provider latency or handset-delivery acceptance.
 
+### Hosted JC1 completion acceptance — 2026-09-25
+
+JC1 V1 encodes `JOURNEY_COMPLETED` as event type `2`, making the first protected-frame byte `0x12`. The authenticated event time is the Journey completion timestamp. Controlled synthetic/test Journeys and provisioned keys exercised the deployed `africastalking-inbound` Edge Function directly; this run did not use the Africa's Talking simulator or production Journeys.
+
+| Case | Durable classification | Reconciliation and Journey result |
+| --- | --- | --- |
+| Current, progressive completion | `AUTHENTICATED_NEW` | `COMPLETION_APPLIED`; Journey and monitoring closed with exactly one terminal transition |
+| Exact completion replay under a new provider event | `AUTHENTICATED_DUPLICATE` | `DUPLICATE_ENVELOPE`; receipt retained separately, no second terminal transition |
+| Older completion after newer accepted evidence | `AUTHENTICATED_NEW` | `COMPLETION_STALE`; terminal state and timestamp unchanged |
+| Older completion after normal owner closure | `AUTHENTICATED_NEW` | `COMPLETION_STALE`; no reopening or repeated closure |
+| Ordinary observation arriving after completion | `AUTHENTICATED_NEW` | `SMS_CREATED_CANONICAL`; retained as canonical history while Journey and monitoring remain closed, without advancing device freshness |
+
+Completion evidence retains separate authenticated event, provider-arrival, and server-receipt times. SMS receipt did not replace the completion event time or change `last_cloud_contact_at`. No completion or later observation inferred internet recovery, safety/danger, or present location; no duplicate notification or watchdog/closure transition was produced.
+
+Retain the controlled evidence from this run: **8 immutable receipts, 7 authenticated envelopes, 3 canonical observations, and 8 reconciliation records**. All three synthetic Journeys were closed and their test keys and bindings revoked. The scoped deterministic hosted Milestone 6 acceptance is complete.
+
 ### Still required
 
-Accepted here: genuine sandbox callback shape/text preservation, active binding/key resolution, real JC1 authentication, SMS-first canonicalization, distinct-provider-event duplicate handling, historical out-of-order retention, and stale-evidence/watchdog safety. The deployed reject-path checks and controlled valid-key and timely-evidence cases complete the scoped hosted failure/security, internet-first/conflict, and watchdog acceptance. They do not establish production-grade provider authentication. Still required for production-quality completion:
+Accepted here: genuine sandbox callback shape/text preservation, active binding/key resolution, real JC1 authentication, SMS-first canonicalization, distinct-provider-event duplicate handling, historical out-of-order retention, and stale-evidence/watchdog safety. Deployed reject-path checks and controlled valid-key, timely-evidence, and completion cases complete the scoped deterministic hosted Milestone 6 acceptance. They do not establish production-grade provider authentication. Still required for production-quality completion:
 
-1. Hosted JC1 completion behavior, including current completion and delayed completion that must not rewrite newer terminal state.
-2. The remaining physical SMS/telephony failure matrix, including both transports unavailable, ambiguous callback/outcome, SIM ambiguity/removal, low battery, and bounded retry behavior.
-3. A production-grade provider authentication and operational route before any live-provider claim. The Africa's Talking sandbox shared URL secret is not a signed provider webhook. Live-carrier/provider delivery, provider failure behavior, and latency acceptance may remain explicitly pending for the hackathon.
-4. The separate cloud-to-trusted-contact notification physical checklist; inbound traveller fallback does not prove trusted-contact handset receipt or human reading.
+1. The remaining physical SMS/telephony failure matrix, including both transports unavailable, ambiguous callback/outcome, SIM ambiguity/removal, low battery, and bounded retry behavior.
+2. The separate cloud-to-trusted-contact notification physical checklist; inbound traveller fallback does not prove trusted-contact handset receipt or human reading.
+3. A production-grade provider authentication and operational route before any live-provider claim. The Africa's Talking sandbox shared URL secret is not a signed provider webhook. Live-carrier/provider delivery, provider failure behavior, and latency acceptance may remain explicitly pending for the hackathon when live telecom provisioning is unavailable.
 
 ### Remaining acceptance matrix
 
 | Boundary | Accepted | Still required |
 | --- | --- | --- |
 | Device and carrier send | Provisioning, Keystore, durable offline JC1, explicit SIM/permission route, one-segment Android `RESULT_OK` handoff, controlled recipient byte equality, recovery and historical handoff retention | Physical failure matrix: permission/SMS/data unavailability, SIM removal or ambiguity, low battery, missing or ambiguous sent callback, retry/unknown outcome, and no unintended resend |
-| Hosted provider-neutral ingestion | Real sandbox production-JC1 authentication, SMS-first canonicalization, duplicate/historical ordering; deployed reject-path checks; controlled ACTIVE/revoked key/binding and distinct unwrap/envelope failure classifications; internet-first match/conflict; timely fallback evidence preventing false silence and resolving one open verification without cloud-contact or safety claims | JC1 completion behavior |
+| Hosted provider-neutral ingestion | Real sandbox production-JC1 authentication, SMS-first canonicalization, duplicate/historical ordering; deployed reject-path checks; controlled ACTIVE/revoked key/binding and distinct unwrap/envelope failure classifications; internet-first match/conflict; timely fallback evidence preventing false silence and resolving one open verification; current, duplicate, delayed, and post-closure JC1 completion behavior | Scoped deterministic hosted acceptance complete; production-grade provider boundary remains separate |
 | Trusted-contact notification | Outbox/supersession implementation and hosted migrations | Physical notification failure/receipt checklist; provider acceptance does not prove handset delivery or human reading |
 | Live provider | No production-provider claim | A provider-authenticated live inbound route and operational acceptance; real carrier-to-provider delivery, provider retry/failure behavior, and latency characterization cannot be established with this sandbox and may remain explicitly pending for the hackathon |
 
-Milestone 6 must not be marked accepted until the remaining physical failure matrix and cloud-ingestion section pass end to end.
+Milestone 6 remains in progress pending the physical telephony failure matrix, trusted-contact notification receipt acceptance, and explicit resolution or limitation of production-provider authentication and live carrier-to-provider behavior.
