@@ -12,7 +12,7 @@ Parameters:
     Description: HTTPS trusted-viewer base URL included without tokens in factual SMS alerts
   SmsOriginationIdentity:
     Type: String
-    Description: Existing End User Messaging SMS sender ID, phone identity, or pool identity
+    Description: ARN of the existing End User Messaging SMS sender, phone, or pool identity
   SmsConfigurationSetName:
     Type: String
     Default: ''
@@ -60,7 +60,7 @@ Resources:
                 Resource: !Ref WatchdogSecret
               - Effect: Allow
                 Action: sms-voice:SendTextMessage
-                Resource: '*'
+                Resource: !Ref SmsOriginationIdentity
 
   WatchdogFunction:
     Type: AWS::Serverless::Function
