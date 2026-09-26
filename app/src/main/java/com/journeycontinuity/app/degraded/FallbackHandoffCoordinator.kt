@@ -60,16 +60,11 @@ class FallbackHandoffCoordinator(
             telephony.send(request)
             FallbackHandoffResult.SubmittedAwaitingCallback
         } catch (_: SecurityException) {
-            recordUnavailableRace(claimed, RESULT_PERMISSION_LOST)
-            FallbackHandoffResult.Unavailable("SMS permission was revoked before handoff.")
+            // A post-claim exception is not a matching sent callback. Preserve uncertainty.
+            FallbackHandoffResult.Unavailable("SMS permission was revoked during handoff; outcome is unresolved.")
         } catch (_: IllegalArgumentException) {
-            attempts.permanentFailure(
-                localAttemptId,
-                claimed.handoffGeneration,
-                clock(),
-                RESULT_INVALID_ARGUMENT,
-            )
-            FallbackHandoffResult.Rejected("Android rejected the SMS handoff configuration.")
+            // After the durable claim, an exception cannot prove the carrier did not accept it.
+            FallbackHandoffResult.Unavailable("Android rejected the SMS handoff configuration; outcome is unresolved.")
         } catch (_: Throwable) {
             // An unexpected exception is not proof that the modem did not accept the request.
             FallbackHandoffResult.SubmittedAwaitingCallback
@@ -93,16 +88,12 @@ class FallbackHandoffCoordinator(
 
     suspend fun recoverUncertain(localAttemptId: Long, generation: Int): Boolean {
         val now = clock()
-        val delay = retryDelay(generation)
-        val changed = attempts.unknownForRetry(
+        return attempts.markUnknownOutcome(
             localAttemptId = localAttemptId,
             generation = generation,
             staleBefore = now - uncertaintyWindowMillis,
             atMillis = now,
-            nextRetryAt = now + delay,
         )
-        if (changed) scheduler.scheduleRetry(localAttemptId, delay)
-        return changed
     }
 
     private suspend fun markRetry(
@@ -116,18 +107,11 @@ class FallbackHandoffCoordinator(
         val changed = attempts.retryPending(
             localAttemptId, generation, now + delay, outcome, resultCode,
         )
-        if (changed) scheduler.scheduleRetry(localAttemptId, delay)
-        return changed
-    }
-
-    private suspend fun recordUnavailableRace(attempt: FallbackAttemptEntity, resultCode: Int) {
-        markRetry(
-            attempt.localAttemptId,
-            attempt.handoffGeneration,
-            clock(),
-            resultCode,
-            FallbackTransportOutcome.TRANSPORT_UNAVAILABLE,
-        )
+        if (changed) {
+            scheduler.scheduleRetry(localAttemptId, delay)
+            return true
+        }
+        return attempts.retryExhausted(localAttemptId, generation, now, resultCode)
     }
 
     private fun validatePersistedAttempt(attempt: FallbackAttemptEntity): String? {
@@ -146,8 +130,10 @@ class FallbackHandoffCoordinator(
     }
 
     private fun FallbackAttemptEntity.isReady(now: Long): Boolean = when (transportState) {
-        FallbackTransportState.ALLOCATED -> true
-        FallbackTransportState.RETRY_PENDING -> nextRetryAt == null || nextRetryAt <= now
+        FallbackTransportState.ALLOCATED -> transportAttemptCount < MAX_TRANSPORT_INVOCATIONS
+        FallbackTransportState.RETRY_PENDING ->
+            transportAttemptCount < MAX_TRANSPORT_INVOCATIONS &&
+                (nextRetryAt == null || nextRetryAt <= now)
         else -> false
     }
 
@@ -158,8 +144,6 @@ class FallbackHandoffCoordinator(
         const val DEFAULT_UNCERTAINTY_WINDOW_MILLIS = 15 * 60_000L
         const val BASE_RETRY_MILLIS = 15 * 60_000L
         const val MAX_RETRY_MILLIS = 60 * 60_000L
-        const val RESULT_PERMISSION_LOST = -10_001
-        const val RESULT_INVALID_ARGUMENT = -10_002
     }
 }
 
@@ -174,20 +158,20 @@ interface FallbackHandoffAttemptStore {
         generation: Int,
         nextRetryAt: Long,
         outcome: FallbackTransportOutcome,
-        resultCode: Int?,
+        resultCode: Int,
     ): Boolean
+    suspend fun retryExhausted(localAttemptId: Long, generation: Int, atMillis: Long, resultCode: Int): Boolean
     suspend fun permanentFailure(
         localAttemptId: Long,
         generation: Int,
         atMillis: Long,
         resultCode: Int?,
     ): Boolean
-    suspend fun unknownForRetry(
+    suspend fun markUnknownOutcome(
         localAttemptId: Long,
         generation: Int,
         staleBefore: Long,
         atMillis: Long,
-        nextRetryAt: Long,
     ): Boolean
 }
 

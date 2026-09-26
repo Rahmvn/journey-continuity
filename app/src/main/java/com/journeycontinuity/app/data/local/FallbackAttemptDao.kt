@@ -16,6 +16,7 @@ interface FallbackAttemptDao {
     @Query(
         """SELECT * FROM fallback_attempts
            WHERE journeyId = :journeyId
+             AND transportAttemptCount < 2
              AND (transportState = :allocated
                OR (transportState = :retryPending AND (nextRetryAt IS NULL OR nextRetryAt <= :atMillis)))
            ORDER BY envelopeSequence LIMIT 1""",
@@ -81,6 +82,7 @@ interface FallbackAttemptDao {
                lastTransportResultCode = NULL,
                uncertainSince = NULL
            WHERE localAttemptId = :localAttemptId
+             AND transportAttemptCount < 2
              AND (transportState = :allocated
                OR (transportState = :retryPending AND (nextRetryAt IS NULL OR nextRetryAt <= :atMillis)))""",
     )
@@ -96,7 +98,8 @@ interface FallbackAttemptDao {
         """UPDATE fallback_attempts
            SET transportState = :handedOff, terminalAt = :atMillis,
                lastTransportOutcome = :outcome, lastTransportResultCode = :resultCode
-           WHERE localAttemptId = :localAttemptId AND transportState = :inProgress
+           WHERE localAttemptId = :localAttemptId
+             AND transportState IN (:inProgress, :unknownOutcome)
              AND handoffGeneration = :generation""",
     )
     suspend fun markHandedOff(
@@ -106,6 +109,7 @@ interface FallbackAttemptDao {
         resultCode: Int,
         handedOff: FallbackTransportState = FallbackTransportState.HANDED_OFF,
         inProgress: FallbackTransportState = FallbackTransportState.HANDOFF_IN_PROGRESS,
+        unknownOutcome: FallbackTransportState = FallbackTransportState.UNKNOWN_OUTCOME,
         outcome: FallbackTransportOutcome = FallbackTransportOutcome.ANDROID_HANDOFF_SUCCEEDED,
     ): Int
 
@@ -113,7 +117,10 @@ interface FallbackAttemptDao {
         """UPDATE fallback_attempts
            SET transportState = :retryPending, nextRetryAt = :nextRetryAt,
                lastTransportOutcome = :outcome, lastTransportResultCode = :resultCode
-           WHERE localAttemptId = :localAttemptId AND transportState = :inProgress
+           WHERE localAttemptId = :localAttemptId
+             AND transportState IN (:inProgress, :unknownOutcome)
+             AND transportAttemptCount < 2
+             AND :outcome IN (:retryableFailure, :transportUnavailable)
              AND handoffGeneration = :generation""",
     )
     suspend fun markRetryPending(
@@ -121,16 +128,41 @@ interface FallbackAttemptDao {
         generation: Int,
         nextRetryAt: Long,
         outcome: FallbackTransportOutcome,
-        resultCode: Int?,
+        resultCode: Int,
         retryPending: FallbackTransportState = FallbackTransportState.RETRY_PENDING,
         inProgress: FallbackTransportState = FallbackTransportState.HANDOFF_IN_PROGRESS,
+        unknownOutcome: FallbackTransportState = FallbackTransportState.UNKNOWN_OUTCOME,
+        retryableFailure: FallbackTransportOutcome = FallbackTransportOutcome.RETRYABLE_FAILURE,
+        transportUnavailable: FallbackTransportOutcome = FallbackTransportOutcome.TRANSPORT_UNAVAILABLE,
+    ): Int
+
+    @Query(
+        """UPDATE fallback_attempts
+           SET transportState = :permanentFailure, terminalAt = :atMillis,
+               nextRetryAt = NULL, lastTransportOutcome = :exhaustedOutcome,
+               lastTransportResultCode = :resultCode
+           WHERE localAttemptId = :localAttemptId
+             AND transportState IN (:inProgress, :unknownOutcome)
+             AND handoffGeneration = :generation
+             AND transportAttemptCount >= 2""",
+    )
+    suspend fun markRetryExhausted(
+        localAttemptId: Long,
+        generation: Int,
+        atMillis: Long,
+        resultCode: Int,
+        permanentFailure: FallbackTransportState = FallbackTransportState.PERMANENT_FAILURE,
+        inProgress: FallbackTransportState = FallbackTransportState.HANDOFF_IN_PROGRESS,
+        unknownOutcome: FallbackTransportState = FallbackTransportState.UNKNOWN_OUTCOME,
+        exhaustedOutcome: FallbackTransportOutcome = FallbackTransportOutcome.RETRY_EXHAUSTED,
     ): Int
 
     @Query(
         """UPDATE fallback_attempts
            SET transportState = :permanentFailure, terminalAt = :atMillis,
                lastTransportOutcome = :outcome, lastTransportResultCode = :resultCode
-           WHERE localAttemptId = :localAttemptId AND transportState = :inProgress
+           WHERE localAttemptId = :localAttemptId
+             AND transportState IN (:inProgress, :unknownOutcome)
              AND handoffGeneration = :generation""",
     )
     suspend fun markPermanentFailure(
@@ -140,27 +172,27 @@ interface FallbackAttemptDao {
         resultCode: Int?,
         permanentFailure: FallbackTransportState = FallbackTransportState.PERMANENT_FAILURE,
         inProgress: FallbackTransportState = FallbackTransportState.HANDOFF_IN_PROGRESS,
+        unknownOutcome: FallbackTransportState = FallbackTransportState.UNKNOWN_OUTCOME,
         outcome: FallbackTransportOutcome = FallbackTransportOutcome.PERMANENT_FAILURE,
     ): Int
 
     @Query(
         """UPDATE fallback_attempts
-           SET transportState = :retryPending, nextRetryAt = :nextRetryAt,
-               lastTransportOutcome = :unknownOutcome, uncertainSince = :atMillis,
+           SET transportState = :unknownOutcome, nextRetryAt = NULL,
+               lastTransportOutcome = :unknownOutcomeCategory, uncertainSince = :atMillis,
                lastTransportResultCode = NULL
            WHERE localAttemptId = :localAttemptId AND transportState = :inProgress
              AND handoffGeneration = :generation
              AND handoffStartedAt IS NOT NULL AND handoffStartedAt <= :staleBefore""",
     )
-    suspend fun markUnknownOutcomeForRetry(
+    suspend fun markUnknownOutcome(
         localAttemptId: Long,
         generation: Int,
         staleBefore: Long,
         atMillis: Long,
-        nextRetryAt: Long,
-        retryPending: FallbackTransportState = FallbackTransportState.RETRY_PENDING,
         inProgress: FallbackTransportState = FallbackTransportState.HANDOFF_IN_PROGRESS,
-        unknownOutcome: FallbackTransportOutcome = FallbackTransportOutcome.UNKNOWN_OUTCOME,
+        unknownOutcome: FallbackTransportState = FallbackTransportState.UNKNOWN_OUTCOME,
+        unknownOutcomeCategory: FallbackTransportOutcome = FallbackTransportOutcome.UNKNOWN_OUTCOME,
     ): Int
 
     @Query(

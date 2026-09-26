@@ -10,6 +10,7 @@ import com.journeycontinuity.app.degraded.AesGcmEnvelopeProtector
 import com.journeycontinuity.app.degraded.DegradedConnectivityCoordinator
 import com.journeycontinuity.app.degraded.DegradedConnectivityPolicy
 import com.journeycontinuity.app.degraded.DegradedConnectivityPolicyConfig
+import com.journeycontinuity.app.degraded.ConnectivityPhase
 import com.journeycontinuity.app.degraded.DurableFallbackAttemptAllocator
 import com.journeycontinuity.app.degraded.FallbackAllocationResult
 import com.journeycontinuity.app.degraded.FallbackBindingStatus
@@ -225,6 +226,107 @@ class FallbackAttemptDatabaseTest {
     }
 
     @Test
+    fun fullRecoveryAndJourneyCompletionPreserveUnknownUntilLateSuccess() = runBlocking {
+        val coordinator = coordinator()
+        coordinator.activate(JOURNEY_ID, false)
+        now = 1_000
+        coordinator.timeAdvanced(JOURNEY_ID)
+        val original = database.fallbackAttemptDao().allForJourney(JOURNEY_ID).single()
+        val dao = database.fallbackAttemptDao()
+        assertEquals(1, dao.claimForHandoff(original.localAttemptId, 1_010))
+        assertEquals(1, dao.markUnknownOutcome(original.localAttemptId, 1, 1_010, 2_000))
+
+        now = 2_100
+        coordinator.validatedInternetAvailable(JOURNEY_ID)
+        database.syncStateDao().advanceCheckpoint(JOURNEY_ID, original.telemetrySequence)
+        coordinator.timeAdvanced(JOURNEY_ID)
+        now = 2_101
+        coordinator.freshHeartbeatSucceeded(JOURNEY_ID, now)
+        assertEquals(ConnectivityPhase.HEALTHY,
+            database.degradedConnectivityDao().get(JOURNEY_ID)!!.connectivityPhase)
+        assertEquals(FallbackTransportState.UNKNOWN_OUTCOME,
+            dao.getByLocalAttemptId(original.localAttemptId)!!.transportState)
+        assertEquals(0, dao.claimForHandoff(original.localAttemptId, Long.MAX_VALUE))
+
+        database.journeyDao().completeActive(2_200)
+        coordinator.journeyCompleted(JOURNEY_ID, 2_200)
+        assertEquals(FallbackTransportState.UNKNOWN_OUTCOME,
+            dao.getByLocalAttemptId(original.localAttemptId)!!.transportState)
+        assertEquals(1, dao.markHandedOff(original.localAttemptId, 1, 2_300, -1))
+        val reconciled = dao.getByLocalAttemptId(original.localAttemptId)!!
+        assertEquals(FallbackTransportState.HANDED_OFF, reconciled.transportState)
+        assertEquals(original.protectedPayloadText, reconciled.protectedPayloadText)
+        assertArrayEquals(original.nonce, reconciled.nonce)
+        assertArrayEquals(original.payloadSha256, reconciled.payloadSha256)
+        assertEquals(0, dao.supersedeUnsent(JOURNEY_ID, 2_400))
+    }
+
+    @Test
+    fun unknownOldAttemptAllowsOnlyExplicitPolicyEligibleFutureSparseEnvelope() = runBlocking {
+        val coordinator = coordinator()
+        coordinator.activate(JOURNEY_ID, false)
+        now = 1_000
+        coordinator.timeAdvanced(JOURNEY_ID)
+        val original = database.fallbackAttemptDao().allForJourney(JOURNEY_ID).single()
+        val dao = database.fallbackAttemptDao()
+        assertEquals(1, dao.claimForHandoff(original.localAttemptId, 1_010))
+        assertEquals(1, dao.markUnknownOutcome(original.localAttemptId, 1, 1_010, 1_020))
+
+        now = 1_050
+        coordinator.sparseFallbackTriggered(JOURNEY_ID)
+        assertEquals(1, dao.allForJourney(JOURNEY_ID).size)
+        database.telemetryDao().insertForActiveJourney(sample(sequenceTime = 6_000))!!.also {
+            coordinator.telemetryObserved(it.toDomain())
+        }
+        coordinator.sparseFallbackTriggered(JOURNEY_ID)
+        assertEquals(1, dao.allForJourney(JOURNEY_ID).size)
+
+        now = 2_100
+        repeat(3) { coordinator.timeAdvanced(JOURNEY_ID) }
+        assertEquals(1, dao.allForJourney(JOURNEY_ID).size)
+
+        coordinator.sparseFallbackTriggered(JOURNEY_ID)
+        val attempts = dao.allForJourney(JOURNEY_ID)
+        assertEquals(2, attempts.size)
+        assertEquals(FallbackTransportState.UNKNOWN_OUTCOME, attempts[0].transportState)
+        assertEquals(original.protectedPayloadText, attempts[0].protectedPayloadText)
+        assertArrayEquals(original.nonce, attempts[0].nonce)
+        assertEquals(original.envelopeSequence + 1, attempts[1].envelopeSequence)
+        assertEquals(original.telemetrySequence + 1, attempts[1].telemetrySequence)
+        assertEquals(FallbackTransportState.ALLOCATED, attempts[1].transportState)
+        assertEquals(3L, database.degradedConnectivityDao().get(JOURNEY_ID)!!.nextFallbackEnvelopeSequence)
+    }
+
+    @Test
+    fun unknownOldAttemptCannotBypassSparseRateWindow() = runBlocking {
+        val coordinator = coordinator(maximumFallbackAttemptsPerWindow = 1)
+        coordinator.activate(JOURNEY_ID, false)
+        now = 1_000
+        coordinator.timeAdvanced(JOURNEY_ID)
+        val dao = database.fallbackAttemptDao()
+        val original = dao.allForJourney(JOURNEY_ID).single()
+        assertEquals(1, dao.claimForHandoff(original.localAttemptId, 1_010))
+        assertEquals(1, dao.markUnknownOutcome(original.localAttemptId, 1, 1_010, 1_020))
+        database.telemetryDao().insertForActiveJourney(sample(sequenceTime = 6_000))!!.also {
+            coordinator.telemetryObserved(it.toDomain())
+        }
+
+        now = 1_100 // New telemetry and interval are satisfied, but the rate window is full.
+        coordinator.sparseFallbackTriggered(JOURNEY_ID)
+        assertEquals(1, dao.allForJourney(JOURNEY_ID).size)
+        assertEquals(2L, database.degradedConnectivityDao().get(JOURNEY_ID)!!.nextFallbackEnvelopeSequence)
+
+        now = 2_100 // A new rate window permits an independently triggered observation.
+        coordinator.sparseFallbackTriggered(JOURNEY_ID)
+        val attempts = dao.allForJourney(JOURNEY_ID)
+        assertEquals(2, attempts.size)
+        assertEquals(FallbackTransportState.UNKNOWN_OUTCOME, attempts[0].transportState)
+        assertEquals(original.protectedPayloadText, attempts[0].protectedPayloadText)
+        assertEquals(original.envelopeSequence + 1, attempts[1].envelopeSequence)
+        assertEquals(FallbackTransportState.ALLOCATED, attempts[1].transportState)
+    }
+
+    @Test
     fun recoveryTicksTelemetryAndRestartAllocateNothingAndPreserveHandedOffHistory() = runBlocking {
         var coordinator = coordinator()
         coordinator.activate(JOURNEY_ID, false)
@@ -358,8 +460,8 @@ class FallbackAttemptDatabaseTest {
         }
     }
 
-    private fun coordinator(): DegradedConnectivityCoordinator {
-        val policy = policy()
+    private fun coordinator(maximumFallbackAttemptsPerWindow: Int = 4): DegradedConnectivityCoordinator {
+        val policy = policy(maximumFallbackAttemptsPerWindow)
         return DegradedConnectivityCoordinator(
             store = RoomDegradedConnectivityStateStore(
                 database,
@@ -389,14 +491,14 @@ class FallbackAttemptDatabaseTest {
         clock = { now },
     )
 
-    private fun policy() = DegradedConnectivityPolicy(
+    private fun policy(maximumFallbackAttemptsPerWindow: Int = 4) = DegradedConnectivityPolicy(
         DegradedConnectivityPolicyConfig(
             degradationAfterMillis = 1_000,
             minimumRetryableCloudFailures = 2,
             recoveryGraceMillis = 500,
             minimumFallbackIntervalMillis = 100,
             fallbackRateWindowMillis = 1_000,
-            maximumFallbackAttemptsPerWindow = 4,
+            maximumFallbackAttemptsPerWindow = maximumFallbackAttemptsPerWindow,
         ),
     )
 

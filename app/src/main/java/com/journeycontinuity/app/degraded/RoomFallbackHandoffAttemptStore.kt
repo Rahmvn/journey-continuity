@@ -24,8 +24,11 @@ class RoomFallbackHandoffAttemptStore(
         generation: Int,
         nextRetryAt: Long,
         outcome: FallbackTransportOutcome,
-        resultCode: Int?,
+        resultCode: Int,
     ) = dao.markRetryPending(localAttemptId, generation, nextRetryAt, outcome, resultCode) == 1
+
+    override suspend fun retryExhausted(localAttemptId: Long, generation: Int, atMillis: Long, resultCode: Int) =
+        dao.markRetryExhausted(localAttemptId, generation, atMillis, resultCode) == 1
 
     override suspend fun permanentFailure(
         localAttemptId: Long,
@@ -34,13 +37,12 @@ class RoomFallbackHandoffAttemptStore(
         resultCode: Int?,
     ) = dao.markPermanentFailure(localAttemptId, generation, atMillis, resultCode) == 1
 
-    override suspend fun unknownForRetry(
+    override suspend fun markUnknownOutcome(
         localAttemptId: Long,
         generation: Int,
         staleBefore: Long,
         atMillis: Long,
-        nextRetryAt: Long,
-    ) = dao.markUnknownOutcomeForRetry(
-        localAttemptId, generation, staleBefore, atMillis, nextRetryAt,
+    ) = dao.markUnknownOutcome(
+        localAttemptId, generation, staleBefore, atMillis,
     ) == 1
 }

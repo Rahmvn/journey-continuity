@@ -218,6 +218,82 @@ val MIGRATION_7_8 = object : Migration(7, 8) {
     }
 }
 
+/** Extends the v8 CHECK constraint without changing immutable JC1 or historical handoff rows. */
+val MIGRATION_8_9 = object : Migration(8, 9) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """CREATE TABLE `fallback_attempts_v9` (
+                `localAttemptId` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                `journeyId` TEXT NOT NULL,
+                `degradationEpisodeId` INTEGER NOT NULL CHECK(`degradationEpisodeId` > 0),
+                `envelopeSequence` INTEGER NOT NULL CHECK(`envelopeSequence` > 0),
+                `telemetrySequence` INTEGER NOT NULL CHECK(`telemetrySequence` >= 0),
+                `observationEventTime` INTEGER NOT NULL CHECK(`observationEventTime` >= 0),
+                `eventType` TEXT NOT NULL CHECK(`eventType` IN ('OBSERVATION', 'JOURNEY_COMPLETED')),
+                `protectedPayloadText` TEXT NOT NULL CHECK(length(`protectedPayloadText`) <= 160),
+                `nonce` BLOB NOT NULL CHECK(length(`nonce`) = 12),
+                `payloadSha256` BLOB NOT NULL CHECK(length(`payloadSha256`) = 32),
+                `allocatedAt` INTEGER NOT NULL CHECK(`allocatedAt` >= 0),
+                `transportState` TEXT NOT NULL CHECK(`transportState` IN
+                    ('ALLOCATED', 'HANDOFF_IN_PROGRESS', 'UNKNOWN_OUTCOME', 'HANDED_OFF',
+                     'RETRY_PENDING', 'PERMANENT_FAILURE', 'SUPERSEDED')),
+                `transportAttemptCount` INTEGER NOT NULL CHECK(`transportAttemptCount` >= 0),
+                `lastAttemptAt` INTEGER,
+                `terminalAt` INTEGER,
+                `handoffGeneration` INTEGER NOT NULL,
+                `handoffStartedAt` INTEGER,
+                `nextRetryAt` INTEGER,
+                `lastTransportOutcome` TEXT,
+                `lastTransportResultCode` INTEGER,
+                `uncertainSince` INTEGER,
+                FOREIGN KEY(`journeyId`) REFERENCES `journeys`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION
+            )""",
+        )
+        db.execSQL(
+            """INSERT INTO `fallback_attempts_v9` (
+                localAttemptId, journeyId, degradationEpisodeId, envelopeSequence,
+                telemetrySequence, observationEventTime, eventType, protectedPayloadText,
+                nonce, payloadSha256, allocatedAt, transportState, transportAttemptCount,
+                lastAttemptAt, terminalAt, handoffGeneration, handoffStartedAt, nextRetryAt,
+                lastTransportOutcome, lastTransportResultCode, uncertainSince)
+               SELECT localAttemptId, journeyId, degradationEpisodeId, envelopeSequence,
+                telemetrySequence, observationEventTime, eventType, protectedPayloadText,
+                nonce, payloadSha256, allocatedAt, transportState, transportAttemptCount,
+                lastAttemptAt, terminalAt, handoffGeneration, handoffStartedAt, nextRetryAt,
+                lastTransportOutcome, lastTransportResultCode, uncertainSince
+               FROM `fallback_attempts`""",
+        )
+        // A v8 uncertainty worker may already have made a blind resend eligible.
+        db.execSQL(
+            """UPDATE `fallback_attempts_v9`
+               SET transportState = 'UNKNOWN_OUTCOME', nextRetryAt = NULL
+               WHERE transportState = 'RETRY_PENDING'
+                 AND lastTransportOutcome = 'UNKNOWN_OUTCOME'""",
+        )
+        // Legacy confirmed failures that already used both claims must not be sent again.
+        db.execSQL(
+            """UPDATE `fallback_attempts_v9`
+               SET transportState = 'PERMANENT_FAILURE', nextRetryAt = NULL,
+                   terminalAt = CAST(strftime('%s', 'now') AS INTEGER) * 1000,
+                   lastTransportOutcome = 'RETRY_EXHAUSTED'
+               WHERE transportState = 'RETRY_PENDING' AND transportAttemptCount >= 2""",
+        )
+        db.execSQL("DROP TABLE `fallback_attempts`")
+        db.execSQL("ALTER TABLE `fallback_attempts_v9` RENAME TO `fallback_attempts`")
+        db.execSQL("""CREATE UNIQUE INDEX `index_fallback_attempts_journeyId_envelopeSequence`
+            ON `fallback_attempts` (`journeyId`, `envelopeSequence`)""")
+        db.execSQL("""CREATE UNIQUE INDEX `index_fallback_attempts_journeyId_degradationEpisodeId_telemetrySequence`
+            ON `fallback_attempts` (`journeyId`, `degradationEpisodeId`, `telemetrySequence`)""")
+        db.execSQL("""CREATE INDEX `index_fallback_attempts_journeyId_transportState`
+            ON `fallback_attempts` (`journeyId`, `transportState`)""")
+        db.execSQL("""CREATE INDEX `index_fallback_attempts_transportState_nextRetryAt`
+            ON `fallback_attempts` (`transportState`, `nextRetryAt`)""")
+        db.execSQL("""CREATE UNIQUE INDEX `index_fallback_attempts_journeyId_nonce`
+            ON `fallback_attempts` (`journeyId`, `nonce`)""")
+        createFallbackAttemptInvariantTriggers(db)
+    }
+}
+
 val FALLBACK_ATTEMPT_INVARIANT_CALLBACK = object : RoomDatabase.Callback() {
     override fun onOpen(db: SupportSQLiteDatabase) {
         super.onOpen(db)
@@ -236,13 +312,13 @@ private fun createFallbackAttemptInvariantTriggers(db: SupportSQLiteDatabase) {
              OR NEW.allocatedAt < 0 OR NEW.transportAttemptCount < 0 OR NEW.handoffGeneration < 0
              OR NEW.eventType NOT IN ('OBSERVATION', 'JOURNEY_COMPLETED')
              OR NEW.transportState NOT IN ('ALLOCATED', 'HANDOFF_IN_PROGRESS', 'HANDED_OFF',
-                                           'RETRY_PENDING', 'PERMANENT_FAILURE', 'SUPERSEDED')
+                                           'UNKNOWN_OUTCOME', 'RETRY_PENDING', 'PERMANENT_FAILURE', 'SUPERSEDED')
              OR length(NEW.protectedPayloadText) > 160
              OR substr(NEW.protectedPayloadText, 1, 4) <> 'JC1.'
              OR length(NEW.nonce) <> 12 OR length(NEW.payloadSha256) <> 32
              OR (NEW.lastTransportOutcome IS NOT NULL AND NEW.lastTransportOutcome NOT IN
                  ('ANDROID_HANDOFF_SUCCEEDED', 'RETRYABLE_FAILURE', 'PERMANENT_FAILURE',
-                  'TRANSPORT_UNAVAILABLE', 'UNKNOWN_OUTCOME'))
+                  'TRANSPORT_UNAVAILABLE', 'UNKNOWN_OUTCOME', 'RETRY_EXHAUSTED'))
            BEGIN
                SELECT RAISE(ABORT, 'invalid fallback attempt');
            END""",
@@ -262,10 +338,10 @@ private fun createFallbackAttemptInvariantTriggers(db: SupportSQLiteDatabase) {
            BEFORE UPDATE ON fallback_attempts
            WHEN NEW.transportAttemptCount < 0 OR NEW.handoffGeneration < 0
              OR NEW.transportState NOT IN ('ALLOCATED', 'HANDOFF_IN_PROGRESS', 'HANDED_OFF',
-                                           'RETRY_PENDING', 'PERMANENT_FAILURE', 'SUPERSEDED')
+                                           'UNKNOWN_OUTCOME', 'RETRY_PENDING', 'PERMANENT_FAILURE', 'SUPERSEDED')
              OR (NEW.lastTransportOutcome IS NOT NULL AND NEW.lastTransportOutcome NOT IN
                  ('ANDROID_HANDOFF_SUCCEEDED', 'RETRYABLE_FAILURE', 'PERMANENT_FAILURE',
-                  'TRANSPORT_UNAVAILABLE', 'UNKNOWN_OUTCOME'))
+                  'TRANSPORT_UNAVAILABLE', 'UNKNOWN_OUTCOME', 'RETRY_EXHAUSTED'))
            BEGIN
                SELECT RAISE(ABORT, 'invalid fallback attempt state');
            END""",

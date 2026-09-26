@@ -20,6 +20,7 @@ import com.journeycontinuity.app.data.local.MIGRATION_4_5
 import com.journeycontinuity.app.data.local.MIGRATION_5_6
 import com.journeycontinuity.app.data.local.MIGRATION_6_7
 import com.journeycontinuity.app.data.local.MIGRATION_7_8
+import com.journeycontinuity.app.data.local.MIGRATION_8_9
 import com.journeycontinuity.app.data.local.toDomain
 import com.journeycontinuity.app.domain.ConnectivityState
 import com.journeycontinuity.app.domain.JourneyStatus
@@ -393,6 +394,7 @@ class Milestone6RedmiAcceptanceTest {
         MIGRATION_5_6,
         MIGRATION_6_7,
         MIGRATION_7_8,
+        MIGRATION_8_9,
     ).addCallback(FALLBACK_ATTEMPT_INVARIANT_CALLBACK).build()
 
     private fun coordinator(

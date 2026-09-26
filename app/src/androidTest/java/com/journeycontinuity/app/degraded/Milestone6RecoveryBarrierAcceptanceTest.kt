@@ -39,7 +39,7 @@ class Milestone6RecoveryBarrierAcceptanceTest {
     private val evidence get() = context.getSharedPreferences("m6-recovery-barrier-evidence", Context.MODE_PRIVATE)
     private fun database() = Room.databaseBuilder(context, JourneyDatabase::class.java, "journey-continuity.db")
         .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
-            MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+            MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
         .addCallback(FALLBACK_ATTEMPT_INVARIANT_CALLBACK).build()
 
     private fun coordinator(db: JourneyDatabase): DegradedConnectivityCoordinator {

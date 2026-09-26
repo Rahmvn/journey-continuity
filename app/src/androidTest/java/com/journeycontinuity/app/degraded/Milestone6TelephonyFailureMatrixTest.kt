@@ -14,6 +14,7 @@ import com.journeycontinuity.app.data.local.MIGRATION_4_5
 import com.journeycontinuity.app.data.local.MIGRATION_5_6
 import com.journeycontinuity.app.data.local.MIGRATION_6_7
 import com.journeycontinuity.app.data.local.MIGRATION_7_8
+import com.journeycontinuity.app.data.local.MIGRATION_8_9
 import com.journeycontinuity.app.data.local.toDomain
 import java.security.MessageDigest
 import kotlinx.coroutines.runBlocking
@@ -37,7 +38,7 @@ class Milestone6TelephonyFailureMatrixTest {
     private fun database() = Room.databaseBuilder(context, JourneyDatabase::class.java, "journey-continuity.db")
         .addMigrations(
             MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
-            MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8,
+            MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9,
         )
         .addCallback(FALLBACK_ATTEMPT_INVARIANT_CALLBACK)
         .build()
@@ -259,7 +260,7 @@ class Milestone6TelephonyFailureMatrixTest {
         val database = Room.databaseBuilder(context, JourneyDatabase::class.java, "journey-continuity.db")
             .addMigrations(
                 MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
-                MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8,
+                MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9,
             )
             .addCallback(FALLBACK_ATTEMPT_INVARIANT_CALLBACK)
             .build()

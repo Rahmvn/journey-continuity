@@ -1,0 +1,758 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 9,
+    "identityHash": "07db15bf1902e8413cf71404528c2836",
+    "entities": [
+      {
+        "tableName": "journeys",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `destination` TEXT NOT NULL, `expectedArrivalAt` INTEGER NOT NULL, `startedAt` INTEGER NOT NULL, `status` TEXT NOT NULL, `completedAt` INTEGER, `activeSlot` INTEGER, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "destination",
+            "columnName": "destination",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "expectedArrivalAt",
+            "columnName": "expectedArrivalAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startedAt",
+            "columnName": "startedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "completedAt",
+            "columnName": "completedAt",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "activeSlot",
+            "columnName": "activeSlot",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_journeys_activeSlot",
+            "unique": true,
+            "columnNames": [
+              "activeSlot"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_journeys_activeSlot` ON `${TABLE_NAME}` (`activeSlot`)"
+          }
+        ]
+      },
+      {
+        "tableName": "telemetry_observations",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `journeyId` TEXT NOT NULL, `sequence` INTEGER NOT NULL, `eventTime` INTEGER NOT NULL, `latitude` REAL NOT NULL, `longitude` REAL NOT NULL, `accuracyMeters` REAL NOT NULL, `batteryPercent` INTEGER, `isCharging` INTEGER, `connectivity` TEXT NOT NULL, FOREIGN KEY(`journeyId`) REFERENCES `journeys`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "journeyId",
+            "columnName": "journeyId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sequence",
+            "columnName": "sequence",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "eventTime",
+            "columnName": "eventTime",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "latitude",
+            "columnName": "latitude",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "longitude",
+            "columnName": "longitude",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "accuracyMeters",
+            "columnName": "accuracyMeters",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "batteryPercent",
+            "columnName": "batteryPercent",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "isCharging",
+            "columnName": "isCharging",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "connectivity",
+            "columnName": "connectivity",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_telemetry_observations_journeyId",
+            "unique": false,
+            "columnNames": [
+              "journeyId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_telemetry_observations_journeyId` ON `${TABLE_NAME}` (`journeyId`)"
+          },
+          {
+            "name": "index_telemetry_observations_journeyId_sequence",
+            "unique": true,
+            "columnNames": [
+              "journeyId",
+              "sequence"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_telemetry_observations_journeyId_sequence` ON `${TABLE_NAME}` (`journeyId`, `sequence`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "journeys",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "journeyId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "journey_sync_states",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`journeyId` TEXT NOT NULL, `highestTelemetrySequenceSynced` INTEGER NOT NULL, `lastSuccessfulSyncAt` INTEGER, `lastAttemptAt` INTEGER, `phase` TEXT NOT NULL, `lastError` TEXT, `permanentlyBlocked` INTEGER NOT NULL, `changeVersion` INTEGER NOT NULL, `workRequested` INTEGER NOT NULL, `legacyAuthorizationFailure` TEXT, `legacyAuthorizationFailureAtMillis` INTEGER, `legacyAuthorizationRecoveredAtMillis` INTEGER, PRIMARY KEY(`journeyId`), FOREIGN KEY(`journeyId`) REFERENCES `journeys`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "journeyId",
+            "columnName": "journeyId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "highestTelemetrySequenceSynced",
+            "columnName": "highestTelemetrySequenceSynced",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastSuccessfulSyncAt",
+            "columnName": "lastSuccessfulSyncAt",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "lastAttemptAt",
+            "columnName": "lastAttemptAt",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "phase",
+            "columnName": "phase",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastError",
+            "columnName": "lastError",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "permanentlyBlocked",
+            "columnName": "permanentlyBlocked",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "changeVersion",
+            "columnName": "changeVersion",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "workRequested",
+            "columnName": "workRequested",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "legacyAuthorizationFailure",
+            "columnName": "legacyAuthorizationFailure",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "legacyAuthorizationFailureAtMillis",
+            "columnName": "legacyAuthorizationFailureAtMillis",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "legacyAuthorizationRecoveredAtMillis",
+            "columnName": "legacyAuthorizationRecoveredAtMillis",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "journeyId"
+          ]
+        },
+        "foreignKeys": [
+          {
+            "table": "journeys",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "journeyId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "journey_heartbeat_states",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`journeyId` TEXT NOT NULL, `lastAllocatedHeartbeatSequence` INTEGER NOT NULL, `latestCloudHeartbeatSequence` INTEGER NOT NULL, `lastHeartbeatAttemptAt` INTEGER, `lastSuccessfulHeartbeatAt` INTEGER, `monitoringPhase` TEXT, `lastCloudContactAt` INTEGER, `lastError` TEXT, PRIMARY KEY(`journeyId`), FOREIGN KEY(`journeyId`) REFERENCES `journeys`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "journeyId",
+            "columnName": "journeyId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastAllocatedHeartbeatSequence",
+            "columnName": "lastAllocatedHeartbeatSequence",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "latestCloudHeartbeatSequence",
+            "columnName": "latestCloudHeartbeatSequence",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastHeartbeatAttemptAt",
+            "columnName": "lastHeartbeatAttemptAt",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "lastSuccessfulHeartbeatAt",
+            "columnName": "lastSuccessfulHeartbeatAt",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "monitoringPhase",
+            "columnName": "monitoringPhase",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "lastCloudContactAt",
+            "columnName": "lastCloudContactAt",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "lastError",
+            "columnName": "lastError",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "journeyId"
+          ]
+        },
+        "foreignKeys": [
+          {
+            "table": "journeys",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "journeyId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "journey_degradation_states",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`journeyId` TEXT NOT NULL, `journeyActive` INTEGER NOT NULL, `connectivityPhase` TEXT NOT NULL, `fallbackDisposition` TEXT NOT NULL, `validatedInternetAvailable` INTEGER NOT NULL, `fallbackBindingProvisioned` INTEGER NOT NULL, `transportAvailable` INTEGER NOT NULL, `degradationEpisodeId` INTEGER, `lastDegradationEpisodeId` INTEGER NOT NULL, `interruptionStartedAtMillis` INTEGER, `lastAuthenticatedCloudSuccessAtMillis` INTEGER, `consecutiveRetryableCloudFailures` INTEGER NOT NULL, `recoveryStartedAtMillis` INTEGER, `nextFallbackEnvelopeSequence` INTEGER NOT NULL, `lastFallbackAttemptAtMillis` INTEGER, `lastFallbackAttemptEpisodeId` INTEGER, `lastCoveredTelemetrySequence` INTEGER, `rateWindowStartedAtMillis` INTEGER, `fallbackAttemptsInRateWindow` INTEGER NOT NULL, `latestTelemetrySequence` INTEGER, `latestBatteryPercent` INTEGER, `recoveryTargetTelemetrySequence` INTEGER, `recoveryBacklogSatisfiedAtMillis` INTEGER, PRIMARY KEY(`journeyId`), FOREIGN KEY(`journeyId`) REFERENCES `journeys`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "journeyId",
+            "columnName": "journeyId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "journeyActive",
+            "columnName": "journeyActive",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "connectivityPhase",
+            "columnName": "connectivityPhase",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fallbackDisposition",
+            "columnName": "fallbackDisposition",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "validatedInternetAvailable",
+            "columnName": "validatedInternetAvailable",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fallbackBindingProvisioned",
+            "columnName": "fallbackBindingProvisioned",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "transportAvailable",
+            "columnName": "transportAvailable",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "degradationEpisodeId",
+            "columnName": "degradationEpisodeId",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "lastDegradationEpisodeId",
+            "columnName": "lastDegradationEpisodeId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "interruptionStartedAtMillis",
+            "columnName": "interruptionStartedAtMillis",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "lastAuthenticatedCloudSuccessAtMillis",
+            "columnName": "lastAuthenticatedCloudSuccessAtMillis",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "consecutiveRetryableCloudFailures",
+            "columnName": "consecutiveRetryableCloudFailures",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "recoveryStartedAtMillis",
+            "columnName": "recoveryStartedAtMillis",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "nextFallbackEnvelopeSequence",
+            "columnName": "nextFallbackEnvelopeSequence",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastFallbackAttemptAtMillis",
+            "columnName": "lastFallbackAttemptAtMillis",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "lastFallbackAttemptEpisodeId",
+            "columnName": "lastFallbackAttemptEpisodeId",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "lastCoveredTelemetrySequence",
+            "columnName": "lastCoveredTelemetrySequence",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "rateWindowStartedAtMillis",
+            "columnName": "rateWindowStartedAtMillis",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "fallbackAttemptsInRateWindow",
+            "columnName": "fallbackAttemptsInRateWindow",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "latestTelemetrySequence",
+            "columnName": "latestTelemetrySequence",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "latestBatteryPercent",
+            "columnName": "latestBatteryPercent",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "recoveryTargetTelemetrySequence",
+            "columnName": "recoveryTargetTelemetrySequence",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "recoveryBacklogSatisfiedAtMillis",
+            "columnName": "recoveryBacklogSatisfiedAtMillis",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "journeyId"
+          ]
+        },
+        "foreignKeys": [
+          {
+            "table": "journeys",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "journeyId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "journey_fallback_bindings",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`journeyId` TEXT NOT NULL, `keyId` INTEGER NOT NULL, `journeyHandle` BLOB NOT NULL, `status` TEXT NOT NULL, `provisionedAt` INTEGER NOT NULL, `revokedAt` INTEGER, PRIMARY KEY(`journeyId`), FOREIGN KEY(`journeyId`) REFERENCES `journeys`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "journeyId",
+            "columnName": "journeyId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "keyId",
+            "columnName": "keyId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "journeyHandle",
+            "columnName": "journeyHandle",
+            "affinity": "BLOB",
+            "notNull": true
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "provisionedAt",
+            "columnName": "provisionedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "revokedAt",
+            "columnName": "revokedAt",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "journeyId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_journey_fallback_bindings_journeyHandle",
+            "unique": true,
+            "columnNames": [
+              "journeyHandle"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_journey_fallback_bindings_journeyHandle` ON `${TABLE_NAME}` (`journeyHandle`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "journeys",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "journeyId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "fallback_attempts",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`localAttemptId` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `journeyId` TEXT NOT NULL, `degradationEpisodeId` INTEGER NOT NULL, `envelopeSequence` INTEGER NOT NULL, `telemetrySequence` INTEGER NOT NULL, `observationEventTime` INTEGER NOT NULL, `eventType` TEXT NOT NULL, `protectedPayloadText` TEXT NOT NULL, `nonce` BLOB NOT NULL, `payloadSha256` BLOB NOT NULL, `allocatedAt` INTEGER NOT NULL, `transportState` TEXT NOT NULL, `transportAttemptCount` INTEGER NOT NULL, `lastAttemptAt` INTEGER, `terminalAt` INTEGER, `handoffGeneration` INTEGER NOT NULL, `handoffStartedAt` INTEGER, `nextRetryAt` INTEGER, `lastTransportOutcome` TEXT, `lastTransportResultCode` INTEGER, `uncertainSince` INTEGER, FOREIGN KEY(`journeyId`) REFERENCES `journeys`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "localAttemptId",
+            "columnName": "localAttemptId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "journeyId",
+            "columnName": "journeyId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "degradationEpisodeId",
+            "columnName": "degradationEpisodeId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "envelopeSequence",
+            "columnName": "envelopeSequence",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "telemetrySequence",
+            "columnName": "telemetrySequence",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "observationEventTime",
+            "columnName": "observationEventTime",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "eventType",
+            "columnName": "eventType",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "protectedPayloadText",
+            "columnName": "protectedPayloadText",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nonce",
+            "columnName": "nonce",
+            "affinity": "BLOB",
+            "notNull": true
+          },
+          {
+            "fieldPath": "payloadSha256",
+            "columnName": "payloadSha256",
+            "affinity": "BLOB",
+            "notNull": true
+          },
+          {
+            "fieldPath": "allocatedAt",
+            "columnName": "allocatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "transportState",
+            "columnName": "transportState",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "transportAttemptCount",
+            "columnName": "transportAttemptCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastAttemptAt",
+            "columnName": "lastAttemptAt",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "terminalAt",
+            "columnName": "terminalAt",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "handoffGeneration",
+            "columnName": "handoffGeneration",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "handoffStartedAt",
+            "columnName": "handoffStartedAt",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "nextRetryAt",
+            "columnName": "nextRetryAt",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "lastTransportOutcome",
+            "columnName": "lastTransportOutcome",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "lastTransportResultCode",
+            "columnName": "lastTransportResultCode",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "uncertainSince",
+            "columnName": "uncertainSince",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "localAttemptId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_fallback_attempts_journeyId_envelopeSequence",
+            "unique": true,
+            "columnNames": [
+              "journeyId",
+              "envelopeSequence"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_fallback_attempts_journeyId_envelopeSequence` ON `${TABLE_NAME}` (`journeyId`, `envelopeSequence`)"
+          },
+          {
+            "name": "index_fallback_attempts_journeyId_degradationEpisodeId_telemetrySequence",
+            "unique": true,
+            "columnNames": [
+              "journeyId",
+              "degradationEpisodeId",
+              "telemetrySequence"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_fallback_attempts_journeyId_degradationEpisodeId_telemetrySequence` ON `${TABLE_NAME}` (`journeyId`, `degradationEpisodeId`, `telemetrySequence`)"
+          },
+          {
+            "name": "index_fallback_attempts_journeyId_transportState",
+            "unique": false,
+            "columnNames": [
+              "journeyId",
+              "transportState"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_fallback_attempts_journeyId_transportState` ON `${TABLE_NAME}` (`journeyId`, `transportState`)"
+          },
+          {
+            "name": "index_fallback_attempts_transportState_nextRetryAt",
+            "unique": false,
+            "columnNames": [
+              "transportState",
+              "nextRetryAt"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_fallback_attempts_transportState_nextRetryAt` ON `${TABLE_NAME}` (`transportState`, `nextRetryAt`)"
+          },
+          {
+            "name": "index_fallback_attempts_journeyId_nonce",
+            "unique": true,
+            "columnNames": [
+              "journeyId",
+              "nonce"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_fallback_attempts_journeyId_nonce` ON `${TABLE_NAME}` (`journeyId`, `nonce`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "journeys",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "journeyId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '07db15bf1902e8413cf71404528c2836')"
+    ]
+  }
+}

@@ -48,17 +48,20 @@ class FallbackHandoffWorker(
         if (attemptId <= 0) return Result.failure()
         return runCatching {
             val generation = inputData.getInt(KEY_GENERATION, -1)
-            if (generation > 0) {
-                app.fallbackHandoffCoordinator.recoverUncertain(
-                    attemptId,
-                    generation,
-                )
-            } else {
-                app.fallbackHandoffCoordinator.handoff(attemptId)
-            }
+            runFallbackHandoffWork(app.fallbackHandoffCoordinator, attemptId, generation)
             Result.success()
         }.getOrElse { Result.retry() }
     }
+}
+
+/** The same dispatch used by WorkManager, callable with an isolated no-send coordinator in tests. */
+internal suspend fun runFallbackHandoffWork(
+    coordinator: FallbackHandoffCoordinator,
+    attemptId: Long,
+    generation: Int,
+) {
+    if (generation > 0) coordinator.recoverUncertain(attemptId, generation)
+    else coordinator.handoff(attemptId)
 }
 
 private const val KEY_ATTEMPT_ID = "fallback_attempt_id"

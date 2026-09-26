@@ -303,7 +303,7 @@ Remote deployment acceptance:
 
 ## Milestone 6 — Degraded Connectivity + SMS Fallback
 
-**Status:** IN PROGRESS — PROVISIONING, OFFLINE ALLOCATION, PHYSICAL CARRIER HANDOFF, RECOVERY, SELECTED-SIM LOSS (D), NO-SEND SAME-ATTEMPT RESTORATION (G), AND SCOPED DETERMINISTIC HOSTED JC1 ACCEPTANCE COMPLETE; REMAINING FAILURE-MATRIX, NOTIFICATION, AND PRODUCTION-PROVIDER ACCEPTANCE OUTSTANDING
+**Status:** IN PROGRESS — PROVISIONING, OFFLINE ALLOCATION, PHYSICAL CARRIER HANDOFF, RECOVERY, SELECTED-SIM LOSS (D), NO-SEND SAME-ATTEMPT RESTORATION (G), ISOLATED REDMI UNKNOWN-OUTCOME ACCEPTANCE, AND SCOPED DETERMINISTIC HOSTED JC1 ACCEPTANCE COMPLETE; REMAINING FAILURE-MATRIX, NOTIFICATION, AND PRODUCTION-PROVIDER ACCEPTANCE OUTSTANDING
 
 ### Goal
 
@@ -379,6 +379,12 @@ The subsequent controlled hosted timely-evidence run accepted `AUTHENTICATED_NEW
 
 The final controlled hosted JC1 V1 completion run used event type `2` (first frame byte `0x12`). A current authenticated completion was `AUTHENTICATED_NEW` / `COMPLETION_APPLIED`, closing Journey monitoring once at its authenticated event time. A replay was `AUTHENTICATED_DUPLICATE` / `DUPLICATE_ENVELOPE`; older completions after newer evidence or normal owner closure were `AUTHENTICATED_NEW` / `COMPLETION_STALE` and did not reopen or rewrite terminal state. A later ordinary observation was retained as canonical history without reopening monitoring or advancing device freshness. SMS receipt time did not replace event time or change `last_cloud_contact_at`; no internet recovery, safety/danger, present-location, or duplicate notification/closure conclusion followed. Eight receipts, seven authenticated envelopes, three canonical observations, and eight reconciliation records remain as controlled evidence; all three synthetic Journeys are closed with revoked keys/bindings. The scoped deterministic hosted Milestone 6 acceptance is complete.
 
+### Durable unknown-outcome checkpoint — 2026-09-26
+
+Room v9 closes the unsafe absent-callback path: `HANDOFF_IN_PROGRESS` becomes durable `UNKNOWN_OUTCOME` after the uncertainty timeout, not automatically sendable `RETRY_PENDING`. Only an explicit retryable sent callback can authorize the single remaining retry. The existing durable claim count limits each logical attempt to two total claims; a second confirmed retryable failure becomes `PERMANENT_FAILURE` / `RETRY_EXHAUSTED`. Recovery and completion preserve ambiguous history; matching late callbacks remain generation-scoped, and a future new sparse observation must independently satisfy newer telemetry, explicit trigger, minimum interval, and rate capacity.
+
+Isolated Redmi acceptance passed the v8-to-v9 migration distinctions, payload/count preservation, on-disk and separate-instrumentation-process restart, no-send callback matrix, recovery/completion history, and sparse rate gating. The test package had a different UID and did not use the production Room database; zero real carrier sends occurred. The worker's extracted dispatch path was exercised with a fake coordinator, but Android WorkManager framework scheduling itself was **not** directly accepted. A later ordering-only test change compiled without a whole-class device rerun after HyperOS blocked reinstall. See `MILESTONE_6_ACCEPTANCE.md`; this does not complete the device failure matrix or carrier/provider acceptance.
+
 ### Additive trusted-contact notification slice
 
 Implemented and covered by repository tests without replacing the phone-to-cloud fallback scope:
@@ -397,14 +403,14 @@ Hosted migration `20260918000200_milestone_6_supersede_stale_sms.sql` is applied
 ### Outstanding
 
 - design a production-grade provider-authentication boundary before any live-provider claim;
-- complete the remaining physical failure matrix, including permission denial, SMS unavailability beyond accepted selected-SIM loss, both transports unavailable, dual-SIM ambiguity, low battery, delayed/missing/duplicate or ambiguous callbacks, bounded retry and unknown outcomes, and carrier/provider failures; a live-service restart during SIM loss was not proven;
+- complete the remaining physical failure matrix, including permission denial, SMS unavailability beyond accepted selected-SIM loss, both transports unavailable, dual-SIM ambiguity, low battery, actual WorkManager framework scheduling, live delayed/missing/duplicate or ambiguous callbacks, and carrier/provider failures; no-send `UNKNOWN_OUTCOME` behavior is accepted separately, and a live-service restart during SIM loss was not proven;
 - complete the additive trusted-contact notification acceptance matrix separately;
 - establish production-grade provider authentication and record real carrier-to-provider delivery/retry/latency only if a suitable live route becomes available; these provider-production items may remain explicitly pending for the hackathon when live telecom provisioning is unavailable;
 - complete Milestone 6 end-to-end acceptance.
 
 ### Acceptance target
 
-The controlled data-bad/SMS-good carrier handoff path and the scoped deterministic hosted Milestone 6 acceptance, including JC1 completion behavior, have passed. Physical selected-SIM loss (D) passed; restoration of the same persisted attempt (G) passed at a test-only no-send pre-claim boundary, not as carrier delivery. The remaining target covers production-grade provider authentication and real carrier-to-provider delivery/retry/latency; permission denial, other SMS unavailability, both transports unavailable, ambiguous outcomes, dual-SIM ambiguity, low battery, retry behavior, the rest of the physical telephony failure matrix, and trusted-contact notification receipt. Internet recovery and both unsent supersession and handed-off history retention have passed physically. Milestone 6 remains **IN PROGRESS**.
+The controlled data-bad/SMS-good carrier handoff path and the scoped deterministic hosted Milestone 6 acceptance, including JC1 completion behavior, have passed. Physical selected-SIM loss (D) passed; restoration of the same persisted attempt (G) passed at a test-only no-send pre-claim boundary, not as carrier delivery. Isolated Redmi no-send `UNKNOWN_OUTCOME` and finite-claim behavior also passed, without accepting live WorkManager scheduling or carrier callback reliability. The remaining target covers production-grade provider authentication and real carrier-to-provider delivery/retry/latency; permission denial, other SMS unavailability, both transports unavailable, live ambiguous outcomes, dual-SIM ambiguity, low battery, the rest of the physical telephony failure matrix, and trusted-contact notification receipt. Internet recovery and both unsent supersession and handed-off history retention have passed physically. Milestone 6 remains **IN PROGRESS**.
 
 The additive trusted-contact path must also pass healthy-monitoring silence, real watchdog-driven `VERIFYING`, no stale started alert after case resolution, fresh-contact resolution, offline Journey completion, contact opt-out, and transport failure remaining independent of deterministic monitoring state.
 
