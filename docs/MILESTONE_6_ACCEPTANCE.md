@@ -1,6 +1,6 @@
 # Milestone 6 Acceptance Record
 
-Recovery correction, 2026-09-26: the earlier recovery claims below did not prove the durable backlog barrier and must not be used as evidence for that invariant. The corrected case H evidence is recorded at the end of this document. Milestone 6 remains **IN PROGRESS**; physical cases D and G remain outstanding.
+Recovery correction, 2026-09-26: the earlier recovery claims below did not prove the durable backlog barrier and must not be used as evidence for that invariant. The corrected case H evidence is recorded below. Physical cases D and G were subsequently accepted at the explicitly bounded no-send boundary recorded at the end of this document. Milestone 6 remains **IN PROGRESS**.
 
 Milestone 6 remains **IN PROGRESS**. Provisioning, protected offline allocation, persistence, physical Android SMS carrier handoff, and authenticated internet recovery were accepted on 2026-09-23. The provider-neutral inbound core and Africa's Talking sandbox adapter are hosted; real production JC1 authentication, duplicate-envelope handling, SMS-first reconciliation, and historical out-of-order acceptance passed on 2026-09-24–25. Subsequent controlled Edge-path tests completed the scoped deterministic hosted acceptance. This does not establish production-provider or complete Milestone 6 acceptance.
 
@@ -91,7 +91,7 @@ Hosted migration `20260918000200_milestone_6_supersede_stale_sms.sql` is applied
 
 ## Remaining physical SMS failure-matrix acceptance
 
-The controlled data-unavailable/SMS-available success path is accepted. Remaining physical cases include permission denial, SMS unavailable, both transports unavailable, SIM removal or ambiguity, delayed or missing callback, duplicate callback, retry and unknown-outcome handling, low-battery behavior, and provider/carrier failure outcomes. These cases must preserve durable attempt identity and must not immediately resend after an ambiguous handoff.
+The controlled data-unavailable/SMS-available success path, selected-SIM loss (D), and restoration of the same pending attempt at a no-send pre-claim boundary (G) are accepted. Remaining physical cases include permission denial, other SMS-unavailable conditions, both transports unavailable, dual-SIM ambiguity beyond explicit selected-SIM loss, delayed or missing callback, duplicate callback, retry and unknown-outcome handling, low-battery behavior, and provider/carrier failure outcomes. These cases must preserve durable attempt identity and must not immediately resend after an ambiguous handoff. A live foreground-service restart while the selected SIM was disabled was not exercised in D.
 
 For the trusted-contact notification slice, the existing healthy-monitoring silence, watchdog-driven verification, restoration, offline completion, opt-out, and transport-failure checklist also remains physically unrecorded. Carrier receipt must not be generalized as guaranteed delivery, human reading, or evidence of traveller safety.
 
@@ -182,7 +182,7 @@ Retain the controlled evidence from this run: **8 immutable receipts, 7 authenti
 
 Accepted here: genuine sandbox callback shape/text preservation, active binding/key resolution, real JC1 authentication, SMS-first canonicalization, distinct-provider-event duplicate handling, historical out-of-order retention, and stale-evidence/watchdog safety. Deployed reject-path checks and controlled valid-key, timely-evidence, and completion cases complete the scoped deterministic hosted Milestone 6 acceptance. They do not establish production-grade provider authentication. Still required for production-quality completion:
 
-1. The remaining physical SMS/telephony failure matrix, including both transports unavailable, ambiguous callback/outcome, SIM ambiguity/removal, low battery, and bounded retry behavior.
+1. The remaining physical SMS/telephony failure matrix, including permission denial, other SMS-unavailable conditions, both transports unavailable, dual-SIM ambiguity, missing/delayed/duplicate or ambiguous sent callbacks, low battery, bounded retry and unknown-outcome behavior, and carrier/provider failure outcomes. Selected-SIM loss and no-send restoration of the same attempt are accepted separately below.
 2. The separate cloud-to-trusted-contact notification physical checklist; inbound traveller fallback does not prove trusted-contact handset receipt or human reading.
 3. A production-grade provider authentication and operational route before any live-provider claim. The Africa's Talking sandbox shared URL secret is not a signed provider webhook. Live-carrier/provider delivery, provider failure behavior, and latency acceptance may remain explicitly pending for the hackathon when live telecom provisioning is unavailable.
 
@@ -190,7 +190,7 @@ Accepted here: genuine sandbox callback shape/text preservation, active binding/
 
 | Boundary | Accepted | Still required |
 | --- | --- | --- |
-| Device and carrier send | Provisioning, Keystore, durable offline JC1, explicit SIM/permission route, one-segment Android `RESULT_OK` handoff, controlled recipient byte equality, recovery and historical handoff retention | Physical failure matrix: permission/SMS/data unavailability, SIM removal or ambiguity, low battery, missing or ambiguous sent callback, retry/unknown outcome, and no unintended resend |
+| Device and carrier send | Provisioning, Keystore, durable offline JC1, explicit SIM/permission route, one-segment Android `RESULT_OK` handoff, controlled recipient byte equality, recovery and historical handoff retention; selected-SIM loss (D) and same-attempt restoration at a no-send pre-claim boundary (G) | Remaining physical failure matrix: permission denial, other SMS/data unavailability, both transports unavailable, dual-SIM ambiguity, low battery, missing/delayed/duplicate or ambiguous sent callback, retry/unknown outcome, carrier/provider failure outcomes, and no unintended resend; no live-service restart under SIM loss was proven |
 | Hosted provider-neutral ingestion | Real sandbox production-JC1 authentication, SMS-first canonicalization, duplicate/historical ordering; deployed reject-path checks; controlled ACTIVE/revoked key/binding and distinct unwrap/envelope failure classifications; internet-first match/conflict; timely fallback evidence preventing false silence and resolving one open verification; current, duplicate, delayed, and post-closure JC1 completion behavior | Scoped deterministic hosted acceptance complete; production-grade provider boundary remains separate |
 | Trusted-contact notification | Outbox/supersession implementation and hosted migrations | Physical notification failure/receipt checklist; provider acceptance does not prove handset delivery or human reading |
 | Live provider | No production-provider claim | A provider-authenticated live inbound route and operational acceptance; real carrier-to-provider delivery, provider retry/failure behavior, and latency characterization cannot be established with this sandbox and may remain explicitly pending for the hackathon |
@@ -240,7 +240,7 @@ Case H's corrected recovery criteria now pass for this controlled physical run. 
 - `testDebugUnitTest assembleDebug assembleDebugAndroidTest lintDebug` passed on the final source; lint reported **0 errors, 18 warnings**.
 - The interrupted Room test double's missing `provision` method was completed. A verification-only query was corrected to use explicit `and` for two bounds on the same column: this SDK otherwise emits only the first bound. The corrected hosted check passed.
 - `git diff --check` and a credential-pattern scan of changed/new files passed. No credential values were added to the record.
-- No remaining defect was observed in the corrected recovery acceptance. Physical cases **D and G remain outstanding**; no new acceptance claim is made for them. The wider physical telephony matrix, notification receipt, and provider limitations above remain separate. Milestone 6 is not complete.
+- No remaining defect was observed in the corrected recovery acceptance. At the time of case H, physical cases **D and G remained outstanding**; their subsequent bounded acceptance is recorded below. The wider physical telephony matrix, notification receipt, and provider limitations remain separate. Milestone 6 is not complete.
 
 ### Exact changed/new worktree files
 
@@ -280,4 +280,31 @@ app/src/androidTest/java/com/journeycontinuity/app/degraded/Milestone6RecoveryBa
 app/src/androidTest/java/com/journeycontinuity/app/degraded/Milestone6TelephonyFailureMatrixTest.kt
 ```
 
-The telephony matrix file was inspected and preserved without editing or running its separate physical cases.
+At the time of case H, the telephony matrix file was inspected and preserved without editing or running its separate physical cases. Subsequent D/G changes and results are recorded below.
+
+## Physical selected-SIM loss (D) and same-attempt transport restoration (G) — 2026-09-26
+
+### D — SELECTED SIM LOSS: PASS
+
+- With both SIMs initially active, JOURNEY's explicit choice was Android subscription `1`, mapped to physical SIM slot 2. The user manually disabled only MTN / SIM 2 through HyperOS's visible **Turn on** switch; no ADB UI injection, undocumented telephony shell command, or airplane-mode surrogate was used.
+- Android's active-subscription list then contained only the other subscription (`3`, slot 1). The stored JOURNEY choice remained `1`; it was not replaced by the remaining SIM. Production SMS status reported the selected SIM unavailable. With a test-only configured route, the production status evaluator over the real subscription list rejected handoff before the fake telephony gateway's message-division method was called.
+- The existing episode-9 attempt `11` remained `ALLOCATED`, with handoff generation `0`, zero transport attempts, no claim, and no handoff timestamp. The complete attempt-ledger fingerprint stayed `074d201bb68705ff1291041d845b2a2a2d1f9b2db2d083da885e9d6750e8628a`. Its persisted JC1 was 102 characters with SHA-256 `c6f3de01b1b00b6f419ccce3769eb119bb23c1bf9e4e0ef4dad9293a26385c03`; the nonce fingerprint and envelope sequence `11` remained unchanged. The next-envelope counter stayed `12`, and the attempt count stayed `11`.
+- Repeated ordinary time advances and a telemetry-observation event did not allocate another attempt or advance cloud-success freshness. No safety, danger, or current-location conclusion was inferred from SIM loss. Separate instrumentation processes reopened Room and repeated the disabled-SIM assertions successfully. The production foreground service was already stopped, so **a live-service restart under SIM loss was not proven**.
+- No real SMS was sent.
+
+### G — TRANSPORT RESTORATION FOR EXISTING ATTEMPT: PASS AT NO-SEND PRE-CLAIM BOUNDARY
+
+- The user restored MTN / SIM 2 with the same HyperOS switch. Android again reported subscription `1` active alongside the other SIM, and JOURNEY's explicit selection remained `1`.
+- A test-only configured-route probe read the real active-subscription state and the production Room attempt store. The same pending attempt `11` became eligible; its **exact persisted JC1 text** and selected subscription reached a fake telephony gateway. That gateway stopped at message division **before claim and before `SmsManager`**; its send method cannot invoke the carrier. No new JC1 or fallback attempt was allocated.
+- The logical attempt, exact protected text, envelope sequence `11`, nonce, payload digest, full-row/ledger fingerprint, generation `0`, and next-envelope counter `12` remained unchanged. The production SMS destination remains deliberately unconfigured. **This is not carrier-delivery acceptance.** No real SMS was sent.
+
+Regression coverage is in `FallbackHandoffCoordinatorTest`, `FallbackAttemptDatabaseTest`, and `Milestone6TelephonyFailureMatrixTest`. Focused D/G instrumentation and handoff unit tests, full `testDebugUnitTest`, `assembleDebugAndroidTest`, and `lintDebug` passed (lint: 0 errors). `git diff --check` and a sensitive-value scan passed; existing E.164 literals in the first two tests are synthetic test-only fixtures. Both SIMs, Wi-Fi, and mobile data were restored on. The foreground service was stopped before and after this run; normal service resumption was not claimed.
+
+### Exact remaining Milestone 6 acceptance boundaries after D/G
+
+1. **Device/telephony:** permission denial; SMS unavailability other than the accepted selected-SIM-loss case; both transports unavailable; dual-SIM ambiguity beyond explicit selection loss; low battery; delayed, missing, duplicate, or ambiguous sent callbacks; bounded retry and unknown-outcome behavior without unintended resend; and carrier/provider failure outcomes. A live foreground-service restart during selected-SIM loss remains unproven.
+2. **Trusted-contact notification:** physical watchdog/verification, restoration, offline completion, opt-out, transport-failure, and handset receipt checklist. Provider acceptance is not handset delivery or human reading.
+3. **Production-provider authentication:** establish and accept a production-grade authenticated inbound-provider boundary. The shared-secret Africa's Talking sandbox callback is not that boundary.
+4. **Live carrier-to-provider path:** real delivery, retry/failure behavior, and latency characterization remain unproven by the no-send G probe or controlled Edge-path tests; record an explicit limitation if a live route is unavailable.
+
+Milestone 6 remains **IN PROGRESS**. No AWS/provider configuration change or hosted deployment accompanied D/G.

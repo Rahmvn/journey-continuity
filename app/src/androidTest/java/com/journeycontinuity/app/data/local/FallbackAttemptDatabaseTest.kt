@@ -20,6 +20,15 @@ import com.journeycontinuity.app.degraded.FallbackKeyMaterialStore
 import com.journeycontinuity.app.degraded.FallbackNonceSource
 import com.journeycontinuity.app.degraded.FallbackTransportState
 import com.journeycontinuity.app.degraded.FallbackTransportOutcome
+import com.journeycontinuity.app.degraded.FallbackHandoffCoordinator
+import com.journeycontinuity.app.degraded.FallbackHandoffResult
+import com.journeycontinuity.app.degraded.RoomFallbackHandoffAttemptStore
+import com.journeycontinuity.app.degraded.SmsFallbackConfiguration
+import com.journeycontinuity.app.degraded.SmsFallbackRoute
+import com.journeycontinuity.app.degraded.SmsFallbackStatus
+import com.journeycontinuity.app.degraded.SmsHandoffRequest
+import com.journeycontinuity.app.degraded.SmsTelephonyGateway
+import com.journeycontinuity.app.degraded.SmsTransportResolution
 import com.journeycontinuity.app.degraded.RoomDegradedConnectivityStateStore
 import com.journeycontinuity.app.domain.ConnectivityState
 import com.journeycontinuity.app.domain.Journey
@@ -117,6 +126,52 @@ class FallbackAttemptDatabaseTest {
         val restored = database.fallbackAttemptDao().allForJourney(JOURNEY_ID).single()
         assertEquals(first.protectedPayloadText, restored.protectedPayloadText)
         assertEquals(2L, database.degradedConnectivityDao().get(JOURNEY_ID)!!.nextFallbackEnvelopeSequence)
+    }
+
+    @Test
+    fun unavailableSmsTransportLeavesSameRoomAttemptEligibleWhenTransportReturns() = runBlocking {
+        val degraded = coordinator()
+        degraded.activate(JOURNEY_ID, false)
+        now = 1_000
+        degraded.timeAdvanced(JOURNEY_ID)
+        val original = database.fallbackAttemptDao().allForJourney(JOURNEY_ID).single()
+        var transport: SmsTransportResolution = SmsTransportResolution.Unavailable("No active SIM")
+        val configuration = object : SmsFallbackConfiguration {
+            override fun status(): SmsFallbackStatus = error("not needed")
+            override fun resolveForSend() = transport
+            override fun selectSubscription(subscriptionId: Int) = false
+        }
+        val submissions = mutableListOf<SmsHandoffRequest>()
+        val telephony = object : SmsTelephonyGateway {
+            override fun divideMessage(subscriptionId: Int, text: String) = listOf(text)
+            override fun send(request: SmsHandoffRequest) { submissions += request }
+        }
+        fun handoff() = FallbackHandoffCoordinator(
+            RoomFallbackHandoffAttemptStore(database.fallbackAttemptDao()),
+            configuration, telephony, clock = { now },
+        )
+
+        assertTrue(handoff().processNextReady(JOURNEY_ID) is FallbackHandoffResult.Unavailable)
+        val stillPending = requireNotNull(database.fallbackAttemptDao().getByLocalAttemptId(original.localAttemptId))
+        assertEquals(FallbackTransportState.ALLOCATED, stillPending.transportState)
+        assertEquals(0, stillPending.transportAttemptCount)
+        assertEquals(original.protectedPayloadText, stillPending.protectedPayloadText)
+        assertArrayEquals(original.payloadSha256, stillPending.payloadSha256)
+        assertEquals(1, database.fallbackAttemptDao().allForJourney(JOURNEY_ID).size)
+        assertTrue(submissions.isEmpty())
+
+        transport = SmsTransportResolution.Available(7, SmsFallbackRoute("+15555550123"))
+        assertEquals(FallbackHandoffResult.SubmittedAwaitingCallback,
+            handoff().processNextReady(JOURNEY_ID))
+        val claimed = database.fallbackAttemptDao().allForJourney(JOURNEY_ID).single()
+        assertEquals(original.localAttemptId, claimed.localAttemptId)
+        assertEquals(original.envelopeSequence, claimed.envelopeSequence)
+        assertEquals(original.protectedPayloadText, claimed.protectedPayloadText)
+        assertArrayEquals(original.nonce, claimed.nonce)
+        assertArrayEquals(original.payloadSha256, claimed.payloadSha256)
+        assertEquals(original.protectedPayloadText, submissions.single().exactPersistedText)
+        assertEquals(2L, database.degradedConnectivityDao().get(JOURNEY_ID)!!.nextFallbackEnvelopeSequence)
+        assertEquals(1, nonceSource.calls)
     }
 
     @Test

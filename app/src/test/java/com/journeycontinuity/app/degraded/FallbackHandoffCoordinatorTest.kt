@@ -25,6 +25,42 @@ class FallbackHandoffCoordinatorTest {
     }
 
     @Test
+    fun unavailableTransportRetainsPendingAttemptAndLaterSubmitsSamePersistedEnvelope() = runBlocking {
+        val original = validAttempt()
+        val store = FakeStore(original)
+        val gateway = FakeGateway()
+        var transport: SmsTransportResolution = SmsTransportResolution.Unavailable("No active SIM")
+        fun handoffCoordinator() = FallbackHandoffCoordinator(
+            attempts = store,
+            configuration = object : SmsFallbackConfiguration {
+                override fun status() = error("not needed")
+                override fun resolveForSend() = transport
+                override fun selectSubscription(subscriptionId: Int) = false
+            },
+            telephony = gateway,
+            clock = { now },
+        )
+
+        assertTrue(handoffCoordinator().processNextReady(original.journeyId) is FallbackHandoffResult.Unavailable)
+        assertEquals(original.localAttemptId, store.attempt.localAttemptId)
+        assertEquals(FallbackTransportState.ALLOCATED, store.attempt.transportState)
+        assertEquals(0, store.claims)
+        assertEquals(0, store.attempt.transportAttemptCount)
+        assertTrue(gateway.sent.isEmpty())
+
+        transport = SmsTransportResolution.Available(7, SmsFallbackRoute("+15555550123"))
+        assertEquals(FallbackHandoffResult.SubmittedAwaitingCallback,
+            handoffCoordinator().processNextReady(original.journeyId))
+        assertEquals(original.localAttemptId, store.attempt.localAttemptId)
+        assertEquals(original.envelopeSequence, store.attempt.envelopeSequence)
+        assertEquals(original.telemetrySequence, store.attempt.telemetrySequence)
+        assertEquals(original.protectedPayloadText, store.attempt.protectedPayloadText)
+        assertArrayEquals(original.payloadSha256, store.attempt.payloadSha256)
+        assertEquals(original.protectedPayloadText, gateway.sent.single().exactPersistedText)
+        assertEquals(1, store.claims)
+    }
+
+    @Test
     fun digestMismatchBlocksHandoff() = runBlocking {
         val store = FakeStore(validAttempt().copy(payloadSha256 = ByteArray(32)))
         val gateway = FakeGateway()

@@ -303,7 +303,7 @@ Remote deployment acceptance:
 
 ## Milestone 6 — Degraded Connectivity + SMS Fallback
 
-**Status:** IN PROGRESS — PROVISIONING, OFFLINE ALLOCATION, PHYSICAL CARRIER HANDOFF, RECOVERY, AND SCOPED DETERMINISTIC HOSTED JC1 ACCEPTANCE COMPLETE; PRODUCTION-GRADE PROVIDER AND FAILURE-MATRIX ACCEPTANCE OUTSTANDING
+**Status:** IN PROGRESS — PROVISIONING, OFFLINE ALLOCATION, PHYSICAL CARRIER HANDOFF, RECOVERY, SELECTED-SIM LOSS (D), NO-SEND SAME-ATTEMPT RESTORATION (G), AND SCOPED DETERMINISTIC HOSTED JC1 ACCEPTANCE COMPLETE; REMAINING FAILURE-MATRIX, NOTIFICATION, AND PRODUCTION-PROVIDER ACCEPTANCE OUTSTANDING
 
 ### Goal
 
@@ -397,14 +397,14 @@ Hosted migration `20260918000200_milestone_6_supersede_stale_sms.sql` is applied
 ### Outstanding
 
 - design a production-grade provider-authentication boundary before any live-provider claim;
-- complete the physical failure matrix, including SMS unavailable, dual-SIM ambiguity, low battery, retry, and ambiguous carrier outcomes;
+- complete the remaining physical failure matrix, including permission denial, SMS unavailability beyond accepted selected-SIM loss, both transports unavailable, dual-SIM ambiguity, low battery, delayed/missing/duplicate or ambiguous callbacks, bounded retry and unknown outcomes, and carrier/provider failures; a live-service restart during SIM loss was not proven;
 - complete the additive trusted-contact notification acceptance matrix separately;
 - establish production-grade provider authentication and record real carrier-to-provider delivery/retry/latency only if a suitable live route becomes available; these provider-production items may remain explicitly pending for the hackathon when live telecom provisioning is unavailable;
 - complete Milestone 6 end-to-end acceptance.
 
 ### Acceptance target
 
-The controlled data-bad/SMS-good carrier handoff path and the scoped deterministic hosted Milestone 6 acceptance, including JC1 completion behavior, have passed. The remaining target covers production-grade provider authentication and real carrier-to-provider delivery/retry/latency; both transports unavailable, ambiguous outcomes, dual-SIM ambiguity, low battery, retry behavior, the final physical telephony failure matrix, and trusted-contact notification receipt. Internet recovery and both unsent supersession and handed-off history retention have passed physically. Milestone 6 remains **IN PROGRESS**.
+The controlled data-bad/SMS-good carrier handoff path and the scoped deterministic hosted Milestone 6 acceptance, including JC1 completion behavior, have passed. Physical selected-SIM loss (D) passed; restoration of the same persisted attempt (G) passed at a test-only no-send pre-claim boundary, not as carrier delivery. The remaining target covers production-grade provider authentication and real carrier-to-provider delivery/retry/latency; permission denial, other SMS unavailability, both transports unavailable, ambiguous outcomes, dual-SIM ambiguity, low battery, retry behavior, the rest of the physical telephony failure matrix, and trusted-contact notification receipt. Internet recovery and both unsent supersession and handed-off history retention have passed physically. Milestone 6 remains **IN PROGRESS**.
 
 The additive trusted-contact path must also pass healthy-monitoring silence, real watchdog-driven `VERIFYING`, no stale started alert after case resolution, fresh-contact resolution, offline Journey completion, contact opt-out, and transport failure remaining independent of deterministic monitoring state.
 
