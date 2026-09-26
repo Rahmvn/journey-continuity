@@ -332,6 +332,23 @@ class DegradedConnectivityPolicyTest {
     }
 
     @Test
+    fun lowBatteryDuringDegradationDoesNotCreateRetryOrAnotherEnvelope() {
+        var state = firstAttemptedState()
+        val observed = reduce(state, telemetry(sequence = 2, batteryPercent = 1, atMillis = 1_050))
+        state = observed.state
+        assertTrue(observed.actions.isEmpty())
+        repeat(10) { index ->
+            val tick = reduce(state, DegradedConnectivityEvent.TimeAdvanced(1_100L + index * 100L))
+            state = tick.state
+            assertTrue(tick.actions.isEmpty())
+            assertEquals(ConnectivityPhase.DEGRADED, state.connectivityPhase)
+            assertEquals(2L, state.nextFallbackEnvelopeSequence)
+        }
+        assertEquals(1, state.latestBatteryPercent)
+        assertEquals(FallbackDisposition.ALLOCATED, state.fallbackDisposition)
+    }
+
+    @Test
     fun domainContainsNoDangerOrEmergencySemantics() {
         val names = buildList {
             addAll(ConnectivityPhase.entries.map { it.name })

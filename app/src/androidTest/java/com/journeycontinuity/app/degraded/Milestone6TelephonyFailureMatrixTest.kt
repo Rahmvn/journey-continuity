@@ -1,6 +1,8 @@
 package com.journeycontinuity.app.degraded
 
 import android.content.Context
+import android.content.ContextWrapper
+import android.os.PowerManager
 import android.util.Log
 import androidx.room.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -16,6 +18,7 @@ import com.journeycontinuity.app.data.local.MIGRATION_6_7
 import com.journeycontinuity.app.data.local.MIGRATION_7_8
 import com.journeycontinuity.app.data.local.MIGRATION_8_9
 import com.journeycontinuity.app.data.local.toDomain
+import com.journeycontinuity.app.telemetry.DeviceContextReader
 import java.security.MessageDigest
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -34,6 +37,9 @@ class Milestone6TelephonyFailureMatrixTest {
 
     private val context: Context
         get() = InstrumentationRegistry.getInstrumentation().targetContext
+
+    private val testEvidence: android.content.SharedPreferences
+        get() = context.getSharedPreferences("m6-permission-evidence", Context.MODE_PRIVATE)
 
     private fun database() = Room.databaseBuilder(context, JourneyDatabase::class.java, "journey-continuity.db")
         .addMigrations(
@@ -342,6 +348,238 @@ class Milestone6TelephonyFailureMatrixTest {
         ).ready)
         Log.i(TAG, "dual_sim_explicit_selection=true invalid_selection_rejected=true " +
             "stored_selection_unchanged=true no_default_fallback=true")
+    }
+
+    /** Read-only production-row baseline before a temporary SEND_SMS revocation. */
+    @Test
+    fun capturePermissionDenialBaselineWithoutSending() = runBlocking {
+        val status = AndroidSmsFallbackConfiguration(context, UnconfiguredSmsFallbackRouteProvider).status()
+        assertTrue(status.sendPermissionGranted)
+        assertTrue(status.activeSubscriptions.any { it.subscriptionId == status.selectedSubscriptionId })
+        database().use { db ->
+            val journeyId = requireNotNull(db.journeyDao().getActive()).id
+            val attempt = db.fallbackAttemptDao().allForJourney(journeyId).last()
+            val state = requireNotNull(db.degradedConnectivityDao().get(journeyId))
+            assertEquals(FallbackTransportState.ALLOCATED, attempt.transportState)
+            assertEquals(0, attempt.handoffGeneration)
+            assertEquals(0, attempt.transportAttemptCount)
+            assertTrue(testEvidence.edit()
+                .putString("journey", journeyId)
+                .putLong("attempt", attempt.localAttemptId)
+                .putString("ledger", attemptFingerprint(db, journeyId))
+                .putLong("nextEnvelope", state.nextFallbackEnvelopeSequence)
+                .putInt("selected", requireNotNull(status.selectedSubscriptionId))
+                .commit())
+            Log.i(TAG, "permission_baseline pending=${attempt.localAttemptId} " +
+                "next_envelope=${state.nextFallbackEnvelopeSequence} no_sms=true")
+        }
+    }
+
+    /** Run only after SEND_SMS is revoked; fake gateway fails before any carrier call. */
+    @Test
+    fun revokedSendSmsFailsClosedAndPreservesPendingAttempt() = runBlocking {
+        val status = testOnlyConfiguredRoute().status()
+        assertFalse(status.sendPermissionGranted)
+        assertFalse(status.ready)
+        assertEquals("SMS permission is not granted.", status.unavailableReason)
+        assertEquals(testEvidence.getInt("selected", -1), status.selectedSubscriptionId)
+        database().use { db ->
+            val journeyId = requireNotNull(testEvidence.getString("journey", null))
+            val attemptId = testEvidence.getLong("attempt", -1)
+            val gateway = StopBeforeClaimGateway()
+            val handoff = FallbackHandoffCoordinator(
+                RoomFallbackHandoffAttemptStore(db.fallbackAttemptDao()),
+                testOnlyConfiguredRoute(), gateway,
+            )
+            repeat(4) {
+                assertTrue(handoff.processNextReady(journeyId) is FallbackHandoffResult.Unavailable)
+            }
+            assertEquals(0, gateway.divisions)
+            val attempt = requireNotNull(db.fallbackAttemptDao().getByLocalAttemptId(attemptId))
+            val state = requireNotNull(db.degradedConnectivityDao().get(journeyId))
+            assertEquals(FallbackTransportState.ALLOCATED, attempt.transportState)
+            assertEquals(0, attempt.handoffGeneration)
+            assertEquals(0, attempt.transportAttemptCount)
+            assertEquals(null, attempt.handoffStartedAt)
+            assertEquals(testEvidence.getString("ledger", null), attemptFingerprint(db, journeyId))
+            assertEquals(testEvidence.getLong("nextEnvelope", -1), state.nextFallbackEnvelopeSequence)
+            Log.i(TAG, "permission_denied same_attempt=$attemptId claim_count=0 no_sms=true")
+        }
+    }
+
+    /** Run only after SEND_SMS is restored; inspect eligibility before claim. */
+    @Test
+    fun restoredSendSmsMakesSameAttemptEligibleBeforeClaim() = runBlocking {
+        val status = testOnlyConfiguredRoute().status()
+        assertTrue(status.sendPermissionGranted)
+        assertTrue(status.ready)
+        assertEquals(testEvidence.getInt("selected", -1), status.selectedSubscriptionId)
+        database().use { db ->
+            val journeyId = requireNotNull(testEvidence.getString("journey", null))
+            val gateway = StopBeforeClaimGateway()
+            val handoff = FallbackHandoffCoordinator(
+                RoomFallbackHandoffAttemptStore(db.fallbackAttemptDao()),
+                testOnlyConfiguredRoute(), gateway,
+            )
+            assertTrue(handoff.processNextReady(journeyId) is FallbackHandoffResult.Unavailable)
+            assertEquals(1, gateway.divisions)
+            assertEquals(status.selectedSubscriptionId, gateway.observedSubscription)
+            val attempt = requireNotNull(db.fallbackAttemptDao().getByLocalAttemptId(
+                testEvidence.getLong("attempt", -1)))
+            assertEquals(attempt.protectedPayloadText, gateway.observedText)
+            assertEquals(FallbackTransportState.ALLOCATED, attempt.transportState)
+            assertEquals(0, attempt.transportAttemptCount)
+            assertEquals(testEvidence.getString("ledger", null), attemptFingerprint(db, journeyId))
+            assertEquals(testEvidence.getLong("nextEnvelope", -1),
+                requireNotNull(db.degradedConnectivityDao().get(journeyId)).nextFallbackEnvelopeSequence)
+            Log.i(TAG, "permission_restored same_attempt=${attempt.localAttemptId} " +
+                "preclaim_eligible=true no_sms=true")
+        }
+    }
+
+    @Test
+    fun absentProductionRoutePreservesPendingAttemptWithoutClaim() = runBlocking {
+        val configuration = AndroidSmsFallbackConfiguration(context, UnconfiguredSmsFallbackRouteProvider)
+        val status = configuration.status()
+        assertTrue(status.sendPermissionGranted)
+        assertTrue(status.activeSubscriptions.any { it.subscriptionId == status.selectedSubscriptionId })
+        assertFalse(status.destinationConfigured)
+        assertEquals("No SMS fallback destination is configured.", status.unavailableReason)
+        database().use { db ->
+            val journeyId = requireNotNull(testEvidence.getString("journey", null))
+            val gateway = StopBeforeClaimGateway()
+            val handoff = FallbackHandoffCoordinator(
+                RoomFallbackHandoffAttemptStore(db.fallbackAttemptDao()), configuration, gateway,
+            )
+            repeat(4) {
+                assertTrue(handoff.processNextReady(journeyId) is FallbackHandoffResult.Unavailable)
+            }
+            assertEquals(0, gateway.divisions)
+            val attempt = requireNotNull(db.fallbackAttemptDao().getByLocalAttemptId(
+                testEvidence.getLong("attempt", -1)))
+            assertEquals(FallbackTransportState.ALLOCATED, attempt.transportState)
+            assertEquals(0, attempt.transportAttemptCount)
+            assertEquals(testEvidence.getString("ledger", null), attemptFingerprint(db, journeyId))
+            assertEquals(testEvidence.getLong("nextEnvelope", -1),
+                requireNotNull(db.degradedConnectivityDao().get(journeyId)).nextFallbackEnvelopeSequence)
+            Log.i(TAG, "route_absent same_attempt=${attempt.localAttemptId} no_claim=true no_sms=true")
+        }
+    }
+
+    /** Read-only first snapshot after live service was observed under offline selected-SIM loss. */
+    @Test
+    fun captureLiveOfflineSelectedSimLossWithoutSending() = runBlocking {
+        val selected = testEvidence.getInt("selected", -1)
+        val status = AndroidSmsFallbackConfiguration(context, UnconfiguredSmsFallbackRouteProvider).status()
+        assertFalse(DeviceContextReader(context).usableInternet())
+        assertEquals(selected, status.selectedSubscriptionId)
+        assertEquals(1, status.activeSubscriptions.size)
+        assertFalse(status.activeSubscriptions.any { it.subscriptionId == selected })
+        assertFalse(status.ready)
+        assertEquals("The selected SIM is no longer active; reselect it.", status.unavailableReason)
+        database().use { db ->
+            val journeyId = requireNotNull(testEvidence.getString("journey", null))
+            val state = requireNotNull(db.degradedConnectivityDao().get(journeyId))
+            val pending = requireNotNull(db.fallbackAttemptDao().getByLocalAttemptId(
+                testEvidence.getLong("attempt", -1)))
+            val latest = requireNotNull(db.telemetryDao().getLatest(journeyId))
+            assertEquals(ConnectivityPhase.DEGRADED, state.connectivityPhase)
+            assertFalse(state.validatedInternetAvailable)
+            assertEquals(FallbackTransportState.ALLOCATED, pending.transportState)
+            assertEquals(0, pending.handoffGeneration)
+            assertEquals(0, pending.transportAttemptCount)
+            assertEquals(null, pending.handoffStartedAt)
+            assertEquals(testEvidence.getString("ledger", null), attemptFingerprint(db, journeyId))
+            assertEquals(testEvidence.getLong("nextEnvelope", -1), state.nextFallbackEnvelopeSequence)
+            assertTrue(testEvidence.edit()
+                .putLong("offlineTelemetry", latest.sequence)
+                .putLong("offlineCloudSuccess", state.lastAuthenticatedCloudSuccessAtMillis ?: -1)
+                .commit())
+            Log.i(TAG, "both_unavailable phase=DEGRADED telemetry_sequence=${latest.sequence} " +
+                "pending=${pending.localAttemptId} next_envelope=${state.nextFallbackEnvelopeSequence} " +
+                "cloud_success=${state.lastAuthenticatedCloudSuccessAtMillis} selected_inactive=true no_sms=true")
+        }
+    }
+
+    /** Read-only Room snapshot after a genuine app/service stop and user-initiated reopen. */
+    @Test
+    fun verifyOfflineSelectedSimLossAfterLiveServiceRestart() = runBlocking {
+        val selected = testEvidence.getInt("selected", -1)
+        val status = AndroidSmsFallbackConfiguration(context, UnconfiguredSmsFallbackRouteProvider).status()
+        assertFalse(DeviceContextReader(context).usableInternet())
+        assertEquals(selected, status.selectedSubscriptionId)
+        assertEquals(1, status.activeSubscriptions.size)
+        assertFalse(status.activeSubscriptions.any { it.subscriptionId == selected })
+        assertFalse(status.ready)
+        database().use { db ->
+            val journeyId = requireNotNull(testEvidence.getString("journey", null))
+            val state = requireNotNull(db.degradedConnectivityDao().get(journeyId))
+            val pending = requireNotNull(db.fallbackAttemptDao().getByLocalAttemptId(
+                testEvidence.getLong("attempt", -1)))
+            val latest = requireNotNull(db.telemetryDao().getLatest(journeyId))
+            assertEquals(ConnectivityPhase.DEGRADED, state.connectivityPhase)
+            assertFalse(state.validatedInternetAvailable)
+            assertEquals(FallbackTransportState.ALLOCATED, pending.transportState)
+            assertEquals(0, pending.handoffGeneration)
+            assertEquals(0, pending.transportAttemptCount)
+            assertEquals(null, pending.handoffStartedAt)
+            assertEquals(testEvidence.getString("ledger", null), attemptFingerprint(db, journeyId))
+            assertEquals(testEvidence.getLong("nextEnvelope", -1), state.nextFallbackEnvelopeSequence)
+            assertEquals(testEvidence.getLong("offlineCloudSuccess", -1),
+                state.lastAuthenticatedCloudSuccessAtMillis ?: -1)
+            assertTrue(latest.sequence >= testEvidence.getLong("offlineTelemetry", Long.MAX_VALUE))
+            Log.i(TAG, "service_restart phase=DEGRADED telemetry_sequence=${latest.sequence} " +
+                "pending=${pending.localAttemptId} ledger_unchanged=true selected_inactive=true no_sms=true")
+        }
+    }
+
+    /** Physical battery-saver constraint, not a claim that the cell is genuinely low. */
+    @Test
+    fun batterySaverDoesNotCorruptPendingAttemptOrCreateHandoffLoop() = runBlocking {
+        val power = context.getSystemService(PowerManager::class.java)
+        assertTrue(power.isPowerSaveMode)
+        val configuration = AndroidSmsFallbackConfiguration(context, UnconfiguredSmsFallbackRouteProvider)
+        assertFalse(configuration.status().ready)
+        database().use { db ->
+            val journeyId = requireNotNull(testEvidence.getString("journey", null))
+            val gateway = StopBeforeClaimGateway()
+            val handoff = FallbackHandoffCoordinator(
+                RoomFallbackHandoffAttemptStore(db.fallbackAttemptDao()), configuration, gateway,
+            )
+            repeat(10) {
+                assertTrue(handoff.processNextReady(journeyId) is FallbackHandoffResult.Unavailable)
+            }
+            assertEquals(0, gateway.divisions)
+            val attempt = requireNotNull(db.fallbackAttemptDao().getByLocalAttemptId(
+                testEvidence.getLong("attempt", -1)))
+            assertEquals(FallbackTransportState.ALLOCATED, attempt.transportState)
+            assertEquals(0, attempt.transportAttemptCount)
+            assertEquals(testEvidence.getString("ledger", null), attemptFingerprint(db, journeyId))
+            assertEquals(testEvidence.getLong("nextEnvelope", -1),
+                requireNotNull(db.degradedConnectivityDao().get(journeyId)).nextFallbackEnvelopeSequence)
+            Log.i(TAG, "battery_saver=true battery_percent=${DeviceContextReader(context).battery().percent} " +
+                "pending=${attempt.localAttemptId} ledger_unchanged=true no_sms=true")
+        }
+    }
+
+    @Test
+    fun twoActiveSimsWithoutAnExplicitChoiceNeverUseTheSystemDefault() {
+        val isolatedPreferences = context
+            .getSharedPreferences("m6-no-explicit-sim-selection", Context.MODE_PRIVATE)
+        assertTrue(isolatedPreferences.edit().clear().commit())
+        val noChoiceContext = object : ContextWrapper(context) {
+            override fun getSharedPreferences(name: String, mode: Int) = isolatedPreferences
+        }
+        val configuration = AndroidSmsFallbackConfiguration(noChoiceContext) {
+            SmsFallbackRoute("+" + "1".repeat(8))
+        }
+        val status = configuration.status()
+        assertEquals(2, status.activeSubscriptions.size)
+        assertEquals(null, status.selectedSubscriptionId)
+        assertFalse(status.ready)
+        assertEquals("Select the SIM used for fallback SMS.", status.unavailableReason)
+        assertTrue(configuration.resolveForSend() is SmsTransportResolution.Unavailable)
+        Log.i(TAG, "dual_sim_no_explicit_choice active_count=2 default_not_used=true no_sms=true")
     }
 
     private companion object {
