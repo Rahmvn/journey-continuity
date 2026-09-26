@@ -87,7 +87,7 @@ The separate cloud-to-trusted-contact notification slice has repository implemen
 - contact opt-in, authorization, and masked-number behavior;
 - factual message construction and log redaction.
 
-Hosted migration `20260918000200_milestone_6_supersede_stale_sms.sql` is applied. Repository evidence does not establish physical carrier receipt, handset delivery, or human reading for this slice, so those outcomes are not recorded as accepted.
+Hosted migration `20260918000200_milestone_6_supersede_stale_sms.sql` is applied. One controlled `VERIFICATION_STARTED` handset receipt was subsequently accepted on 2026-09-26 as recorded below. Provider acceptance alone does not establish handset delivery or human reading, and the remaining notification scenarios are still outstanding.
 
 ## Remaining physical SMS failure-matrix acceptance
 
@@ -192,10 +192,10 @@ Accepted here: genuine sandbox callback shape/text preservation, active binding/
 | --- | --- | --- |
 | Device and carrier send | Provisioning, Keystore, durable offline JC1, explicit SIM/permission route, one-segment Android `RESULT_OK` handoff, controlled recipient byte equality, recovery and historical handoff retention; selected-SIM loss (D), same-attempt restoration at a no-send pre-claim boundary (G), and isolated Redmi no-send `UNKNOWN_OUTCOME`/finite-claim behavior | Remaining physical failure matrix: permission denial, other SMS/data unavailability, both transports unavailable, dual-SIM ambiguity, low battery, actual WorkManager scheduling, live delayed/missing/duplicate or ambiguous callbacks, and carrier/provider failure outcomes; no live-service restart under SIM loss was proven |
 | Hosted provider-neutral ingestion | Real sandbox production-JC1 authentication, SMS-first canonicalization, duplicate/historical ordering; deployed reject-path checks; controlled ACTIVE/revoked key/binding and distinct unwrap/envelope failure classifications; internet-first match/conflict; timely fallback evidence preventing false silence and resolving one open verification; current, duplicate, delayed, and post-closure JC1 completion behavior | Scoped deterministic hosted acceptance complete; production-grade provider boundary remains separate |
-| Trusted-contact notification | Outbox/supersession implementation and hosted migrations | Physical notification failure/receipt checklist; provider acceptance does not prove handset delivery or human reading |
+| Trusted-contact notification | Outbox/supersession implementation, hosted migrations, and one controlled canonical `VERIFICATION_STARTED` SMS physically received from `JOURNEY` | Remaining opt-out, stale/superseded, restoration-before-claim, completion-before-claim, retryable/permanent provider failure acceptance; other notification types and carrier conditions unproven |
 | Live provider | No production-provider claim | A provider-authenticated live inbound route and operational acceptance; real carrier-to-provider delivery, provider retry/failure behavior, and latency characterization cannot be established with this sandbox and may remain explicitly pending for the hackathon |
 
-Milestone 6 remains in progress pending the physical telephony failure matrix, trusted-contact notification receipt acceptance, and explicit resolution or limitation of production-provider authentication and live carrier-to-provider behavior.
+Milestone 6 remains in progress pending the remaining device/carrier boundaries, trusted-contact notification scenarios, and explicit resolution or limitation of production-provider authentication and live carrier-to-provider behavior. The latest bounded device and notification evidence is recorded below.
 
 ## Corrected recovery barrier / case H — 2026-09-26
 
@@ -348,4 +348,30 @@ The earlier D/G and `UNKNOWN_OUTCOME` findings above remain intact. This additio
 | WorkManager framework scheduling | **PASS at an isolated no-send worker-factory boundary.** Android WorkManager's test scheduler enqueued and executed the real fallback work-request names/data/delays through a test factory that substituted a fake worker, which called the same extracted production dispatch. An in-memory WorkManager database and isolated on-disk Room fixture showed repeated uncertainty/retry scheduling could not resend `UNKNOWN_OUTCOME`; confirmed retryable failure scheduled only the final permitted claim; reopening Room preserved count 1 before that claim; exhausted state remained non-sendable. This does **not** directly exercise `FallbackHandoffWorker.doWork` with the production `JourneyContinuityApplication` or live system scheduling. |
 | Callback matrix | **PASS for deterministic no-send Room/coordinator paths, not real carrier callbacks.** The full six-test `UnknownOutcomeDatabaseTest` class was rerun successfully on Redmi, resolving the earlier whole-class rerun limitation. Its late success/failure, duplicate, stale-generation, restart, timeout, second-claim exhaustion, recovery/completion, and immutable payload assertions passed. The 12-test fallback Room class also passed. The Android sent-result broadcast receiver and real carrier callback timing were not accepted by these fakes. |
 
-No production transport semantics, AWS/provider configuration, hosted infrastructure, or production SMS destination changed. Remaining device-side limits include an app-observed low-battery input/genuine low-charge endurance, production-worker/system scheduling beyond the isolated worker factory, real Android sent-result broadcast/carrier callback timing and failures, and any unattended service-resurrection requirement. Trusted-contact handset notification receipt, production-grade inbound-provider authentication, and real carrier-to-provider delivery/retry/latency remain separate. Milestone 6 remains **IN PROGRESS**.
+No production transport semantics, AWS/provider configuration, hosted infrastructure, or production SMS destination changed during that device-only run. Remaining device-side limits include an app-observed low-battery input/genuine low-charge endurance, production-worker/system scheduling beyond the isolated worker factory, real Android sent-result broadcast/carrier callback timing and failures, and any unattended service-resurrection requirement. The subsequent trusted-contact receipt evidence is recorded next; production-grade inbound-provider authentication and real carrier-to-provider delivery/retry/latency remain separate. Milestone 6 remains **IN PROGRESS**.
+
+## Controlled trusted-contact handset acceptance, 2026-09-26
+
+**PASS for one end-to-end `VERIFICATION_STARTED` notification.** Controlled notification `de392087-2f7e-4246-873b-2c2a683b5775` was enqueued through the canonical production database verification transition for an isolated synthetic Journey/contact scenario. The contact used the normal invitation/acceptance and preference functions with explicit SMS consent. Actual eligibility SQL requires a matching enabled preference; absence of an SMS preference row means **ineligible**, not enabled by default.
+
+The newly enqueued row was held at `next_attempt_at = 'infinity'` within the same database transaction before commit. It was `PENDING`, claim count 0, without a lease or provider message ID, with exactly one case/contact/type logical notification and zero unrelated eligible rows. Relationship acceptance, Journey authorization, consent, destination equality to the existing verified AWS sandbox destination, and factual template/authenticated-viewer inputs were checked. At least one scheduled watchdog run while held produced zero claims. The scheduler was not paused and no special production code path was introduced.
+
+After the user explicitly authorized **exactly one real acceptance SMS**, only that row's due time was released. The normal minute-scheduled watchdog made exactly one claim and one AWS `SendTextMessage` provider submission. The row reached terminal `PROVIDER_ACCEPTED` with its provider message ID persisted. No second logical notification or unrelated eligible notification appeared. A subsequent scheduled cycle produced no second claim or provider acceptance.
+
+| Timing evidence | UTC on 2026-09-26 |
+| --- | --- |
+| Notification release | 22:18:00.202720 |
+| Scheduled processing began | 22:18:27.648213 |
+| Provider acceptance recorded | 22:18:29.200510 |
+
+The exact claim timestamp is not retained after successful acknowledgement because lease fields are cleared. These times do not supply a handset-delivery timestamp. Physical receipt was separately confirmed by the user: the trusted-contact handset received the SMS, displayed sender label **JOURNEY**, and showed the approved semantics: device contact is being verified, **current whereabouts are unknown**, and a Journey Continuity viewer link is provided. No destination number, full viewer URL/token, provider message ID value, or credentials are recorded here.
+
+`PROVIDER_ACCEPTED` alone is not handset-delivery proof; receipt is accepted here because the user physically observed this SMS. This proves one controlled notification end-to-end, not all notification types, guaranteed delivery, human reading, or all carrier/provider conditions. No danger, safety, or current-location conclusion was created. The unknown-whereabouts wording remains the intended expression of uncertainty.
+
+### Current remaining Milestone 6 matrix
+
+- **Trusted-contact notification:** complete no-send/deterministic acceptance for opt-out, stale/superseded work, restoration before claim, completion before claim, retryable provider failure, and permanent provider failure, including preservation of provider-accepted history after later resolution. Repository coverage is not new acceptance evidence. Other notification types have no handset-receipt acceptance from this run.
+- **Device/carrier:** app-observed low-battery input/genuine low-charge endurance; production worker/system scheduling beyond the isolated worker factory; real Android sent-result receiver/carrier callback timing and failures; unattended service resurrection if required; real carrier/provider failures. Earlier accepted device results and their limits remain intact.
+- **Inbound provider/live route:** production-grade inbound-provider authentication; real carrier-to-provider delivery, retry/failure behavior, and latency characterization, or an explicit limitation where no suitable live route is available.
+
+Milestone 6 remains **IN PROGRESS**. This documentation checkpoint sends no additional SMS, creates no fixture, changes no product behavior, and performs no deployment or AWS/provider configuration change.
