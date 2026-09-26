@@ -208,6 +208,44 @@ class ReliableSyncEngineTest {
         assertTrue(local.noWorkRequested("one"))
     }
 
+    @Test
+    fun verifiedOwnerReactivatesOnlyLegacyAuthorizationAndPreservesCheckpoint() = runBlocking {
+        val local = FakeLocalSyncStore(journey("one"), telemetry("one", 1..6))
+        local.seedCheckpoint("one", 2)
+        local.markFailure("one", LEGACY_AUTHORIZATION_ERRORS.first(), true)
+        val remote = FakeCloudGateway(verifiedOwner = true)
+        assertEquals(SyncRunResult.Success, engine(local, remote).synchronize())
+        assertEquals(2L, local.checkpointAtReactivation)
+        assertEquals(6L, local.checkpoint("one"))
+        assertEquals((3L..6L).toList(), remote.receivedSequences("one"))
+        assertEquals(6, local.allTelemetry("one").size)
+        assertEquals(LEGACY_AUTHORIZATION_ERRORS.first(), local.legacyDiagnostic)
+    }
+
+    @Test
+    fun wrongOwnerCannotReactivateLegacyBlockOrWriteCloudEvidence() = runBlocking {
+        val local = FakeLocalSyncStore(journey("one"), telemetry("one", 1..3))
+        local.seedCheckpoint("one", 2)
+        local.markFailure("one", LEGACY_AUTHORIZATION_ERRORS.first(), true)
+        val remote = FakeCloudGateway(verifiedOwner = false)
+        assertEquals(SyncRunResult.Retry, engine(local, remote).synchronize())
+        assertEquals(2L, local.checkpoint("one"))
+        assertTrue(local.noWorkRequested("one"))
+        assertTrue(remote.cloudJourneys.isEmpty())
+        assertEquals(null, local.legacyDiagnostic)
+    }
+
+    @Test
+    fun noEligibleCandidateWithPermanentNonAuthorizationBacklogIsNotSuccess() = runBlocking {
+        val local = FakeLocalSyncStore(journey("one"), telemetry("one", 1..3))
+        local.markFailure("one", "Schema mismatch", true)
+        val remote = FakeCloudGateway(verifiedOwner = true)
+        assertEquals(SyncRunResult.PermanentFailure, engine(local, remote).synchronize())
+        assertEquals(0L, local.checkpoint("one"))
+        assertTrue(remote.cloudJourneys.isEmpty())
+        assertEquals(0, remote.ownerVerificationCalls)
+    }
+
     private fun engine(
         local: FakeLocalSyncStore,
         remote: FakeCloudGateway,
@@ -249,11 +287,34 @@ class ReliableSyncEngineTest {
             var version: Long = 1,
             var requested: Boolean = true,
             var blocked: Boolean = false,
+            var error: String? = null,
         )
 
         private val journeys = linkedMapOf<String, Journey>()
         private val observations = linkedMapOf<String, MutableList<TelemetryObservation>>()
         private val states = linkedMapOf<String, State>()
+        var checkpointAtReactivation: Long? = null
+        var legacyDiagnostic: String? = null
+
+        override suspend fun legacyAuthorizationBlocks() = states.entries.filter {
+            it.value.blocked && it.value.error in LEGACY_AUTHORIZATION_ERRORS
+        }.map { LegacyAuthorizationBlock(it.key, it.value.version, requireNotNull(it.value.error)) }
+
+        override suspend fun reactivateLegacyAuthorization(block: LegacyAuthorizationBlock, verifiedAt: Long): Boolean {
+            val state = states.getValue(block.journeyId)
+            if (!state.blocked || state.version != block.changeVersion || state.error != block.lastError) return false
+            checkpointAtReactivation = state.checkpoint
+            legacyDiagnostic = state.error
+            state.blocked = false
+            state.requested = true
+            state.version++
+            return true
+        }
+
+        override suspend fun hasOutstandingWork() = states.any { (id, state) ->
+            state.blocked || state.requested ||
+                state.checkpoint < (observations[id]?.maxOfOrNull { it.sequence } ?: 0)
+        }
 
         init {
             seed.forEach { item ->
@@ -309,6 +370,7 @@ class ReliableSyncEngineTest {
         ) {
             states.getValue(journeyId).apply {
                 blocked = permanentlyBlocked
+                error = message
                 requested = !permanentlyBlocked
             }
         }
@@ -341,11 +403,18 @@ class ReliableSyncEngineTest {
         private val alwaysOffline: Boolean = false,
         private val afterFirstJourneyUpsert: (() -> Unit)? = null,
         private var authFailure: CloudSyncException? = null,
+        private val verifiedOwner: Boolean = false,
     ) : CloudSyncGateway {
         val cloudJourneys = linkedMapOf<String, Journey>()
         val cloudTelemetry = linkedMapOf<Pair<String, Long>, TelemetryObservation>()
         val telemetryBatchSizes = mutableListOf<Int>()
         private var journeyUpserts = 0
+        var ownerVerificationCalls = 0
+
+        override suspend fun verifyJourneyOwner(journeyId: String, ownerId: String): Boolean {
+            ownerVerificationCalls++
+            return verifiedOwner
+        }
 
         override suspend fun authenticatedOwnerId(): String = authFailure?.let { throw it } ?: "owner"
 

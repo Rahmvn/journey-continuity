@@ -178,6 +178,13 @@ class JourneyForegroundService : Service() {
             )
             degradedStateInitialized.complete(Unit)
             for (ignored in signal) {
+                // A cloud failure can interrupt recovery without a NetworkCallback transition.
+                // Reconcile the currently validated network before capturing the heartbeat start.
+                if (deviceContextReader.usableInternet()) {
+                    degradedConnectivityCoordinator.validatedInternetAvailable(journeyId)
+                }
+                degradedConnectivityCoordinator.timeAdvanced(journeyId)
+                val heartbeatStartedAt = System.currentTimeMillis()
                 val battery = deviceContextReader.battery()
                 AndroidSyncDiagnosticLogger.info(
                     "Heartbeat battery snapshot: percentage=${battery.percent}, charging=${battery.isCharging}",
@@ -190,7 +197,7 @@ class JourneyForegroundService : Service() {
                     networkUsable = deviceContextReader.usableInternet(),
                 )) {
                     HeartbeatAttemptResult.Sent ->
-                        degradedConnectivityCoordinator.freshHeartbeatSucceeded(journeyId)
+                        degradedConnectivityCoordinator.freshHeartbeatSucceeded(journeyId, heartbeatStartedAt)
                     HeartbeatAttemptResult.RetryableFailure ->
                         degradedConnectivityCoordinator.retryableCloudFailure(journeyId)
                     HeartbeatAttemptResult.Failed,

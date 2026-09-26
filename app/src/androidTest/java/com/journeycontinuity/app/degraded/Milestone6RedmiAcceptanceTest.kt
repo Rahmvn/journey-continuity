@@ -19,6 +19,7 @@ import com.journeycontinuity.app.data.local.MIGRATION_3_4
 import com.journeycontinuity.app.data.local.MIGRATION_4_5
 import com.journeycontinuity.app.data.local.MIGRATION_5_6
 import com.journeycontinuity.app.data.local.MIGRATION_6_7
+import com.journeycontinuity.app.data.local.MIGRATION_7_8
 import com.journeycontinuity.app.data.local.toDomain
 import com.journeycontinuity.app.domain.ConnectivityState
 import com.journeycontinuity.app.domain.JourneyStatus
@@ -158,6 +159,14 @@ class Milestone6RedmiAcceptanceTest {
         val degraded = coordinator(database, keyStore)
         degraded.activate(journeyId, validatedInternetAvailable = true)
         degraded.telemetryObserved(observation.toDomain())
+        assertEquals(com.journeycontinuity.app.sync.SyncRunResult.Success, ReliableSyncEngine(
+            RoomLocalSyncStore(database.journeyDao(), database.telemetryDao(), database.syncStateDao()),
+            SupabaseCloudSyncGateway(client, identity),
+        ).synchronize())
+        degraded.timeAdvanced(journeyId)
+        val barrier = requireNotNull(database.degradedConnectivityDao().get(journeyId)?.recoveryBacklogSatisfiedAtMillis)
+        while (System.currentTimeMillis() <= barrier) kotlinx.coroutines.delay(1)
+        val heartbeatStartedAt = System.currentTimeMillis()
         val heartbeat = HeartbeatCoordinator(
             RoomHeartbeatLocalStore(database.heartbeatDao()),
             SupabaseHeartbeatGateway(client, identity),
@@ -169,7 +178,7 @@ class Milestone6RedmiAcceptanceTest {
             networkUsable = true,
         )
         assertEquals(HeartbeatAttemptResult.Sent, heartbeat)
-        degraded.freshHeartbeatSucceeded(journeyId)
+        degraded.freshHeartbeatSucceeded(journeyId, heartbeatStartedAt)
         assertEquals(
             ConnectivityPhase.HEALTHY,
             requireNotNull(database.degradedConnectivityDao().get(journeyId)).connectivityPhase,
@@ -316,6 +325,10 @@ class Milestone6RedmiAcceptanceTest {
                 SupabaseCloudSyncGateway(client, identity),
             ).synchronize(),
         )
+        degraded.timeAdvanced(journeyId)
+        val barrier = requireNotNull(database.degradedConnectivityDao().get(journeyId)?.recoveryBacklogSatisfiedAtMillis)
+        while (System.currentTimeMillis() <= barrier) kotlinx.coroutines.delay(1)
+        val heartbeatStartedAt = System.currentTimeMillis()
         val heartbeat = HeartbeatCoordinator(
             RoomHeartbeatLocalStore(database.heartbeatDao()),
             SupabaseHeartbeatGateway(client, identity),
@@ -327,7 +340,7 @@ class Milestone6RedmiAcceptanceTest {
             networkUsable = true,
         )
         assertEquals(HeartbeatAttemptResult.Sent, heartbeat)
-        degraded.freshHeartbeatSucceeded(journeyId)
+        degraded.freshHeartbeatSucceeded(journeyId, heartbeatStartedAt)
         assertEquals(
             ConnectivityPhase.HEALTHY,
             requireNotNull(database.degradedConnectivityDao().get(journeyId)).connectivityPhase,
@@ -379,6 +392,7 @@ class Milestone6RedmiAcceptanceTest {
         MIGRATION_4_5,
         MIGRATION_5_6,
         MIGRATION_6_7,
+        MIGRATION_7_8,
     ).addCallback(FALLBACK_ATTEMPT_INVARIANT_CALLBACK).build()
 
     private fun coordinator(

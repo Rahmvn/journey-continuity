@@ -14,7 +14,7 @@ import androidx.room.TypeConverters
         JourneyFallbackBindingEntity::class,
         FallbackAttemptEntity::class,
     ],
-    version = 7,
+    version = 8,
     exportSchema = true,
 )
 @TypeConverters(

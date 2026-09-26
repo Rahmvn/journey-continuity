@@ -178,13 +178,15 @@ class DegradedConnectivityPolicyTest {
     fun freshAuthenticatedCloudSuccessCompletesRecovery() {
         var state = reduce(
             firstAttemptedState(),
-            DegradedConnectivityEvent.ValidatedInternetAvailable(1_010),
+            DegradedConnectivityEvent.ValidatedInternetAvailable(1_010, 7),
         ).state
+        state = reduce(state, DegradedConnectivityEvent.RecoveryCheckpointObserved(7, 1_011)).state
         val success = reduce(
             state,
             DegradedConnectivityEvent.AuthenticatedCloudSuccess(
                 atMillis = 1_020,
                 establishesFreshContact = true,
+                heartbeatStartedAtMillis = 1_012,
             ),
         )
         state = success.state
@@ -354,11 +356,13 @@ class DegradedConnectivityPolicyTest {
                 validatedInternetAvailable = true,
                 fallbackBindingProvisioned = true,
                 atMillis = 0,
+                recoveryTargetTelemetrySequence = 0,
             ),
         ).state
+        state = reduce(state, DegradedConnectivityEvent.RecoveryCheckpointObserved(0, 0)).state
         state = reduce(
             state,
-            DegradedConnectivityEvent.AuthenticatedCloudSuccess(1, true),
+            DegradedConnectivityEvent.AuthenticatedCloudSuccess(1, true, 1),
         ).state
         return state
     }

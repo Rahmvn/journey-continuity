@@ -10,6 +10,16 @@ class RoomLocalSyncStore(
     private val telemetryDao: TelemetryDao,
     private val syncStateDao: SyncStateDao,
 ) : LocalSyncStore {
+    override suspend fun legacyAuthorizationBlocks() =
+        syncStateDao.legacyAuthorizationBlocks(LEGACY_AUTHORIZATION_ERRORS)
+
+    override suspend fun reactivateLegacyAuthorization(block: LegacyAuthorizationBlock, verifiedAt: Long) =
+        syncStateDao.reactivateLegacyAuthorization(
+            block.journeyId, block.changeVersion, block.lastError, LEGACY_AUTHORIZATION_ERRORS, verifiedAt,
+        ) == 1
+
+    override suspend fun hasOutstandingWork() = syncStateDao.hasOutstandingWork()
+
     override suspend fun nextCandidate(): PendingSyncCandidate? =
         syncStateDao.getNextCandidate()?.let {
             PendingSyncCandidate(it.journeyId, it.changeVersion)

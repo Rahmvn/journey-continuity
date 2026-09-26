@@ -17,9 +17,28 @@ class ReliableSyncEngine(
 ) {
     suspend fun synchronize(): SyncRunResult {
         var ownerId: String? = null
+        // Legacy blocks are not worker candidates. Reopen only the exact old auth failure,
+        // following a server-authorized owner read, while preserving checkpoint and evidence.
+        for (block in local.legacyAuthorizationBlocks()) {
+            if (block.lastError !in LEGACY_AUTHORIZATION_ERRORS) continue
+            try {
+                val owner = ownerId ?: remote.authenticatedOwnerId().also { ownerId = it }
+                if (!remote.verifyJourneyOwner(block.journeyId, owner)) return SyncRunResult.Retry
+                if (!local.reactivateLegacyAuthorization(block, clock.nowMillis())) return SyncRunResult.Retry
+                logger.info("Legacy authorization block reactivated after verified Journey ownership")
+            } catch (error: Throwable) {
+                if (error is CancellationException) throw error
+                logger.warning("Legacy authorization block retained; owner verification did not complete")
+                return SyncRunResult.Retry
+            }
+        }
         while (true) {
             val candidate = local.nextCandidate() ?: run {
-                logger.info("No pending cloud synchronization backlog")
+                if (local.hasOutstandingWork()) {
+                    logger.warning("No eligible sync candidate; outstanding local work remains blocked")
+                    return SyncRunResult.PermanentFailure
+                }
+                logger.info("No outstanding cloud synchronization backlog")
                 return SyncRunResult.Success
             }
             logger.info("Starting synchronization candidate")

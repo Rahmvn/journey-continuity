@@ -9,6 +9,7 @@ import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.exception.AuthRestException
 import io.github.jan.supabase.exceptions.RestException
 import io.github.jan.supabase.postgrest.from
+import io.github.jan.supabase.postgrest.query.Columns
 import io.github.jan.supabase.postgrest.exception.PostgrestRestException
 import io.ktor.client.plugins.ResponseException
 import java.net.ConnectException
@@ -43,6 +44,20 @@ class SupabaseCloudSyncGateway(
         logger.info("Journey upsert succeeded")
     }
 
+    override suspend fun verifyJourneyOwner(journeyId: String, ownerId: String): Boolean =
+        cloudCall(CloudStage.JOURNEY_UPSERT) {
+            if (identityCoordinator.requireAuthenticatedTraveller().userId != ownerId) return@cloudCall false
+            // Server verifies the ordinary user JWT and applies RLS. Never insert or relabel ownership.
+            val proof = client.from("journeys").select(Columns.list("id", "owner_id")) {
+                filter {
+                    eq("id", journeyId)
+                    eq("owner_id", ownerId)
+                }
+            }.decodeList<JourneyOwnerProof>().singleOrNull()
+            proof?.id == journeyId && proof.ownerId == ownerId &&
+                identityCoordinator.requireAuthenticatedTraveller().userId == ownerId
+        }
+
     override suspend fun upsertTelemetry(observations: List<TelemetryObservation>) {
         if (observations.isEmpty()) return
         val firstSequence = observations.first().sequence
@@ -76,6 +91,9 @@ internal enum class CloudStage(val label: String) {
     HEARTBEAT_RPC("Fresh heartbeat RPC"),
     TRUSTED_CONTACT_RPC("Trusted contact RPC"),
 }
+
+@Serializable
+private data class JourneyOwnerProof(val id: String, @SerialName("owner_id") val ownerId: String)
 
 @Serializable
 private data class CloudJourneyRow(

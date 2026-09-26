@@ -40,6 +40,8 @@ data class JourneyDegradationStateEntity(
     val fallbackAttemptsInRateWindow: Int,
     val latestTelemetrySequence: Long?,
     val latestBatteryPercent: Int?,
+    val recoveryTargetTelemetrySequence: Long? = null,
+    val recoveryBacklogSatisfiedAtMillis: Long? = null,
 )
 
 fun JourneyDegradationStateEntity.toDomain() = DegradedConnectivityState(
@@ -64,6 +66,8 @@ fun JourneyDegradationStateEntity.toDomain() = DegradedConnectivityState(
     fallbackAttemptsInRateWindow = fallbackAttemptsInRateWindow,
     latestTelemetrySequence = latestTelemetrySequence,
     latestBatteryPercent = latestBatteryPercent,
+    recoveryTargetTelemetrySequence = recoveryTargetTelemetrySequence,
+    recoveryBacklogSatisfiedAtMillis = recoveryBacklogSatisfiedAtMillis,
 )
 
 fun DegradedConnectivityState.toEntity(): JourneyDegradationStateEntity {
@@ -90,5 +94,7 @@ fun DegradedConnectivityState.toEntity(): JourneyDegradationStateEntity {
         fallbackAttemptsInRateWindow = fallbackAttemptsInRateWindow,
         latestTelemetrySequence = latestTelemetrySequence,
         latestBatteryPercent = latestBatteryPercent,
+        recoveryTargetTelemetrySequence = recoveryTargetTelemetrySequence,
+        recoveryBacklogSatisfiedAtMillis = recoveryBacklogSatisfiedAtMillis,
     )
 }

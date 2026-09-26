@@ -41,10 +41,12 @@ fun interface FallbackCapabilityReader {
     suspend fun isAvailable(journeyId: String): Boolean
 }
 
+data class RecoveryBacklogSnapshot(val latestSequence: Long, val synchronizedThrough: Long)
+
 interface DegradedConnectivityStateStore {
     suspend fun updateAtomically(
         journeyId: String,
-        transform: (DegradedConnectivityState?) -> DegradedConnectivityReduction?,
+        transform: (DegradedConnectivityState?, RecoveryBacklogSnapshot) -> DegradedConnectivityReduction?,
     ): DegradedConnectivityReduction?
 
     fun observe(journeyId: String): Flow<DegradedConnectivityState?>
@@ -63,9 +65,13 @@ class RoomDegradedConnectivityStateStore(
 ) : DegradedConnectivityStateStore {
     override suspend fun updateAtomically(
         journeyId: String,
-        transform: (DegradedConnectivityState?) -> DegradedConnectivityReduction?,
+        transform: (DegradedConnectivityState?, RecoveryBacklogSnapshot) -> DegradedConnectivityReduction?,
     ): DegradedConnectivityReduction? = database.withTransaction {
-        val reduction = transform(dao.get(journeyId)?.toDomain()) ?: return@withTransaction null
+        val backlog = RecoveryBacklogSnapshot(
+            latestSequence = database.telemetryDao().getLatest(journeyId)?.sequence ?: 0,
+            synchronizedThrough = database.syncStateDao().get(journeyId)?.highestTelemetrySequenceSynced ?: 0,
+        )
+        val reduction = transform(dao.get(journeyId)?.toDomain(), backlog) ?: return@withTransaction null
         require(reduction.state.journeyId == journeyId)
         var state = reduction.state
         dao.upsert(state.toEntity())
@@ -118,7 +124,7 @@ class DegradedConnectivityCoordinator(
         val now = clock()
         val latestTelemetry = latestTelemetryReader.latest(journeyId)
         val fallbackAvailable = fallbackCapabilityReader.isAvailable(journeyId)
-        reduce(journeyId) { previous ->
+        reduce(journeyId) { previous, backlog ->
             if (previous == null) {
                 applyEvents(
                     DegradedConnectivityState(),
@@ -128,14 +134,16 @@ class DegradedConnectivityCoordinator(
                             validatedInternetAvailable = validatedInternetAvailable,
                             fallbackBindingProvisioned = fallbackAvailable,
                             atMillis = now,
+                            recoveryTargetTelemetrySequence = backlog.latestSequence,
                         ),
                         latestTelemetry?.let { DegradedConnectivityEvent.TelemetryObserved(it, now) },
                     ),
                 )
             } else {
                 val networkEvent = when {
-                    validatedInternetAvailable && !previous.validatedInternetAvailable ->
-                        DegradedConnectivityEvent.ValidatedInternetAvailable(now)
+                    validatedInternetAvailable && (!previous.validatedInternetAvailable ||
+                        previous.connectivityPhase != ConnectivityPhase.HEALTHY) ->
+                        DegradedConnectivityEvent.ValidatedInternetAvailable(now, backlog.latestSequence)
                     !validatedInternetAvailable && previous.validatedInternetAvailable ->
                         DegradedConnectivityEvent.ValidatedInternetLost(now)
                     else -> null
@@ -164,15 +172,20 @@ class DegradedConnectivityCoordinator(
     suspend fun validatedInternetLost(journeyId: String) =
         dispatch(journeyId, DegradedConnectivityEvent.ValidatedInternetLost(clock()))
 
-    suspend fun validatedInternetAvailable(journeyId: String) =
-        dispatch(journeyId, DegradedConnectivityEvent.ValidatedInternetAvailable(clock()))
+    suspend fun validatedInternetAvailable(journeyId: String) = reduce(journeyId) { previous, backlog ->
+        previous?.let { policy.reduce(it, DegradedConnectivityEvent.ValidatedInternetAvailable(
+            clock(), backlog.latestSequence,
+        )) }
+    }
 
     suspend fun retryableCloudFailure(journeyId: String) =
         dispatch(journeyId, DegradedConnectivityEvent.RetryableCloudFailure(clock()))
 
-    suspend fun freshHeartbeatSucceeded(journeyId: String) = dispatch(
+    suspend fun freshHeartbeatSucceeded(journeyId: String, heartbeatStartedAtMillis: Long? = null) = dispatch(
         journeyId,
-        DegradedConnectivityEvent.AuthenticatedCloudSuccess(clock(), establishesFreshContact = true),
+        DegradedConnectivityEvent.AuthenticatedCloudSuccess(
+            clock(), establishesFreshContact = true, heartbeatStartedAtMillis = heartbeatStartedAtMillis,
+        ),
     )
 
     suspend fun timeAdvanced(journeyId: String) =
@@ -195,14 +208,21 @@ class DegradedConnectivityCoordinator(
     fun observe(journeyId: String): Flow<DegradedConnectivityState?> = store.observe(journeyId)
 
     private suspend fun dispatch(journeyId: String, event: DegradedConnectivityEvent) {
-        reduce(journeyId) { previous -> previous?.let { policy.reduce(it, event) } }
+        reduce(journeyId) { previous, _ -> previous?.let { policy.reduce(it, event) } }
     }
 
     private suspend fun reduce(
         journeyId: String,
-        transform: (DegradedConnectivityState?) -> DegradedConnectivityReduction?,
+        transform: (DegradedConnectivityState?, RecoveryBacklogSnapshot) -> DegradedConnectivityReduction?,
     ) {
-        val reduction = store.updateAtomically(journeyId, transform) ?: return
+        val reduction = store.updateAtomically(journeyId) { previous, backlog ->
+            val result = transform(previous, backlog) ?: return@updateAtomically null
+            if (result.state.connectivityPhase != ConnectivityPhase.RECOVERING) return@updateAtomically result
+            val observed = policy.reduce(result.state, DegradedConnectivityEvent.RecoveryCheckpointObserved(
+                backlog.synchronizedThrough, clock(),
+            ))
+            DegradedConnectivityReduction(observed.state, result.actions + observed.actions)
+        } ?: return
         logState(reduction.state)
         reduction.actions.forEach { actionObserver.handle(it) }
     }
@@ -248,6 +268,8 @@ class DegradedConnectivityCoordinator(
                 "interruptionStartedAt=${state.interruptionStartedAtMillis}, " +
                 "interruptionDurationMillis=$interruptionDuration, " +
                 "lastAuthenticatedCloudSuccessAt=${state.lastAuthenticatedCloudSuccessAtMillis}, " +
+                "recoveryTarget=${state.recoveryTargetTelemetrySequence}, " +
+                "backlogSatisfiedAt=${state.recoveryBacklogSatisfiedAtMillis}, " +
                 "retryableFailures=${state.consecutiveRetryableCloudFailures}",
         )
     }

@@ -192,6 +192,32 @@ val MIGRATION_6_7 = object : Migration(6, 7) {
     }
 }
 
+val MIGRATION_7_8 = object : Migration(7, 8) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE journey_degradation_states ADD COLUMN recoveryTargetTelemetrySequence INTEGER")
+        db.execSQL("ALTER TABLE journey_degradation_states ADD COLUMN recoveryBacklogSatisfiedAtMillis INTEGER")
+        db.execSQL("ALTER TABLE journey_sync_states ADD COLUMN legacyAuthorizationFailure TEXT")
+        db.execSQL("ALTER TABLE journey_sync_states ADD COLUMN legacyAuthorizationFailureAtMillis INTEGER")
+        db.execSQL("ALTER TABLE journey_sync_states ADD COLUMN legacyAuthorizationRecoveredAtMillis INTEGER")
+        // Revalidate old HEALTHY claims with outstanding evidence. Never change attempt history.
+        db.execSQL(
+            """UPDATE journey_degradation_states
+               SET connectivityPhase = 'RECOVERING', fallbackDisposition = 'INACTIVE',
+                   recoveryStartedAtMillis = COALESCE(recoveryStartedAtMillis,
+                       CAST(strftime('%s', 'now') AS INTEGER) * 1000),
+                   recoveryTargetTelemetrySequence = COALESCE(
+                       (SELECT MAX(sequence) FROM telemetry_observations t
+                        WHERE t.journeyId = journey_degradation_states.journeyId), 0)
+               WHERE journeyActive = 1 AND (connectivityPhase = 'RECOVERING' OR
+                   (connectivityPhase = 'HEALTHY' AND COALESCE(
+                       (SELECT highestTelemetrySequenceSynced FROM journey_sync_states s
+                        WHERE s.journeyId = journey_degradation_states.journeyId), 0) < COALESCE(
+                       (SELECT MAX(sequence) FROM telemetry_observations t
+                        WHERE t.journeyId = journey_degradation_states.journeyId), 0)))""",
+        )
+    }
+}
+
 val FALLBACK_ATTEMPT_INVARIANT_CALLBACK = object : RoomDatabase.Callback() {
     override fun onOpen(db: SupportSQLiteDatabase) {
         super.onOpen(db)

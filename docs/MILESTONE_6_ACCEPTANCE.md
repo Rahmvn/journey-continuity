@@ -1,5 +1,7 @@
 # Milestone 6 Acceptance Record
 
+Recovery correction, 2026-09-26: the earlier recovery claims below did not prove the durable backlog barrier and must not be used as evidence for that invariant. The corrected case H evidence is recorded at the end of this document. Milestone 6 remains **IN PROGRESS**; physical cases D and G remain outstanding.
+
 Milestone 6 remains **IN PROGRESS**. Provisioning, protected offline allocation, persistence, physical Android SMS carrier handoff, and authenticated internet recovery were accepted on 2026-09-23. The provider-neutral inbound core and Africa's Talking sandbox adapter are hosted; real production JC1 authentication, duplicate-envelope handling, SMS-first reconciliation, and historical out-of-order acceptance passed on 2026-09-24–25. Subsequent controlled Edge-path tests completed the scoped deterministic hosted acceptance. This does not establish production-provider or complete Milestone 6 acceptance.
 
 ## Completed acceptance — 2026-09-23
@@ -194,3 +196,88 @@ Accepted here: genuine sandbox callback shape/text preservation, active binding/
 | Live provider | No production-provider claim | A provider-authenticated live inbound route and operational acceptance; real carrier-to-provider delivery, provider retry/failure behavior, and latency characterization cannot be established with this sandbox and may remain explicitly pending for the hackathon |
 
 Milestone 6 remains in progress pending the physical telephony failure matrix, trusted-contact notification receipt acceptance, and explicit resolution or limitation of production-provider authentication and live carrier-to-provider behavior.
+
+## Corrected recovery barrier / case H — 2026-09-26
+
+Continued the existing dirty worktree on `feat/milestone-6-degraded-connectivity`, initially at HEAD `af49ec8`. Existing recovery implementation, tests, schema export, and the untracked telephony matrix test were inspected and preserved. During physical acceptance, no commit, push, hosted deployment, AWS/provider change, Journey recreation, checkpoint reset, telemetry deletion, or real SMS occurred.
+
+### Contract and durable representation
+
+Before: a successful fresh authenticated heartbeat could independently establish `HEALTHY`, even with an ineligible permanently blocked sync row and checkpoint behind required evidence. Restoring the legitimate owner session alone did not repair that legacy row.
+
+After: validated internet establishes `RECOVERING`. In the same Room transaction as the policy update, capture the maximum local telemetry sequence as a finite target. Only observing `highestTelemetrySequenceSynced >= recoveryTargetTelemetrySequence` satisfies the backlog barrier. Record that observation time durably; require an authenticated heartbeat whose start is strictly later than that time before `HEALTHY` and unsent supersession. Earlier/in-flight heartbeats, worker success, absent worker candidates, ticks, and process recreation cannot bypass the barrier. New telemetry does not move an existing recovery target.
+
+Room v8 adds nullable `recoveryTargetTelemetrySequence` and `recoveryBacklogSatisfiedAtMillis` to `journey_degradation_states`. `MIGRATION_7_8` captures targets for existing active `RECOVERING` rows and revalidates old active `HEALTHY` rows with unsynchronized telemetry. It preserves checkpoint, observations, and attempt history. The barrier time records the first transactional observation of a satisfied checkpoint, conservatively later than or equal to actual checkpoint advancement.
+
+Legacy reactivation requires the exact previous Journey-upsert or telemetry-batch HTTP 403 / PostgREST 42501 safe message, `ERROR`, permanently blocked, no work requested, and no prior legacy reactivation. The existing installation identity must match the current unexpired authenticated session. A normal user-JWT `journeys` read filters by Journey ID and owner ID; server RLS and an exact returned ID/owner comparison establish ownership. The session identity is checked again after the read. A conditional update matches Journey ID, change version, error, and eligibility before reopening work. It preserves the checkpoint and stores original error, original attempt time, and reactivation time in three diagnostic columns. Wrong-owner or failed proof stays blocked; other permanent categories are untouched.
+
+`ReliableSyncEngine` checks these otherwise-ineligible legacy rows before selecting normal work. No eligible candidate returns `Success` only when no outstanding local work remains; blocked outstanding work returns `PermanentFailure`. Neither result controls recovery completion. Current authentication/authorization failures remain retryable and are not connectivity-degradation evidence. The service reconciles current validated network state before heartbeat attempts, including after a cloud failure that did not produce a network callback.
+
+### Physical Redmi evidence
+
+The installed production Journey and saved legitimate owner session were used. No injected replacement owner, fixed-auth backend, RLS bypass, ownership/binding mutation, or synthetic telemetry was used in this run. Test stages ran in separate instrumentation processes; the final transition was performed by the real production foreground service.
+
+| Stage | Observed result |
+| --- | --- |
+| Baseline | Checkpoint `2`; latest local telemetry `4064`; permanently blocked legacy authorization row; migration revalidated phase to `RECOVERING` |
+| Controlled offline interval | Actual Wi-Fi/data disabled; real 180-second policy interval; episode `8`, new attempt `10` allocated; no SMS |
+| Validated internet restored | Phase `RECOVERING`; finite target `4064` captured |
+| Early authenticated heartbeat | Server success with checkpoint below target; remained `RECOVERING`; attempt 10 remained `ALLOCATED` |
+| Separate process / normal sync | Same target retained; verified owner reactivated legacy row; checkpoint advanced `2 -> 4064`; diagnostic history retained |
+| Barrier satisfied | `1790381302165` ms (`2026-09-26 00:08:22.165 UTC`); still `RECOVERING`; no allocation replay or early supersession |
+| Production process/service restart | Service initially observed persisted `RECOVERING`, target and barrier; WorkManager reported no outstanding work without completing recovery |
+| Fresh production heartbeat | Sequence `1653`; attempt time `1790381316072` ms, strictly after barrier; success then transitioned to `HEALTHY` |
+| Independent owner-scoped hosted reads | All `4064` local sequences through target present; `0` missing; checkpoint `4064`; no permanent block |
+| Attempt history | Attempt 10 became `SUPERSEDED` only after full recovery; attempt 9 remained `SUPERSEDED`, episode 7's sole allocation, with no handoff timestamp; full-row fingerprints of attempt 9, all `HANDED_OFF` rows, and binding unchanged |
+
+Case H's corrected recovery criteria now pass for this controlled physical run. Process restart was exercised before backlog drain and after barrier satisfaction, with the production service performing final recovery. The instrumentation stages deliberately controlled when normal sync ran; this is not a latency or uninterrupted background-scheduling soak test. Wi-Fi and mobile data were restored to their original enabled settings.
+
+### Validation and remaining work
+
+- Focused sync/recovery/scheduling unit tests passed; final full unit suite: **140 tests, 0 failures, 0 errors**.
+- Redmi isolated Room/instrumentation: **19 tests passed**, including v7-to-v8 schema validation, preserved legacy block/checkpoint, durable target/barrier across database reopen, fallback suppression, and handed-off history preservation.
+- Five selected physical stages passed: baseline, controlled offline episode, early heartbeat rejection, backlog sync after process restart, and production-service/hosted verification. The alternate test-driven final-heartbeat stage was not needed or run.
+- `testDebugUnitTest assembleDebug assembleDebugAndroidTest lintDebug` passed on the final source; lint reported **0 errors, 18 warnings**.
+- The interrupted Room test double's missing `provision` method was completed. A verification-only query was corrected to use explicit `and` for two bounds on the same column: this SDK otherwise emits only the first bound. The corrected hosted check passed.
+- `git diff --check` and a credential-pattern scan of changed/new files passed. No credential values were added to the record.
+- No remaining defect was observed in the corrected recovery acceptance. Physical cases **D and G remain outstanding**; no new acceptance claim is made for them. The wider physical telephony matrix, notification receipt, and provider limitations above remain separate. Milestone 6 is not complete.
+
+### Exact changed/new worktree files
+
+Paths below record the acceptance-time worktree, including the preserved interrupted-session changes, not just edits made during continuation.
+
+Modified:
+
+```text
+app/src/androidTest/java/com/journeycontinuity/app/data/local/FallbackAttemptDatabaseTest.kt
+app/src/androidTest/java/com/journeycontinuity/app/degraded/Milestone6RedmiAcceptanceTest.kt
+app/src/androidTest/java/com/journeycontinuity/app/degraded/Milestone6SmsCarrierAcceptanceTest.kt
+app/src/main/java/com/journeycontinuity/app/JourneyContinuityApplication.kt
+app/src/main/java/com/journeycontinuity/app/data/local/JourneyDatabase.kt
+app/src/main/java/com/journeycontinuity/app/data/local/JourneyDatabaseMigrations.kt
+app/src/main/java/com/journeycontinuity/app/data/local/JourneyDegradationStateEntity.kt
+app/src/main/java/com/journeycontinuity/app/data/local/JourneySyncStateEntity.kt
+app/src/main/java/com/journeycontinuity/app/data/local/SyncStateDao.kt
+app/src/main/java/com/journeycontinuity/app/degraded/DegradedConnectivityIntegration.kt
+app/src/main/java/com/journeycontinuity/app/degraded/DegradedConnectivityPolicy.kt
+app/src/main/java/com/journeycontinuity/app/service/JourneyForegroundService.kt
+app/src/main/java/com/journeycontinuity/app/sync/ReliableSyncEngine.kt
+app/src/main/java/com/journeycontinuity/app/sync/RoomLocalSyncStore.kt
+app/src/main/java/com/journeycontinuity/app/sync/SupabaseCloudSyncGateway.kt
+app/src/main/java/com/journeycontinuity/app/sync/SyncContracts.kt
+app/src/test/java/com/journeycontinuity/app/degraded/DegradedConnectivityCoordinatorTest.kt
+app/src/test/java/com/journeycontinuity/app/degraded/DegradedConnectivityPolicyTest.kt
+app/src/test/java/com/journeycontinuity/app/sync/ReliableSyncEngineTest.kt
+docs/MILESTONE_6_ACCEPTANCE.md
+```
+
+New/untracked at acceptance review:
+
+```text
+app/schemas/com.journeycontinuity.app.data.local.JourneyDatabase/8.json
+app/src/androidTest/java/com/journeycontinuity/app/data/local/RecoveryBarrierDatabaseTest.kt
+app/src/androidTest/java/com/journeycontinuity/app/degraded/Milestone6RecoveryBarrierAcceptanceTest.kt
+app/src/androidTest/java/com/journeycontinuity/app/degraded/Milestone6TelephonyFailureMatrixTest.kt
+```
+
+The telephony matrix file was inspected and preserved without editing or running its separate physical cases.

@@ -8,7 +8,21 @@ data class PendingSyncCandidate(
     val changeVersion: Long,
 )
 
+data class LegacyAuthorizationBlock(
+    val journeyId: String,
+    val changeVersion: Long,
+    val lastError: String,
+)
+
+// Exact messages emitted by the pre-retryable-authorization implementation. No broad error matching.
+val LEGACY_AUTHORIZATION_ERRORS = listOf("Journey upsert", "Telemetry batch").map {
+    "$it failed: PostgREST authorization/RLS error (HTTP 403, code 42501)."
+}
+
 interface LocalSyncStore {
+    suspend fun legacyAuthorizationBlocks(): List<LegacyAuthorizationBlock> = emptyList()
+    suspend fun reactivateLegacyAuthorization(block: LegacyAuthorizationBlock, verifiedAt: Long): Boolean = false
+    suspend fun hasOutstandingWork(): Boolean = false
     suspend fun nextCandidate(): PendingSyncCandidate?
     suspend fun journey(journeyId: String): Journey?
     suspend fun checkpoint(journeyId: String): Long
@@ -29,6 +43,7 @@ interface LocalSyncStore {
 
 interface CloudSyncGateway {
     suspend fun authenticatedOwnerId(): String
+    suspend fun verifyJourneyOwner(journeyId: String, ownerId: String): Boolean = false
     suspend fun upsertJourney(journey: Journey, ownerId: String)
     suspend fun upsertTelemetry(observations: List<TelemetryObservation>)
 }

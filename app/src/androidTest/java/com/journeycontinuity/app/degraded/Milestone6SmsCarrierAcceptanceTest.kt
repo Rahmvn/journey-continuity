@@ -29,6 +29,7 @@ import com.journeycontinuity.app.data.local.MIGRATION_3_4
 import com.journeycontinuity.app.data.local.MIGRATION_4_5
 import com.journeycontinuity.app.data.local.MIGRATION_5_6
 import com.journeycontinuity.app.data.local.MIGRATION_6_7
+import com.journeycontinuity.app.data.local.MIGRATION_7_8
 import com.journeycontinuity.app.data.local.toDomain
 import com.journeycontinuity.app.domain.ConnectivityState
 import com.journeycontinuity.app.heartbeat.HeartbeatAttemptResult
@@ -61,19 +62,19 @@ class Milestone6SmsCarrierAcceptanceTest {
         get() = InstrumentationRegistry.getInstrumentation().targetContext
 
     @Test
-    fun roomV7ProvisionedJourneyPreflight() = runBlocking {
+    fun roomV8ProvisionedJourneyPreflight() = runBlocking {
         val database = database()
         val activeJourney = requireNotNull(database.journeyDao().getActive()) {
             "A legitimately hosted-provisioned active Journey is required."
         }
-        assertEquals(7, database.openHelper.readableDatabase.version)
+        assertEquals(8, database.openHelper.readableDatabase.version)
         val binding = requireNotNull(database.fallbackAttemptDao().getBinding(activeJourney.id))
         assertEquals(FallbackBindingStatus.PROVISIONED, binding.status)
         assertTrue(AndroidKeystoreFallbackKeyMaterialStore(context).hasKey(binding.keyId))
         val state = requireNotNull(database.degradedConnectivityDao().get(activeJourney.id))
         val attempts = database.fallbackAttemptDao().allForJourney(activeJourney.id)
         evidence(
-            "JC_SMS_PREFLIGHT room_version=7 phase=${state.connectivityPhase} " +
+            "JC_SMS_PREFLIGHT room_version=8 phase=${state.connectivityPhase} " +
                 "binding=ACTIVE attempts=${attempts.size} " +
                 "allocated=${attempts.count { it.transportState == FallbackTransportState.ALLOCATED }} " +
                 "handed_off=${attempts.count { it.transportState == FallbackTransportState.HANDED_OFF }}",
@@ -314,6 +315,10 @@ class Milestone6SmsCarrierAcceptanceTest {
                 SupabaseCloudSyncGateway(client, identity),
             ).synchronize(),
         )
+        degraded.timeAdvanced(activeJourney.id)
+        val barrier = requireNotNull(database.degradedConnectivityDao().get(activeJourney.id)?.recoveryBacklogSatisfiedAtMillis)
+        while (System.currentTimeMillis() <= barrier) kotlinx.coroutines.delay(1)
+        val heartbeatStartedAt = System.currentTimeMillis()
         assertEquals(
             HeartbeatAttemptResult.Sent,
             HeartbeatCoordinator(
@@ -327,7 +332,7 @@ class Milestone6SmsCarrierAcceptanceTest {
                 networkUsable = true,
             ),
         )
-        degraded.freshHeartbeatSucceeded(activeJourney.id)
+        degraded.freshHeartbeatSucceeded(activeJourney.id, heartbeatStartedAt)
         assertEquals(
             ConnectivityPhase.HEALTHY,
             requireNotNull(database.degradedConnectivityDao().get(activeJourney.id)).connectivityPhase,
@@ -509,6 +514,7 @@ class Milestone6SmsCarrierAcceptanceTest {
         MIGRATION_4_5,
         MIGRATION_5_6,
         MIGRATION_6_7,
+        MIGRATION_7_8,
     ).addCallback(FALLBACK_ATTEMPT_INVARIANT_CALLBACK).build()
 
     private fun hex(value: ByteArray) = value.joinToString("") { "%02x".format(it) }

@@ -27,6 +27,9 @@ data class JourneySyncStateEntity(
     val permanentlyBlocked: Boolean = false,
     val changeVersion: Long = 1,
     val workRequested: Boolean = true,
+    val legacyAuthorizationFailure: String? = null,
+    val legacyAuthorizationFailureAtMillis: Long? = null,
+    val legacyAuthorizationRecoveredAtMillis: Long? = null,
 )
 
 fun JourneySyncStateEntity.toDomain() = JourneySyncState(

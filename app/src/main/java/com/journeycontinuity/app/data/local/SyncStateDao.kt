@@ -3,6 +3,7 @@ package com.journeycontinuity.app.data.local
 import androidx.room.Dao
 import androidx.room.Query
 import com.journeycontinuity.app.domain.SyncPhase
+import com.journeycontinuity.app.sync.LegacyAuthorizationBlock
 import kotlinx.coroutines.flow.Flow
 
 data class SyncCandidate(
@@ -12,6 +13,33 @@ data class SyncCandidate(
 
 @Dao
 interface SyncStateDao {
+    @Query("""SELECT journeyId, changeVersion, lastError FROM journey_sync_states
+        WHERE permanentlyBlocked = 1 AND phase = 'ERROR' AND workRequested = 0
+          AND lastError IN (:eligibleErrors)
+          AND legacyAuthorizationRecoveredAtMillis IS NULL""")
+    suspend fun legacyAuthorizationBlocks(eligibleErrors: List<String>): List<LegacyAuthorizationBlock>
+
+    @Query("""UPDATE journey_sync_states SET
+        legacyAuthorizationFailure = lastError,
+        legacyAuthorizationFailureAtMillis = lastAttemptAt,
+        legacyAuthorizationRecoveredAtMillis = :verifiedAt,
+        permanentlyBlocked = 0, workRequested = 1, phase = 'PENDING',
+        changeVersion = changeVersion + 1
+        WHERE journeyId = :journeyId AND changeVersion = :changeVersion
+          AND permanentlyBlocked = 1 AND phase = 'ERROR' AND workRequested = 0
+          AND lastError = :expectedError
+          AND lastError IN (:eligibleErrors) AND legacyAuthorizationRecoveredAtMillis IS NULL""")
+    suspend fun reactivateLegacyAuthorization(
+        journeyId: String, changeVersion: Long, expectedError: String,
+        eligibleErrors: List<String>, verifiedAt: Long,
+    ): Int
+
+    @Query("""SELECT EXISTS(SELECT 1 FROM journey_sync_states s
+        WHERE s.workRequested = 1 OR s.permanentlyBlocked = 1 OR
+          s.highestTelemetrySequenceSynced < COALESCE(
+            (SELECT MAX(sequence) FROM telemetry_observations t WHERE t.journeyId = s.journeyId), 0))""")
+    suspend fun hasOutstandingWork(): Boolean
+
     @Query("SELECT * FROM journey_sync_states WHERE journeyId = :journeyId LIMIT 1")
     fun observe(journeyId: String): Flow<JourneySyncStateEntity?>
 

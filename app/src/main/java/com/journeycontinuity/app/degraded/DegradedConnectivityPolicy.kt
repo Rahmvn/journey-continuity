@@ -50,6 +50,8 @@ data class DegradedConnectivityState(
     val lastAuthenticatedCloudSuccessAtMillis: Long? = null,
     val consecutiveRetryableCloudFailures: Int = 0,
     val recoveryStartedAtMillis: Long? = null,
+    val recoveryTargetTelemetrySequence: Long? = null,
+    val recoveryBacklogSatisfiedAtMillis: Long? = null,
     val nextFallbackEnvelopeSequence: Long = 1,
     val lastFallbackAttemptAtMillis: Long? = null,
     val lastFallbackAttemptEpisodeId: Long? = null,
@@ -68,15 +70,25 @@ sealed interface DegradedConnectivityEvent {
         val validatedInternetAvailable: Boolean,
         val fallbackBindingProvisioned: Boolean,
         override val atMillis: Long,
+        val recoveryTargetTelemetrySequence: Long? = null,
     ) : DegradedConnectivityEvent
 
     data class ValidatedInternetLost(override val atMillis: Long) : DegradedConnectivityEvent
 
-    data class ValidatedInternetAvailable(override val atMillis: Long) : DegradedConnectivityEvent
+    data class ValidatedInternetAvailable(
+        override val atMillis: Long,
+        val recoveryTargetTelemetrySequence: Long? = null,
+    ) : DegradedConnectivityEvent
+
+    data class RecoveryCheckpointObserved(
+        val synchronizedThrough: Long,
+        override val atMillis: Long,
+    ) : DegradedConnectivityEvent
 
     data class AuthenticatedCloudSuccess(
         override val atMillis: Long,
         val establishesFreshContact: Boolean,
+        val heartbeatStartedAtMillis: Long? = null,
     ) : DegradedConnectivityEvent
 
     data class RetryableCloudFailure(override val atMillis: Long) : DegradedConnectivityEvent
@@ -148,6 +160,13 @@ class DegradedConnectivityPolicy(
             is DegradedConnectivityEvent.ValidatedInternetAvailable -> onInternetAvailable(previous, event)
             is DegradedConnectivityEvent.AuthenticatedCloudSuccess ->
                 onAuthenticatedCloudSuccess(previous, event)
+            is DegradedConnectivityEvent.RecoveryCheckpointObserved -> {
+                val target = previous.recoveryTargetTelemetrySequence
+                if (previous.connectivityPhase == ConnectivityPhase.RECOVERING &&
+                    target != null && event.synchronizedThrough >= target &&
+                    previous.recoveryBacklogSatisfiedAtMillis == null
+                ) previous.copy(recoveryBacklogSatisfiedAtMillis = event.atMillis) else previous
+            }
             is DegradedConnectivityEvent.RetryableCloudFailure -> onCloudFailure(previous, event)
             is DegradedConnectivityEvent.TelemetryObserved -> onTelemetry(previous, event)
             is DegradedConnectivityEvent.TransportAvailabilityChanged ->
@@ -173,7 +192,9 @@ class DegradedConnectivityPolicy(
         )
         val actions = buildList {
             if (event is DegradedConnectivityEvent.AuthenticatedCloudSuccess &&
-                event.establishesFreshContact && previous.journeyActive
+                event.establishesFreshContact && previous.journeyActive &&
+                previous.connectivityPhase == ConnectivityPhase.RECOVERING &&
+                evaluated.connectivityPhase == ConnectivityPhase.HEALTHY
             ) {
                 previous.journeyId?.let {
                     add(DegradedConnectivityAction.SupersedeUnsentFallback(it, event.atMillis))
@@ -211,6 +232,9 @@ class DegradedConnectivityPolicy(
             fallbackBindingProvisioned = event.fallbackBindingProvisioned,
             interruptionStartedAtMillis = if (event.validatedInternetAvailable) null else event.atMillis,
             recoveryStartedAtMillis = if (event.validatedInternetAvailable) event.atMillis else null,
+            recoveryTargetTelemetrySequence = if (event.validatedInternetAvailable) {
+                event.recoveryTargetTelemetrySequence
+            } else null,
         )
 
     private fun onInternetLost(
@@ -231,6 +255,8 @@ class DegradedConnectivityPolicy(
             validatedInternetAvailable = false,
             interruptionStartedAtMillis = state.interruptionStartedAtMillis ?: event.atMillis,
             recoveryStartedAtMillis = null,
+            recoveryTargetTelemetrySequence = null,
+            recoveryBacklogSatisfiedAtMillis = null,
         )
     }
 
@@ -247,6 +273,12 @@ class DegradedConnectivityPolicy(
             fallbackDisposition = FallbackDisposition.INACTIVE,
             validatedInternetAvailable = true,
             recoveryStartedAtMillis = state.recoveryStartedAtMillis ?: event.atMillis,
+            recoveryTargetTelemetrySequence = if (state.connectivityPhase == ConnectivityPhase.RECOVERING) {
+                state.recoveryTargetTelemetrySequence ?: event.recoveryTargetTelemetrySequence
+            } else event.recoveryTargetTelemetrySequence,
+            recoveryBacklogSatisfiedAtMillis = if (state.connectivityPhase == ConnectivityPhase.RECOVERING) {
+                state.recoveryBacklogSatisfiedAtMillis
+            } else null,
         )
     }
 
@@ -260,6 +292,13 @@ class DegradedConnectivityPolicy(
             consecutiveRetryableCloudFailures = 0,
         )
         if (!event.establishesFreshContact || !state.journeyActive) return common
+        val satisfiedAt = state.recoveryBacklogSatisfiedAtMillis
+        if (state.connectivityPhase != ConnectivityPhase.RECOVERING ||
+            !state.validatedInternetAvailable || state.recoveryTargetTelemetrySequence == null ||
+            satisfiedAt == null || event.heartbeatStartedAtMillis == null ||
+            event.heartbeatStartedAtMillis <= satisfiedAt ||
+            event.heartbeatStartedAtMillis > event.atMillis
+        ) return common
         return common.copy(
             connectivityPhase = ConnectivityPhase.HEALTHY,
             fallbackDisposition = FallbackDisposition.INACTIVE,
@@ -295,6 +334,8 @@ class DegradedConnectivityPolicy(
                     state.consecutiveRetryableCloudFailures + 1
                 },
             recoveryStartedAtMillis = null,
+            recoveryTargetTelemetrySequence = null,
+            recoveryBacklogSatisfiedAtMillis = null,
         )
     }
 

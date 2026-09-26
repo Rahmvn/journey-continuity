@@ -153,13 +153,20 @@ class FallbackAttemptDatabaseTest {
         }
         now = 1_200
         coordinator.sparseFallbackTriggered(JOURNEY_ID)
-        coordinator.freshHeartbeatSucceeded(JOURNEY_ID)
+        coordinator.validatedInternetAvailable(JOURNEY_ID)
+        coordinator.freshHeartbeatSucceeded(JOURNEY_ID, now)
+        assertEquals(FallbackTransportState.ALLOCATED,
+            database.fallbackAttemptDao().allForJourney(JOURNEY_ID)[1].transportState)
+        database.syncStateDao().advanceCheckpoint(JOURNEY_ID, 2)
+        coordinator.timeAdvanced(JOURNEY_ID)
+        now = 1_201
+        coordinator.freshHeartbeatSucceeded(JOURNEY_ID, now)
 
         val attempts = database.fallbackAttemptDao().allForJourney(JOURNEY_ID)
         assertEquals(FallbackTransportState.HANDED_OFF, attempts[0].transportState)
         assertEquals(FallbackTransportState.SUPERSEDED, attempts[1].transportState)
         assertEquals(1_020L, attempts[0].terminalAt)
-        assertEquals(1_200L, attempts[1].terminalAt)
+        assertEquals(1_201L, attempts[1].terminalAt)
     }
 
     @Test
