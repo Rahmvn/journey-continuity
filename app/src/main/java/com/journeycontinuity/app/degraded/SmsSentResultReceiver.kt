@@ -15,11 +15,13 @@ class SmsSentResultReceiver : BroadcastReceiver() {
         val attemptId = intent.getLongExtra(EXTRA_ATTEMPT_ID, -1L)
         val generation = intent.getIntExtra(EXTRA_HANDOFF_GENERATION, -1)
         if (attemptId <= 0 || generation <= 0) return
+        // goAsync() detaches this receiver's PendingResult. Capture the sent result first.
+        val sentResultCode = resultCode
         val pending = goAsync()
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {
                 val app = context.applicationContext as? JourneyContinuityApplication ?: return@launch
-                app.fallbackHandoffCoordinator.sentResult(attemptId, generation, resultCode)
+                app.fallbackHandoffCoordinator.sentResult(attemptId, generation, sentResultCode)
             } finally {
                 pending.finish()
             }

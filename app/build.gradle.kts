@@ -13,6 +13,12 @@ val journeyLocalProperties = Properties().apply {
     if (propertiesFile.exists()) propertiesFile.inputStream().use(::load)
 }
 
+// The former property changed defaultConfig and could also rename release APKs.
+// Acceptance now has its own debug-derived build type and package/UID.
+require(!providers.gradleProperty("m6IsolatedAcceptance").isPresent) {
+    "m6IsolatedAcceptance is retired. Use the m6Acceptance build type; release cannot use acceptance mode."
+}
+
 fun configuredString(name: String): String {
     val value = journeyLocalProperties.getProperty(name) ?: System.getenv(name).orEmpty()
     return "\"${value.replace("\\", "\\\\").replace("\"", "\\\"")}\""
@@ -47,6 +53,11 @@ android {
     }
 
     buildTypes {
+        create("m6Acceptance") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".m6isolation"
+            matchingFallbacks += listOf("debug")
+        }
         release {
             optimization {
                 enable = false
@@ -60,6 +71,12 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+}
+
+androidComponents {
+    beforeVariants(selector().withBuildType("m6Acceptance")) {
+        it.enableAndroidTest = true
     }
 }
 
