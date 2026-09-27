@@ -5,6 +5,7 @@ import {
   classifyProviderFailure,
   createHandler,
   maskPhoneNumber,
+  SMS_CLIENT_OPTIONS,
 } from "./index.mjs";
 
 const configuration = {
@@ -26,6 +27,7 @@ function rpcFetch({ claims = [], failureStates = {}, successValue = true } = {})
       ? [{ evaluated_at: "2026-09-18T12:00:00Z", verifying_started: 1, monitoring_closed: 0 }]
       : rpc === "claim_due_sms_notifications"
         ? claims
+        : rpc === "authorize_sms_dispatch" ? true
         : rpc === "record_sms_send_success"
           ? successValue
           : failureStates[body.p_notification_id] ?? "FAILED";
@@ -101,6 +103,8 @@ test("constructs a TRANSACTIONAL E.164 provider request and stores its provider 
   assert.equal(providerRequest.MessageType, "TRANSACTIONAL");
   assert.equal(providerRequest.OriginationIdentity, "sender-identity");
   assert.equal(providerRequest.ConfigurationSetName, "journey-events");
+  assert.deepEqual(providerRequest.Context, { notification_id: "one", provider_attempt_id: "lease-one" });
+  assert.equal(requests.findIndex((r) => r.rpc === "authorize_sms_dispatch"), 2);
   assert.equal(result.sms.providerAccepted, 1);
   const success = requests.find((request) => request.rpc === "record_sms_send_success");
   assert.equal(success.body.p_provider_message_id, "provider-message-1");
@@ -166,4 +170,159 @@ test("keeps the watchdog failure visible and does not claim SMS", async () => {
   });
   await assert.rejects(handler(), /evaluate_due_journeys RPC failed with HTTP 503/);
   assert.equal(requestCount, 1);
+});
+
+test("all approved templates contain only factual wording and the public viewer input", () => {
+  const expected = {
+    VERIFICATION_STARTED: "Journey Continuity: Device contact is being verified; current whereabouts are unknown. Details: ",
+    DEVICE_CONTACT_RESTORED: "Journey Continuity: Fresh device contact was restored. Journey details: ",
+    JOURNEY_COMPLETED: "Journey Continuity: The Journey was completed. Journey details: ",
+  };
+  for (const [kind, prefix] of Object.entries(expected)) {
+    const message = buildSmsMessage(kind, configuration.viewerUrl);
+    assert.equal(message, prefix + configuration.viewerUrl);
+    assert.doesNotMatch(message, /safe|danger|latitude|longitude|JC1\.|sb_secret_|eyJ|journey-id|case-id|lease-/i);
+  }
+  assert.throws(() => buildSmsMessage("UNSUPPORTED", configuration.viewerUrl));
+});
+
+test("overlapping handlers and a later run submit a normally acknowledged row only once", async () => {
+  let state = "PENDING";
+  let sends = 0;
+  const fetchImpl = async (url) => {
+    const rpc = url.split("/").at(-1);
+    let payload;
+    if (rpc === "evaluate_due_journeys") payload = [{ evaluated_at: "2026-09-26T00:00:00Z" }];
+    if (rpc === "claim_due_sms_notifications") {
+      payload = state === "PENDING" ? [claim("one")] : [];
+      if (payload.length) state = "SENDING";
+    }
+    if (rpc === "record_sms_send_success") {
+      state = "PROVIDER_ACCEPTED";
+      payload = true;
+    }
+    if (rpc === "authorize_sms_dispatch") {
+      payload = state === "SENDING";
+      if (payload) state = "DISPATCHING";
+    }
+    return { ok: true, json: async () => payload };
+  };
+  const handler = createHandler({
+    getConfiguration: async () => configuration,
+    fetchImpl,
+    sendTextMessage: async () => { sends += 1; return { MessageId: "fake-accepted" }; },
+    log: () => {},
+  });
+  await Promise.all([handler(), handler()]);
+  await handler();
+  assert.equal(sends, 1);
+  assert.equal(state, "PROVIDER_ACCEPTED");
+});
+
+test("lost database acknowledgement preserves uncertainty and cannot submit again", async () => {
+  let state = "PENDING";
+  let sends = 0;
+  let acknowledgements = 0;
+  const fetchImpl = async (url) => {
+    const rpc = url.split("/").at(-1);
+    if (rpc === "record_sms_send_success") { acknowledgements += 1; return { ok: false, status: 503 }; }
+    let payload;
+    if (rpc === "evaluate_due_journeys") payload = [{ evaluated_at: "2026-09-26T00:00:00Z" }];
+    if (rpc === "claim_due_sms_notifications") {
+      payload = state === "PENDING" ? [claim("uncertain")] : [];
+      if (payload.length) state = "SENDING";
+    }
+    if (rpc === "authorize_sms_dispatch") { payload = state === "SENDING"; if (payload) state = "DISPATCHING"; }
+    if (rpc === "record_sms_outcome_unknown") { state = "PROVIDER_OUTCOME_UNKNOWN"; payload = true; }
+    return { ok: true, json: async () => payload };
+  };
+  const handler = createHandler({
+    getConfiguration: async () => configuration,
+    fetchImpl,
+    sendTextMessage: async () => { sends += 1; return { MessageId: `fake-${sends}` }; },
+    acknowledgementDelay: async () => {},
+    log: () => {},
+  });
+  await handler();
+  await handler();
+  assert.equal(sends, 1);
+  assert.equal(acknowledgements, 3, "bounded acknowledgement retries do not repeat AWS");
+  assert.equal(state, "PROVIDER_OUTCOME_UNKNOWN");
+  await handler();
+  assert.equal(sends, 1, "unknown outcome is never claimable");
+});
+
+test("SDK sends once and unconfirmed errors remain unknown", () => {
+  assert.equal(SMS_CLIENT_OPTIONS.maxAttempts, 1);
+  for (const name of ["TimeoutError", "AbortError", "InternalServerException", "ServiceUnavailableException", "InvalidProviderResponse", "Error"]) {
+    assert.equal(classifyProviderFailure({ name }).classification, "UNKNOWN");
+  }
+});
+
+test("actual AWS SDK middleware performs one HTTP invocation on server and transport errors", async () => {
+  const { PinpointSMSVoiceV2Client, SendTextMessageCommand } = await import("@aws-sdk/client-pinpoint-sms-voice-v2");
+  for (const transportError of [false, true]) {
+    let invocations = 0;
+    const client = new PinpointSMSVoiceV2Client({
+      ...SMS_CLIENT_OPTIONS, region: "us-east-1",
+      credentials: { accessKeyId: "synthetic-test-id", secretAccessKey: "synthetic-test-secret" },
+      requestHandler: { handle: async () => {
+        invocations += 1;
+        if (transportError) throw Object.assign(new Error("synthetic timeout"), { name: "TimeoutError" });
+        return { response: { statusCode: 500, headers: { "content-type": "application/json" },
+          body: new TextEncoder().encode(JSON.stringify({ __type: "InternalServerException", message: "synthetic" })) } };
+      } },
+    });
+    assert.equal(await client.config.maxAttempts(), 1);
+    await assert.rejects(client.send(new SendTextMessageCommand({ DestinationPhoneNumber: "+12025550123", MessageBody: "Synthetic test" })));
+    assert.equal(invocations, 1);
+    client.destroy();
+  }
+});
+
+test("final dispatch denial or lost authorization response never invokes AWS", async () => {
+  for (const lostResponse of [false, true]) {
+    const base = rpcFetch({ claims: [claim("one")] });
+    let sends = 0;
+    const result = await createHandler({
+      getConfiguration: async () => configuration,
+      fetchImpl: async (url, options) => url.endsWith("authorize_sms_dispatch")
+        ? { ok: !lostResponse, status: 503, json: async () => false } : base.fetchImpl(url, options),
+      sendTextMessage: async () => { sends += 1; }, log: () => {},
+    })();
+    assert.equal(sends, 0);
+    assert.equal(result.sms.dispatchDenied, 1);
+  }
+});
+
+test("transient acknowledgement errors retry only the database", async () => {
+  const base = rpcFetch({ claims: [claim("one")] });
+  let sends = 0;
+  let acknowledgements = 0;
+  const result = await createHandler({
+    getConfiguration: async () => configuration,
+    fetchImpl: async (url, options) => {
+      if (url.endsWith("record_sms_send_success") && ++acknowledgements < 3) return { ok: false, status: 503 };
+      return base.fetchImpl(url, options);
+    },
+    sendTextMessage: async () => { sends += 1; return { MessageId: "fake-accepted" }; },
+    acknowledgementDelay: async () => {}, log: () => {},
+  })();
+  assert.equal(sends, 1);
+  assert.equal(acknowledgements, 3);
+  assert.equal(result.sms.providerAccepted, 1);
+});
+
+test("timeout and missing provider id record unknown, never confirmed failure", async () => {
+  for (const timeout of [true, false]) {
+    const base = rpcFetch({ claims: [claim("one")] });
+    const result = await createHandler({
+      getConfiguration: async () => configuration, fetchImpl: base.fetchImpl,
+      sendTextMessage: async () => { if (timeout) throw Object.assign(new Error(), { name: "TimeoutError" }); return {}; },
+      log: () => {},
+    })();
+    assert.equal(result.sms.outcomeUnknown, 1);
+    assert.ok(base.requests.some((r) => r.rpc === "record_sms_outcome_unknown"));
+    assert.ok(!base.requests.some((r) => r.rpc === "record_sms_send_failure"));
+  }
 });

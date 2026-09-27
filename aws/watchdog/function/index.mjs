@@ -47,11 +47,14 @@ export function validateConfiguration(value, environment = process.env) {
   };
 }
 
+export const SMS_CLIENT_OPTIONS = Object.freeze({ maxAttempts: 1 });
+
 async function defaultSendTextMessage(request) {
   const { PinpointSMSVoiceV2Client, SendTextMessageCommand } = await import(
     "@aws-sdk/client-pinpoint-sms-voice-v2"
   );
-  cachedSmsClient ??= new PinpointSMSVoiceV2Client({});
+  // SendTextMessage has no idempotency token. Even a hidden SDK retry may send twice.
+  cachedSmsClient ??= new PinpointSMSVoiceV2Client(SMS_CLIENT_OPTIONS);
   return cachedSmsClient.send(new SendTextMessageCommand(request));
 }
 
@@ -87,16 +90,14 @@ export function maskPhoneNumber(phone) {
 
 export function classifyProviderFailure(error) {
   const errorName = String(error?.name ?? "UnknownProviderError");
-  const transientNames = new Set([
-    "AbortError",
-    "TimeoutError",
-    "ThrottlingException",
-    "InternalServerException",
-    "ServiceUnavailableException",
+  const permanentNames = new Set([
+    "ValidationException", "AccessDeniedException", "ResourceNotFoundException",
+    "ServiceQuotaExceededException", "ConflictException",
   ]);
   const safeCode = errorName.replace(/[^A-Za-z0-9_.-]/g, "_").toUpperCase().slice(0, 80) || "UNKNOWN_PROVIDER_ERROR";
   return {
-    classification: transientNames.has(errorName) ? "TRANSIENT" : "PERMANENT",
+    classification: errorName === "ThrottlingException" ? "TRANSIENT"
+      : permanentNames.has(errorName) ? "PERMANENT" : "UNKNOWN",
     code: safeCode,
   };
 }
@@ -112,6 +113,7 @@ export function createHandler({
   },
   fetchImpl = fetch,
   sendTextMessage = defaultSendTextMessage,
+  acknowledgementDelay = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
   log = console.log,
 } = {}) {
   return async function watchdogHandler() {
@@ -137,27 +139,61 @@ export function createHandler({
     let providerAccepted = 0;
     let retryPending = 0;
     let failed = 0;
+    let outcomeUnknown = 0;
+    let dispatchDenied = 0;
+
+    const markUnknown = async (notification) => {
+      try {
+        await callRpc(configuration, fetchImpl, "record_sms_outcome_unknown", {
+          p_notification_id: notification.notification_id,
+          p_lease_token: notification.lease_token,
+        });
+      } catch {
+        // The committed DISPATCHING state is already non-reclaimable. Its
+        // expired lease will become UNKNOWN even when this database call fails.
+      }
+    };
 
     for (const notification of claimed) {
       const maskedDestination = maskPhoneNumber(notification.destination_phone_e164);
       let providerResponse;
+      const request = {
+        DestinationPhoneNumber: notification.destination_phone_e164,
+        OriginationIdentity: configuration.originationIdentity,
+        MessageBody: buildSmsMessage(notification.notification_kind, configuration.viewerUrl),
+        MessageType: "TRANSACTIONAL",
+        TimeToLive: 900,
+        Context: { notification_id: notification.notification_id, provider_attempt_id: notification.lease_token },
+      };
+      if (configuration.configurationSetName) request.ConfigurationSetName = configuration.configurationSetName;
+      // Never retry this RPC on an uncertain response: it may already have
+      // committed. Only its first successful false->true transition authorizes
+      // this worker to perform the one provider invocation.
       try {
-        const request = {
-          DestinationPhoneNumber: notification.destination_phone_e164,
-          OriginationIdentity: configuration.originationIdentity,
-          MessageBody: buildSmsMessage(notification.notification_kind, configuration.viewerUrl),
-          MessageType: "TRANSACTIONAL",
-          TimeToLive: 900,
-        };
-        if (configuration.configurationSetName) {
-          request.ConfigurationSetName = configuration.configurationSetName;
+        const authorized = await callRpc(configuration, fetchImpl, "authorize_sms_dispatch", {
+          p_notification_id: notification.notification_id,
+          p_lease_token: notification.lease_token,
+        });
+        if (firstRpcRow(authorized) !== true) {
+          dispatchDenied += 1;
+          continue;
         }
+      } catch {
+        dispatchDenied += 1;
+        continue;
+      }
+      try {
         providerResponse = await sendTextMessage(request);
         if (!providerResponse?.MessageId) {
           throw Object.assign(new Error("Provider returned no message id"), { name: "InvalidProviderResponse" });
         }
       } catch (error) {
         const failure = classifyProviderFailure(error);
+        if (failure.classification === "UNKNOWN") {
+          await markUnknown(notification);
+          outcomeUnknown += 1;
+          continue;
+        }
         try {
           const recorded = await callRpc(
             configuration,
@@ -172,9 +208,11 @@ export function createHandler({
           );
           const state = firstRpcRow(recorded);
           if (state === "RETRY_PENDING") retryPending += 1;
-          else failed += 1;
+          else if (state === "FAILED") failed += 1;
+          else outcomeUnknown += 1;
         } catch {
-          failed += 1;
+          await markUnknown(notification);
+          outcomeUnknown += 1;
         }
         log(JSON.stringify({
           event: "sms_dispatch_failed",
@@ -187,18 +225,28 @@ export function createHandler({
         continue;
       }
 
-      try {
-        const recorded = await callRpc(
-          configuration,
-          fetchImpl,
-          "record_sms_send_success",
-          {
-            p_notification_id: notification.notification_id,
-            p_lease_token: notification.lease_token,
-            p_provider_message_id: providerResponse.MessageId,
-          },
-        );
-        if (firstRpcRow(recorded) !== true) throw new Error("Active SMS lease was not acknowledged");
+      let acknowledged = false;
+      // Retry only the idempotent database acknowledgement, never AWS.
+      for (let acknowledgement = 0; acknowledgement < 3; acknowledgement += 1) {
+        try {
+          const recorded = await callRpc(
+            configuration,
+            fetchImpl,
+            "record_sms_send_success",
+            {
+              p_notification_id: notification.notification_id,
+              p_lease_token: notification.lease_token,
+              p_provider_message_id: providerResponse.MessageId,
+            },
+          );
+          if (firstRpcRow(recorded) !== true) break;
+          acknowledged = true;
+          break;
+        } catch {
+          if (acknowledgement < 2) await acknowledgementDelay(100 * (2 ** acknowledgement));
+        }
+      }
+      if (acknowledged) {
         providerAccepted += 1;
         log(JSON.stringify({
           event: "sms_provider_accepted",
@@ -206,8 +254,9 @@ export function createHandler({
           kind: notification.notification_kind,
           destination: maskedDestination,
         }));
-      } catch {
-        failed += 1;
+      } else {
+        await markUnknown(notification);
+        outcomeUnknown += 1;
         log(JSON.stringify({
           event: "sms_provider_acceptance_ack_failed",
           notificationId: notification.notification_id,
@@ -223,6 +272,8 @@ export function createHandler({
       providerAccepted,
       retryPending,
       failed,
+      outcomeUnknown,
+      dispatchDenied,
     };
     log(JSON.stringify(dispatchResult));
     return { ...safeResult, sms: dispatchResult };
