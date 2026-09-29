@@ -139,6 +139,7 @@ class JourneyForegroundService : Service() {
 
     private fun startCollecting(journeyId: String) {
         stopCollecting()
+        isMonitoringInThisProcess = true
         val channel = Channel<Location>(Channel.UNLIMITED)
         locationChannel = channel
         persistenceJob = serviceScope.launch {
@@ -253,6 +254,7 @@ class JourneyForegroundService : Service() {
     }
 
     private fun stopCollecting() {
+        isMonitoringInThisProcess = false
         locationSource.stop()
         locationChannel?.close()
         locationChannel = null
@@ -344,6 +346,9 @@ class JourneyForegroundService : Service() {
             accuracy.isFinite() && accuracy >= 0f
 
     companion object {
+        @Volatile
+        var isMonitoringInThisProcess: Boolean = false
+            private set
         private const val CHANNEL_ID = "active_journey"
         private const val NOTIFICATION_ID = 1001
     }

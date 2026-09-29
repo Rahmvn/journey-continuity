@@ -31,4 +31,5 @@ abstract class JourneyDatabase : RoomDatabase() {
     abstract fun heartbeatDao(): HeartbeatDao
     abstract fun degradedConnectivityDao(): DegradedConnectivityDao
     abstract fun fallbackAttemptDao(): FallbackAttemptDao
+    abstract fun ownerAdoptionStateDao(): OwnerAdoptionStateDao
 }
