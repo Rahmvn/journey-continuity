@@ -160,7 +160,11 @@ site_url = "http://127.0.0.1:4173"
 # The public URL that Auth serves on. Defaults to the API external URL with `/auth/v1` appended.
 # external_url = ""
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
-additional_redirect_urls = ["http://127.0.0.1:4173"]
+additional_redirect_urls = [
+  "http://127.0.0.1:4173",
+  "http://127.0.0.1:4173/auth/traveller-code",
+  "http://127.0.0.1:4173/auth/traveller-code-extra",
+]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
 # JWT issuer URL. If not set, defaults to auth.external_url.
@@ -233,11 +237,16 @@ otp_length = 6
 # Number of seconds before the email OTP expires (defaults to 1 hour).
 otp_expiry = 3600
 
-# Anonymous Traveller -> verified email uses an in-app code. This changes only
-# the email-change message; Trusted Viewer magic-link emails remain unchanged.
+# Anonymous Traveller -> verified email uses its separate in-app code template.
 [auth.email.template.email_change]
 subject = "Confirm your JOURNEY email"
 content_path = "./supabase/templates/traveller_email_change_code.html"
+
+# The exact local Android redirect selects code-only presentation. All other
+# passwordless requests keep the Trusted Viewer magic-link presentation.
+[auth.email.template.magic_link]
+subject = "Sign in to JOURNEY"
+content_path = "./supabase/templates/passwordless_sign_in.html"
 
 # Use a production-ready SMTP server
 # [auth.email.smtp]
