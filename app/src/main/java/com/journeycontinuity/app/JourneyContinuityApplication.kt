@@ -26,6 +26,8 @@ import com.journeycontinuity.app.auth.FirstOwnerAdoptionBoundary
 import com.journeycontinuity.app.auth.ReturningTravellerLoginEngine
 import com.journeycontinuity.app.auth.SupabasePrimaryTravellerSession
 import com.journeycontinuity.app.auth.SupabaseReturningLoginAttemptFactory
+import com.journeycontinuity.app.auth.SupabaseTravellerCreateAccountGateway
+import com.journeycontinuity.app.auth.TravellerCreateAccountEngine
 import com.journeycontinuity.app.heartbeat.HeartbeatCoordinator
 import com.journeycontinuity.app.heartbeat.HeartbeatGateway
 import com.journeycontinuity.app.heartbeat.HeartbeatServerState
@@ -236,6 +238,11 @@ class JourneyContinuityApplication : Application() {
                         identityCoordinator = identityCoordinator,
                         admissionGate = ownerAdmissionGate,
                     ),
+                    createAccount = TravellerCreateAccountEngine(
+                        gateway = SupabaseTravellerCreateAccountGateway(client),
+                        ownerStore = identityStore,
+                        identityCoordinator = identityCoordinator,
+                    ),
                 )
             } catch (error: Throwable) {
                 val exceptionName = error::class.simpleName ?: "Exception"
@@ -284,6 +291,9 @@ class JourneyContinuityApplication : Application() {
     val returningLoginEngine: ReturningTravellerLoginEngine?
         get() = cloudGateways.returningLogin
 
+    val createAccountEngine: TravellerCreateAccountEngine?
+        get() = cloudGateways.createAccount
+
     override fun onCreate() {
         super.onCreate()
         // Re-evaluate durable requested state after process restart. An urgent wake can
@@ -324,6 +334,7 @@ class JourneyContinuityApplication : Application() {
                 throw CloudSyncException(SyncFailureKind.PERMANENT, safeError)
             },
             returningLogin = null,
+            createAccount = null,
         )
     }
 
@@ -333,5 +344,6 @@ class JourneyContinuityApplication : Application() {
         val trustedContacts: TrustedContactGateway,
         val fallbackProvisioning: AuthenticatedFallbackProvisioningGateway,
         val returningLogin: ReturningTravellerLoginEngine?,
+        val createAccount: TravellerCreateAccountEngine?,
     )
 }

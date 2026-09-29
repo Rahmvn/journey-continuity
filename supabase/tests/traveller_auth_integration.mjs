@@ -109,6 +109,10 @@ const rpc = (token, fullName, handle) => request(
   `${local.API_URL}/rest/v1/rpc/set_traveller_profile_identity`,
   { method: 'POST', token, body: { p_full_name: fullName, p_handle: handle } },
 )
+const completeProfileRpc = (token, fullName, handle) => request(
+  `${local.API_URL}/rest/v1/rpc/complete_traveller_profile_identity_v1`,
+  { method: 'POST', token, body: { p_full_name: fullName, p_handle: handle } },
+)
 
 function expectStatus(result, status, stage) {
   assert.equal(result.status, status,
@@ -288,6 +292,8 @@ test('real local Auth preserves the anonymous owner through verified email conve
     assert.deepEqual(authDbFlags(recordedOwnerId), { is_anonymous: true, emailConfirmed: false })
     expectBlocked(await rpc(original.access_token, 'Proof Owner', 'proofowner'),
       'before email request')
+    expectBlocked(await completeProfileRpc(original.access_token, 'Proof Owner', 'proofowner'),
+      'create-only completion before email request')
 
     const email = freshEmail()
     const handle = `proof${randomUUID().replaceAll('-', '').slice(0, 12)}`
@@ -303,6 +309,8 @@ test('real local Auth preserves the anonymous owner through verified email conve
     }), 200, 'pending session'), 'pending session'), recordedOwnerId)
     expectBlocked(await rpc(original.access_token, 'Proof Owner', handle),
       'while email verification is pending')
+    expectBlocked(await completeProfileRpc(original.access_token, 'Proof Owner', handle),
+      'create-only completion while email verification is pending')
 
     const code = await emailCode(email)
     const wrong = code === '000000' ? '000001' : '000000'
@@ -329,10 +337,22 @@ test('real local Auth preserves the anonymous owner through verified email conve
 
     // The setter reads auth.users, so even an unexpired pre-verification JWT
     // should be eligible after server-side confirmation of the SAME user ID.
-    const saved = expectStatus(await rpc(original.access_token, '  Proof Owner  ',
-      `@${handle.toUpperCase()}`), 200, 'profile write after confirmation')
+    const created = expectStatus(await completeProfileRpc(original.access_token,
+      '  Proof Owner  ', `@${handle.toUpperCase()}`), 200,
+      'create-only profile completion after confirmation')
     ownedProfileId = recordedOwnerId
     ownedHandle = handle
+    assert.deepEqual(created, { status: 'CREATED' })
+    assert.deepEqual(expectStatus(await completeProfileRpc(original.access_token,
+      'Proof Owner', handle), 200, 'idempotent create-only completion'),
+      { status: 'ALREADY_COMPLETED', matches_request: true })
+    assert.deepEqual(expectStatus(await completeProfileRpc(original.access_token,
+      'Different Owner Name', handle), 200, 'different create-only retry'),
+      { status: 'ALREADY_COMPLETED', matches_request: false })
+    assert.equal(sql(`select full_name from public.traveller_profiles where owner_id = '${recordedOwnerId}'::uuid;`),
+      'Proof Owner', 'create-only retries must leave the original name unchanged')
+    const saved = expectStatus(await rpc(original.access_token, '  Proof Owner  ',
+      `@${handle.toUpperCase()}`), 200, 'existing edit setter remains available after confirmation')
     assert.deepEqual(saved, { full_name: 'Proof Owner', handle })
     assert.equal(sql(`select owner_id::text || '|' || handle from public.traveller_profiles where owner_id = '${recordedOwnerId}'::uuid;`),
       `${recordedOwnerId}|${handle}`, 'stored profile must retain owner A and normalized handle')
@@ -368,6 +388,8 @@ test('real local Auth preserves the anonymous owner through verified email conve
     })
     assert.equal(duplicateResult.status, 422,
       'duplicate registered email must fail without account merge')
+    assert.equal(duplicateResult.data?.error_code, 'email_exists',
+      'duplicate email uses the bounded GoTrue error_code mapped by Create account')
     assert.equal(requireUserId(expectStatus(await auth('/user', {
       token: duplicate.access_token,
     }), 200, 'duplicate owner session'), 'duplicate owner session'), duplicateOwnerId)
