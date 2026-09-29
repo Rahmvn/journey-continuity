@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.map
 import com.journeycontinuity.app.sync.SyncScheduler
 import com.journeycontinuity.app.sync.SyncRequestUrgency
 import com.journeycontinuity.app.degraded.DegradedConnectivityCoordinator
+import com.journeycontinuity.app.auth.OwnerAdmissionGate
 
 class RoomJourneyRepository(
     private val journeyDao: JourneyDao,
@@ -27,17 +28,20 @@ class RoomJourneyRepository(
     private val heartbeatDao: HeartbeatDao,
     private val syncScheduler: SyncScheduler,
     private val degradedConnectivityCoordinator: DegradedConnectivityCoordinator,
+    private val admissionGate: OwnerAdmissionGate = OwnerAdmissionGate(),
 ) : JourneyRepository {
     override val activeJourney: Flow<Journey?> =
         journeyDao.observeActive().map { it?.toDomain() }
 
-    override suspend fun createIfNoActive(journey: Journey): Boolean = try {
-        journeyDao.insertIfNoActive(journey.toEntity()).also { created ->
-            if (created) scheduleSyncWithoutAffectingLocalWrite(SyncRequestUrgency.URGENT)
+    override suspend fun createIfNoActive(journey: Journey): Boolean = admissionGate.withLock {
+        try {
+            journeyDao.insertIfNoActive(journey.toEntity()).also { created ->
+                if (created) scheduleSyncWithoutAffectingLocalWrite(SyncRequestUrgency.URGENT)
+            }
+        } catch (_: SQLiteConstraintException) {
+            // The unique active slot closes the race between concurrent transactions.
+            false
         }
-    } catch (_: SQLiteConstraintException) {
-        // The unique active slot closes the race between concurrent transactions.
-        false
     }
 
     override suspend fun completeActive(completedAt: Long): Journey? =

@@ -20,6 +20,12 @@ import com.journeycontinuity.app.auth.SharedPreferencesTravellerIdentityStore
 import com.journeycontinuity.app.auth.SharedPreferencesInstallationIdentityStore
 import com.journeycontinuity.app.auth.SupabaseTravellerAuthBackend
 import com.journeycontinuity.app.auth.TravellerIdentityCoordinator
+import com.journeycontinuity.app.auth.OwnerAdmissionGate
+import com.journeycontinuity.app.auth.AndroidOwnerAdoptionSnapshotReader
+import com.journeycontinuity.app.auth.FirstOwnerAdoptionBoundary
+import com.journeycontinuity.app.auth.ReturningTravellerLoginEngine
+import com.journeycontinuity.app.auth.SupabasePrimaryTravellerSession
+import com.journeycontinuity.app.auth.SupabaseReturningLoginAttemptFactory
 import com.journeycontinuity.app.heartbeat.HeartbeatCoordinator
 import com.journeycontinuity.app.heartbeat.HeartbeatGateway
 import com.journeycontinuity.app.heartbeat.HeartbeatServerState
@@ -63,6 +69,7 @@ import io.github.jan.supabase.createSupabaseClient
 import io.github.jan.supabase.postgrest.Postgrest
 
 class JourneyContinuityApplication : Application() {
+    private val ownerAdmissionGate = OwnerAdmissionGate()
     private val database: JourneyDatabase by lazy {
         Room.databaseBuilder(
             applicationContext,
@@ -148,6 +155,7 @@ class JourneyContinuityApplication : Application() {
             heartbeatDao = database.heartbeatDao(),
             syncScheduler = syncScheduler,
             degradedConnectivityCoordinator = degradedConnectivityCoordinator,
+            admissionGate = ownerAdmissionGate,
         )
     }
 
@@ -195,10 +203,13 @@ class JourneyContinuityApplication : Application() {
                     install(Postgrest)
                 }
                 logger.info("Supabase client initialized")
+                val authBackend = SupabaseTravellerAuthBackend(client)
+                val identityStore = SharedPreferencesTravellerIdentityStore(applicationContext)
                 val identityCoordinator = TravellerIdentityCoordinator(
-                    backend = SupabaseTravellerAuthBackend(client),
-                    identityStore = SharedPreferencesTravellerIdentityStore(applicationContext),
+                    backend = authBackend,
+                    identityStore = identityStore,
                     logger = logger,
+                    admissionGate = ownerAdmissionGate,
                 )
                 CloudGateways(
                     sync = SupabaseCloudSyncGateway(client, identityCoordinator, logger),
@@ -214,6 +225,16 @@ class JourneyContinuityApplication : Application() {
                         identityCoordinator = identityCoordinator,
                         supabaseUrl = configuration.url,
                         publishableKey = configuration.publishableKey,
+                    ),
+                    returningLogin = ReturningTravellerLoginEngine(
+                        attempts = SupabaseReturningLoginAttemptFactory(configuration),
+                        boundary = FirstOwnerAdoptionBoundary(
+                            AndroidOwnerAdoptionSnapshotReader(applicationContext, database, authBackend),
+                        ),
+                        ownerStore = identityStore,
+                        primary = SupabasePrimaryTravellerSession(client),
+                        identityCoordinator = identityCoordinator,
+                        admissionGate = ownerAdmissionGate,
                     ),
                 )
             } catch (error: Throwable) {
@@ -260,6 +281,9 @@ class JourneyContinuityApplication : Application() {
     val trustedContactGateway: TrustedContactGateway
         get() = cloudGateways.trustedContacts
 
+    val returningLoginEngine: ReturningTravellerLoginEngine?
+        get() = cloudGateways.returningLogin
+
     override fun onCreate() {
         super.onCreate()
         // Re-evaluate durable requested state after process restart. An urgent wake can
@@ -299,6 +323,7 @@ class JourneyContinuityApplication : Application() {
             fallbackProvisioning = AuthenticatedFallbackProvisioningGateway { _, _ ->
                 throw CloudSyncException(SyncFailureKind.PERMANENT, safeError)
             },
+            returningLogin = null,
         )
     }
 
@@ -307,5 +332,6 @@ class JourneyContinuityApplication : Application() {
         val heartbeat: HeartbeatGateway,
         val trustedContacts: TrustedContactGateway,
         val fallbackProvisioning: AuthenticatedFallbackProvisioningGateway,
+        val returningLogin: ReturningTravellerLoginEngine?,
     )
 }

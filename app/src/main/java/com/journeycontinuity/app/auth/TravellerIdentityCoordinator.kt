@@ -8,8 +8,6 @@ import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.auth.status.SessionStatus
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlin.time.Clock
 
 sealed interface TravellerSessionState {
@@ -58,10 +56,9 @@ class TravellerIdentityCoordinator(
     private val backend: TravellerAuthBackend,
     private val identityStore: TravellerIdentityStore,
     private val logger: SyncDiagnosticLogger = NoOpSyncDiagnosticLogger,
+    private val admissionGate: OwnerAdmissionGate = OwnerAdmissionGate(),
 ) {
-    private val decisionMutex = Mutex()
-
-    suspend fun resolve(): TravellerAuthOutcome = decisionMutex.withLock {
+    suspend fun resolve(): TravellerAuthOutcome = admissionGate.withLock {
         try {
             backend.awaitInitialization()
         } catch (error: Throwable) {
