@@ -207,11 +207,15 @@ class JourneyContinuityApplication : Application() {
                 logger.info("Supabase client initialized")
                 val authBackend = SupabaseTravellerAuthBackend(client)
                 val identityStore = SharedPreferencesTravellerIdentityStore(applicationContext)
+                val firstOwnerBoundary = FirstOwnerAdoptionBoundary(
+                    AndroidOwnerAdoptionSnapshotReader(applicationContext, database, authBackend),
+                )
                 val identityCoordinator = TravellerIdentityCoordinator(
                     backend = authBackend,
                     identityStore = identityStore,
                     logger = logger,
                     admissionGate = ownerAdmissionGate,
+                    canEstablishAnonymousOwner = firstOwnerBoundary::canEstablishAnonymousOwner,
                 )
                 CloudGateways(
                     sync = SupabaseCloudSyncGateway(client, identityCoordinator, logger),
@@ -230,9 +234,7 @@ class JourneyContinuityApplication : Application() {
                     ),
                     returningLogin = ReturningTravellerLoginEngine(
                         attempts = SupabaseReturningLoginAttemptFactory(configuration),
-                        boundary = FirstOwnerAdoptionBoundary(
-                            AndroidOwnerAdoptionSnapshotReader(applicationContext, database, authBackend),
-                        ),
+                        boundary = firstOwnerBoundary,
                         ownerStore = identityStore,
                         primary = SupabasePrimaryTravellerSession(client),
                         identityCoordinator = identityCoordinator,

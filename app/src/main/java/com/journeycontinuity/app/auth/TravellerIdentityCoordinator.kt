@@ -35,12 +35,14 @@ data class AuthenticatedTraveller(val userId: String)
 
 sealed interface TravellerAuthOutcome {
     data class Authenticated(val traveller: AuthenticatedTraveller) : TravellerAuthOutcome
+    data object TravellerIdentityNotEstablished : TravellerAuthOutcome
     data object TemporaryAuthUnavailable : TravellerAuthOutcome
     data object TravellerIdentityMismatch : TravellerAuthOutcome
     data object TravellerIdentityRecoveryRequired : TravellerAuthOutcome
 }
 
 enum class TravellerAuthFailureKind {
+    IDENTITY_NOT_ESTABLISHED,
     TEMPORARY_UNAVAILABLE,
     IDENTITY_MISMATCH,
     IDENTITY_RECOVERY_REQUIRED,
@@ -57,18 +59,29 @@ class TravellerIdentityCoordinator(
     private val identityStore: TravellerIdentityStore,
     private val logger: SyncDiagnosticLogger = NoOpSyncDiagnosticLogger,
     private val admissionGate: OwnerAdmissionGate = OwnerAdmissionGate(),
+    private val canEstablishAnonymousOwner: suspend () -> Boolean = { false },
 ) {
+    /** Inspects the existing owner and session without creating a Traveller. */
     suspend fun resolve(): TravellerAuthOutcome = admissionGate.withLock {
+        resolveLocked(establishAnonymousOwner = false)
+    }
+
+    /** Explicit Create account handoff; the only operation allowed to create anonymous owner A. */
+    suspend fun establishAnonymousOwner(): TravellerAuthOutcome = admissionGate.withLock {
+        resolveLocked(establishAnonymousOwner = true)
+    }
+
+    private suspend fun resolveLocked(establishAnonymousOwner: Boolean): TravellerAuthOutcome {
         try {
             backend.awaitInitialization()
         } catch (error: Throwable) {
             if (error is CancellationException) throw error
             logger.warning("Traveller authentication initialization is temporarily unavailable.")
-            return@withLock TravellerAuthOutcome.TemporaryAuthUnavailable
+            return TravellerAuthOutcome.TemporaryAuthUnavailable
         }
 
         val expectedUserId = identityStore.expectedTravellerUserId()
-        when (val state = backend.sessionState()) {
+        return when (val state = backend.sessionState()) {
             TravellerSessionState.Initializing -> {
                 logger.info("Traveller authentication is still initializing.")
                 TravellerAuthOutcome.TemporaryAuthUnavailable
@@ -83,8 +96,10 @@ class TravellerIdentityCoordinator(
                 if (expectedUserId != null) {
                     logger.warning("Established traveller session is missing; identity recovery is required.")
                     TravellerAuthOutcome.TravellerIdentityRecoveryRequired
-                } else {
+                } else if (establishAnonymousOwner) {
                     establishFirstIdentity()
+                } else {
+                    TravellerAuthOutcome.TravellerIdentityNotEstablished
                 }
             }
             is TravellerSessionState.Authenticated -> {
@@ -104,6 +119,10 @@ class TravellerIdentityCoordinator(
 
     suspend fun requireAuthenticatedTraveller(): AuthenticatedTraveller = when (val outcome = resolve()) {
         is TravellerAuthOutcome.Authenticated -> outcome.traveller
+        TravellerAuthOutcome.TravellerIdentityNotEstablished -> throw TravellerAuthException(
+            TravellerAuthFailureKind.IDENTITY_NOT_ESTABLISHED,
+            "Traveller identity has not been established on this installation.",
+        )
         TravellerAuthOutcome.TemporaryAuthUnavailable -> throw TravellerAuthException(
             TravellerAuthFailureKind.TEMPORARY_UNAVAILABLE,
             "Cloud authentication is temporarily unavailable while reconnecting.",
@@ -119,6 +138,16 @@ class TravellerIdentityCoordinator(
     }
 
     private suspend fun establishFirstIdentity(): TravellerAuthOutcome {
+        val eligible = try {
+            canEstablishAnonymousOwner()
+        } catch (error: Throwable) {
+            if (error is CancellationException) throw error
+            false
+        }
+        if (!eligible) {
+            logger.warning("Anonymous Traveller establishment is blocked by uncertain local owner state.")
+            return TravellerAuthOutcome.TravellerIdentityRecoveryRequired
+        }
         logger.info("No established traveller identity exists; starting one anonymous sign-in.")
         try {
             backend.signInAnonymously()

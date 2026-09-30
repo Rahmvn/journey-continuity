@@ -76,6 +76,7 @@ class ReturningTravellerLoginEngine internal constructor(
     val state: StateFlow<ReturningLoginState> = mutableState
     private var attempt: ReturningLoginAttempt? = null
     private var requestedEmail: String? = null
+    private var codeRequestResult: LoginCodeRequestResult? = null
     @Volatile private var cancellationRequested = false
 
     suspend fun requestCode(email: String): ReturningLoginState {
@@ -92,7 +93,7 @@ class ReturningTravellerLoginEngine internal constructor(
             attempt = newAttempt
             requestedEmail = normalized
             return try {
-                newAttempt.requestCode(normalized) // OTP createUser=false at the client boundary
+                codeRequestResult = newAttempt.requestCode(normalized) // OTP createUser=false at the client boundary
                 if (cancellationRequested) ReturningLoginState.Failed(ReturningLoginFailure.CANCELLED)
                     .also(::setState)
                 else ReturningLoginState.CodeRequested.also(::setState)
@@ -129,6 +130,10 @@ class ReturningTravellerLoginEngine internal constructor(
                 return ReturningLoginState.Failed(ReturningLoginFailure.INVALID_CODE).also(::setState)
             }
             setState(ReturningLoginState.VerificationInProgress)
+            if (codeRequestResult != LoginCodeRequestResult.SENT) {
+                // No code was sent (or request state is missing). Never ask for a candidate or profile.
+                return ReturningLoginState.Failed(ReturningLoginFailure.VERIFICATION_FAILED).also(::setState)
+            }
             val candidate = try {
                 current.verifyCode(email, code)
             } catch (error: Throwable) {
@@ -249,6 +254,7 @@ class ReturningTravellerLoginEngine internal constructor(
         val old = attempt
         attempt = null
         requestedEmail = null
+        codeRequestResult = null
         if (old != null) runCatching { old.discard() }
     }
 

@@ -6,6 +6,8 @@ import io.github.jan.supabase.auth.Auth
 import io.github.jan.supabase.auth.OtpType
 import io.github.jan.supabase.auth.OtpVerifyResult
 import io.github.jan.supabase.auth.auth
+import io.github.jan.supabase.auth.exception.AuthErrorCode
+import io.github.jan.supabase.auth.exception.AuthRestException
 import io.github.jan.supabase.auth.minimalConfig
 import io.github.jan.supabase.auth.providers.builtin.OTP
 import io.github.jan.supabase.auth.user.UserSession
@@ -20,8 +22,14 @@ import kotlin.time.Clock
 
 internal data class VerifiedLoginCandidate(val userId: String, val session: UserSession)
 
+/** Kept inside the auth boundary; both outcomes have the same public CodeRequested state. */
+internal enum class LoginCodeRequestResult { SENT, ACCOUNT_ABSENT }
+
+internal fun isAbsentLoginAccountResponse(statusCode: Int, errorCode: AuthErrorCode?): Boolean =
+    statusCode == 422 && errorCode == AuthErrorCode.OtpDisabled
+
 internal interface ReturningLoginAttempt {
-    suspend fun requestCode(email: String)
+    suspend fun requestCode(email: String): LoginCodeRequestResult
     suspend fun verifyCode(email: String, code: String): VerifiedLoginCandidate
     suspend fun hasTravellerProfile(): Boolean
     suspend fun discard()
@@ -48,10 +56,18 @@ internal class SupabaseReturningLoginAttemptFactory(
 }
 
 private class SupabaseReturningLoginAttempt(private val client: SupabaseClient) : ReturningLoginAttempt {
-    override suspend fun requestCode(email: String) {
-        client.auth.signInWith(OTP, redirectUrl = ANDROID_CODE_LOGIN_REDIRECT) {
-            this.email = email
-            createUser = false
+    override suspend fun requestCode(email: String): LoginCodeRequestResult {
+        return try {
+            client.auth.signInWith(OTP, redirectUrl = ANDROID_CODE_LOGIN_REDIRECT) {
+                this.email = email
+                createUser = false
+            }
+            LoginCodeRequestResult.SENT
+        } catch (error: AuthRestException) {
+            // Verified by traveller_auth_integration.mjs for create_user=false on an absent email.
+            if (isAbsentLoginAccountResponse(error.statusCode, error.errorCode)) {
+                LoginCodeRequestResult.ACCOUNT_ABSENT
+            } else throw error
         }
     }
 

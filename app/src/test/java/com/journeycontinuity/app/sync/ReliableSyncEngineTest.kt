@@ -1,5 +1,9 @@
 package com.journeycontinuity.app.sync
 
+import com.journeycontinuity.app.auth.TravellerAuthBackend
+import com.journeycontinuity.app.auth.TravellerIdentityCoordinator
+import com.journeycontinuity.app.auth.TravellerIdentityStore
+import com.journeycontinuity.app.auth.TravellerSessionState
 import com.journeycontinuity.app.domain.ConnectivityState
 import com.journeycontinuity.app.domain.Journey
 import com.journeycontinuity.app.domain.JourneyStatus
@@ -11,6 +15,44 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ReliableSyncEngineTest {
+    @Test
+    fun pendingBackgroundSyncOnCleanInstallCannotBootstrapAnOwner() = runBlocking {
+        var anonymousSignIns = 0
+        var ownerWrites = 0
+        val coordinator = TravellerIdentityCoordinator(
+            backend = object : TravellerAuthBackend {
+                override suspend fun awaitInitialization() = Unit
+                override fun sessionState() = TravellerSessionState.NotAuthenticated
+                override suspend fun signInAnonymously() { anonymousSignIns++ }
+            },
+            identityStore = object : TravellerIdentityStore {
+                override fun expectedTravellerUserId(): String? = null
+                override fun persistExpectedTravellerUserIdIfAbsent(userId: String): Boolean {
+                    ownerWrites++
+                    return true
+                }
+            },
+        )
+        val local = FakeLocalSyncStore(journey("unbound"), telemetry("unbound", 1..2))
+        val remote = object : CloudSyncGateway {
+            override suspend fun authenticatedOwnerId(): String = try {
+                coordinator.requireAuthenticatedTraveller().userId
+            } catch (error: Throwable) {
+                throw error.toCloudSyncException(CloudStage.AUTH_INITIALIZATION)
+            }
+            override suspend fun upsertJourney(journey: Journey, ownerId: String) =
+                error("Unbound Journey must not upload")
+            override suspend fun upsertTelemetry(observations: List<TelemetryObservation>) =
+                error("Unbound evidence must not upload")
+        }
+
+        assertEquals(SyncRunResult.Retry, ReliableSyncEngine(local, remote).synchronize())
+        assertEquals(0, anonymousSignIns)
+        assertEquals(0, ownerWrites)
+        assertEquals(0L, local.checkpoint("unbound"))
+        assertEquals(2, local.allTelemetry("unbound").size)
+    }
+
     @Test
     fun temporaryTravellerAuthenticationFailureUsesWorkerRetrySemantics() = runBlocking {
         val local = FakeLocalSyncStore(journey("one"), telemetry("one", 1..2))

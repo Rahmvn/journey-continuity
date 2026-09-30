@@ -29,6 +29,21 @@ enum class OwnerAdoptionDecision {
 }
 
 class FirstOwnerAdoptionBoundary(private val reader: OwnerAdoptionSnapshotReader) {
+    /** Uses the same clean-install evidence before an explicit anonymous first-owner sign-in. */
+    suspend fun canEstablishAnonymousOwner(): Boolean {
+        val snapshot = try {
+            reader.read()
+        } catch (error: Throwable) {
+            if (error is CancellationException) throw error
+            return false
+        }
+        return !snapshot.ownerMarkerPresent && snapshot.persistedOwnerId == null &&
+            snapshot.primarySessionState == TravellerSessionState.NotAuthenticated &&
+            !snapshot.roomOwnerStatePresent && !snapshot.priorInstallationArtifactsPresent &&
+            !snapshot.fallbackKeyMaterialPresent && !snapshot.pendingFallbackWorkPresent &&
+            !snapshot.foregroundMonitoringActive
+    }
+
     /**
      * [candidateHasTravellerProfile] must come from get_my_traveller_identity_v1() on
      * the candidate's verified session in the later login slice. This check does

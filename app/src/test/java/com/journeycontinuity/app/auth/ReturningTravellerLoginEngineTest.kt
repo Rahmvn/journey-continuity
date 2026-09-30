@@ -106,7 +106,39 @@ class ReturningTravellerLoginEngineTest {
         }
     }
 
-    @Test fun absentEmailRequestFailureDoesNotSignUpOrImport() = runBlocking {
+    @Test fun absentAndExistingEmailsHaveTheSamePreVerificationState() = runBlocking {
+        val existing = Rig(null, primaryId = null, candidateId = ownerB)
+        val absent = Rig(null, primaryId = null, candidateId = ownerB)
+        absent.attempt.requestResult = LoginCodeRequestResult.ACCOUNT_ABSENT
+
+        assertEquals(ReturningLoginState.CodeRequested, existing.engine.requestCode("b@example.test"))
+        assertEquals(existing.engine.state.value, absent.engine.requestCode("absent@example.test"))
+        assertEquals(ReturningLoginState.CodeRequested, absent.engine.state.value)
+        assertEquals(ReturningLoginState.Failed(ReturningLoginFailure.VERIFICATION_FAILED),
+            absent.engine.submitCode("123456"))
+        assertEquals(0, absent.attempt.verificationCount)
+        assertEquals(0, absent.primary.importCount)
+        assertNull(absent.store.expectedTravellerUserId())
+        assertEquals(1, absent.attempt.discardCount)
+    }
+
+    @Test fun absentEmailCannotReplacePersistedOwnerAndCancelDiscardsAttempt() = runBlocking {
+        val rig = Rig(ownerA, primaryId = ownerA, candidateId = ownerB)
+        rig.attempt.requestResult = LoginCodeRequestResult.ACCOUNT_ABSENT
+        assertEquals(ReturningLoginState.CodeRequested, rig.engine.requestCode("absent@example.test"))
+        rig.engine.cancel()
+        assertEquals(ReturningLoginState.Idle, rig.engine.state.value)
+        assertEquals(1, rig.attempt.discardCount)
+        assertEquals(ReturningLoginState.CodeRequested, rig.engine.requestCode("absent@example.test"))
+        assertEquals(ReturningLoginState.Failed(ReturningLoginFailure.VERIFICATION_FAILED),
+            rig.engine.submitCode("123456"))
+        assertEquals(0, rig.attempt.verificationCount)
+        assertEquals(0, rig.primary.importCount)
+        assertEquals(ownerA, rig.primary.id)
+        assertEquals(ownerA, rig.store.expectedTravellerUserId())
+    }
+
+    @Test fun genericRequestFailureRemainsFailureAndCannotImport() = runBlocking {
         val rig = Rig(null, primaryId = null, candidateId = ownerB)
         rig.attempt.requestFailure = true
         assertEquals(ReturningLoginState.Failed(ReturningLoginFailure.REQUEST_FAILED),
@@ -322,6 +354,8 @@ class ReturningTravellerLoginEngineTest {
     private class FakeAttempt(private val candidateId: String) : ReturningLoginAttempt {
         var requestedEmail: String? = null
         var requestFailure = false
+        var requestResult = LoginCodeRequestResult.SENT
+        var verificationCount = 0
         var verificationFailure: String? = null
         var profileFailure = false
         var hasProfile = true
@@ -330,13 +364,15 @@ class ReturningTravellerLoginEngineTest {
         var releaseRequest: CompletableDeferred<Unit>? = null
         var profileStarted: CompletableDeferred<Unit>? = null
         var releaseProfile: CompletableDeferred<Unit>? = null
-        override suspend fun requestCode(email: String) {
+        override suspend fun requestCode(email: String): LoginCodeRequestResult {
             requestedEmail = email
             requestStarted?.complete(Unit)
             releaseRequest?.await()
-            if (requestFailure) throw IOException("absent account")
+            if (requestFailure) throw IOException("transport unavailable")
+            return requestResult
         }
         override suspend fun verifyCode(email: String, code: String): VerifiedLoginCandidate {
+            verificationCount++
             assertEquals(requestedEmail, email)
             assertEquals("123456", code)
             if (verificationFailure != null) throw IOException(verificationFailure)

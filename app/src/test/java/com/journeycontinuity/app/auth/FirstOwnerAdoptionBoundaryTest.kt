@@ -3,6 +3,8 @@ package com.journeycontinuity.app.auth
 import java.io.IOException
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class FirstOwnerAdoptionBoundaryTest {
@@ -27,6 +29,24 @@ class FirstOwnerAdoptionBoundaryTest {
 
     @Test fun untouchedInstallationMayAdoptVerifiedTraveller() {
         assertEquals(OwnerAdoptionDecision.FIRST_OWNER_ELIGIBLE, decide(clean))
+    }
+
+    @Test fun anonymousEstablishmentRequiresCleanReadOnlySnapshot() = runBlocking {
+        assertTrue(FirstOwnerAdoptionBoundary { clean }.canEstablishAnonymousOwner())
+        for (unsafe in listOf(
+            clean.copy(roomOwnerStatePresent = true),
+            clean.copy(ownerMarkerPresent = true),
+            clean.copy(primarySessionState = TravellerSessionState.Authenticated(ownerA)),
+            clean.copy(priorInstallationArtifactsPresent = true),
+            clean.copy(fallbackKeyMaterialPresent = true),
+            clean.copy(pendingFallbackWorkPresent = true),
+            clean.copy(foregroundMonitoringActive = true),
+        )) {
+            assertFalse(FirstOwnerAdoptionBoundary { unsafe }.canEstablishAnonymousOwner())
+        }
+        assertFalse(FirstOwnerAdoptionBoundary {
+            throw IOException("snapshot unavailable")
+        }.canEstablishAnonymousOwner())
     }
 
     @Test fun persistedOwnerAllowsOnlySameIdRecovery() {

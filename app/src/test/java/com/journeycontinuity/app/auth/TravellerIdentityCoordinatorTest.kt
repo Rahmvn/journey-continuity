@@ -7,12 +7,14 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 
 class TravellerIdentityCoordinatorTest {
     @Test
-    fun freshInstallationCreatesExactlyOneAnonymousIdentityAndPersistsIt() = runBlocking {
+    fun cleanInstallationResolveDoesNotEstablishAnOwner() = runBlocking {
         val backend = FakeBackend(
             state = TravellerSessionState.NotAuthenticated,
             signInResult = TravellerSessionState.Authenticated("first-user"),
@@ -21,14 +23,36 @@ class TravellerIdentityCoordinatorTest {
 
         val outcome = coordinator(backend, store).resolve()
 
-        assertAuthenticated(outcome, "first-user")
-        assertEquals(1, backend.signInCount)
-        assertEquals(1, store.persistCount)
-        assertEquals("first-user", store.expectedTravellerUserId())
+        assertEquals(TravellerAuthOutcome.TravellerIdentityNotEstablished, outcome)
+        assertEquals(0, backend.signInCount)
+        assertEquals(0, store.persistCount)
+        assertNull(store.expectedTravellerUserId())
     }
 
     @Test
-    fun concurrentSyncHeartbeatAndContactsCallsCreateOnlyOneAnonymousIdentity() = runBlocking {
+    fun backgroundConsumersCannotEstablishAnOwner() = runBlocking {
+        val backend = FakeBackend(
+            state = TravellerSessionState.NotAuthenticated,
+            signInResult = TravellerSessionState.Authenticated("first-user"),
+        )
+        val store = FakeIdentityStore()
+        val coordinator = coordinator(backend, store)
+
+        repeat(3) {
+            try {
+                coordinator.requireAuthenticatedTraveller()
+                fail("Background access must require an existing owner")
+            } catch (error: TravellerAuthException) {
+                assertEquals(TravellerAuthFailureKind.IDENTITY_NOT_ESTABLISHED, error.failureKind)
+            }
+        }
+        assertEquals(0, backend.signInCount)
+        assertEquals(0, store.persistCount)
+        assertNull(store.expectedTravellerUserId())
+    }
+
+    @Test
+    fun explicitEstablishmentCreatesOneOwnerAndBackgroundCallsReuseIt() = runBlocking {
         val backend = FakeBackend(
             state = TravellerSessionState.NotAuthenticated,
             signInResult = TravellerSessionState.Authenticated("first-user"),
@@ -38,12 +62,54 @@ class TravellerIdentityCoordinatorTest {
         val coordinator = coordinator(backend, store)
 
         val outcomes = coroutineScope {
-            List(3) { async { coordinator.resolve() } }.awaitAll()
+            List(3) { async { coordinator.establishAnonymousOwner() } }.awaitAll()
         }
 
         outcomes.forEach { assertAuthenticated(it, "first-user") }
         assertEquals(1, backend.signInCount)
         assertEquals(1, store.persistCount)
+        assertEquals("first-user", coordinator.requireAuthenticatedTraveller().userId)
+        assertEquals("first-user", store.expectedTravellerUserId())
+    }
+
+    @Test
+    fun explicitEstablishmentFailsClosedWhenCleanInstallationCannotBeProved() = runBlocking {
+        val backend = FakeBackend(
+            state = TravellerSessionState.NotAuthenticated,
+            signInResult = TravellerSessionState.Authenticated("first-user"),
+        )
+        val store = FakeIdentityStore()
+        val coordinator = TravellerIdentityCoordinator(backend, store)
+
+        assertEquals(TravellerAuthOutcome.TravellerIdentityRecoveryRequired,
+            coordinator.establishAnonymousOwner())
+        assertEquals(0, backend.signInCount)
+        assertEquals(0, store.persistCount)
+    }
+
+    @Test
+    fun failedOwnerStoreWriteAfterAnonymousSignInCannotAdmitAnUnboundSession() = runBlocking {
+        val backend = FakeBackend(
+            state = TravellerSessionState.NotAuthenticated,
+            signInResult = TravellerSessionState.Authenticated("first-user"),
+        )
+        val store = FakeIdentityStore().apply { failPersist = true }
+        val coordinator = coordinator(backend, store) // Clean-install eligibility is granted.
+
+        assertEquals(TravellerAuthOutcome.TravellerIdentityRecoveryRequired,
+            coordinator.establishAnonymousOwner())
+        assertEquals(1, backend.signInCount)
+        assertEquals(1, store.persistCount)
+        assertEquals(TravellerSessionState.Authenticated("first-user"), backend.sessionState())
+        assertNull(store.expectedTravellerUserId())
+
+        assertEquals(TravellerAuthOutcome.TravellerIdentityRecoveryRequired, coordinator.resolve())
+        assertEquals(TravellerAuthOutcome.TravellerIdentityRecoveryRequired,
+            coordinator.establishAnonymousOwner())
+        assertEquals(1, backend.signInCount)
+        backend.state = TravellerSessionState.Authenticated("different-user")
+        assertEquals(TravellerAuthOutcome.TravellerIdentityRecoveryRequired, coordinator.resolve())
+        assertNull(store.expectedTravellerUserId())
     }
 
     @Test
@@ -145,8 +211,10 @@ class TravellerIdentityCoordinatorTest {
     fun differentAuthenticatedUserFailsClosedWithoutOverwritingExpectedIdentity() = runBlocking {
         val backend = FakeBackend(TravellerSessionState.Authenticated("different"))
         val store = FakeIdentityStore("expected")
+        val coordinator = coordinator(backend, store)
 
-        assertEquals(TravellerAuthOutcome.TravellerIdentityMismatch, coordinator(backend, store).resolve())
+        assertEquals(TravellerAuthOutcome.TravellerIdentityMismatch, coordinator.resolve())
+        assertEquals(TravellerAuthOutcome.TravellerIdentityMismatch, coordinator.establishAnonymousOwner())
         assertEquals("expected", store.expectedTravellerUserId())
         assertEquals(0, store.persistCount)
         assertEquals(0, backend.signInCount)
@@ -173,11 +241,14 @@ class TravellerIdentityCoordinatorTest {
     fun missingSessionForEstablishedIdentityRequiresRecoveryWithoutAnonymousSignIn() = runBlocking {
         val backend = FakeBackend(TravellerSessionState.NotAuthenticated)
         val store = FakeIdentityStore("expected")
+        val coordinator = coordinator(backend, store)
 
         assertEquals(
             TravellerAuthOutcome.TravellerIdentityRecoveryRequired,
-            coordinator(backend, store).resolve(),
+            coordinator.resolve(),
         )
+        assertEquals(TravellerAuthOutcome.TravellerIdentityRecoveryRequired,
+            coordinator.establishAnonymousOwner())
         assertEquals(0, backend.signInCount)
         assertEquals("expected", store.expectedTravellerUserId())
     }
@@ -196,7 +267,7 @@ class TravellerIdentityCoordinatorTest {
     }
 
     private fun coordinator(backend: FakeBackend, store: FakeIdentityStore) =
-        TravellerIdentityCoordinator(backend, store)
+        TravellerIdentityCoordinator(backend, store, canEstablishAnonymousOwner = { true })
 
     private fun assertAuthenticated(outcome: TravellerAuthOutcome, expectedUserId: String) {
         assertTrue(outcome is TravellerAuthOutcome.Authenticated)
@@ -230,12 +301,14 @@ class TravellerIdentityCoordinatorTest {
     private class FakeIdentityStore(initialUserId: String? = null) : TravellerIdentityStore {
         private var expectedUserId = initialUserId
         var persistCount = 0
+        var failPersist = false
 
         override fun expectedTravellerUserId() = expectedUserId
 
         override fun persistExpectedTravellerUserIdIfAbsent(userId: String): Boolean {
             if (expectedUserId != null) return expectedUserId == userId
             persistCount++
+            if (failPersist) return false
             expectedUserId = userId
             return true
         }

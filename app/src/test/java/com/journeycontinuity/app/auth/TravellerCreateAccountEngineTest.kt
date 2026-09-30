@@ -67,14 +67,80 @@ class TravellerCreateAccountEngineTest {
     @Test fun duplicateEmailKeepsAnonymousOwnerAndJourney() = runBlocking {
         val rig = Rig().apply { activeJourney = true; telemetryRows = 5 }
         rig.gateway.duplicateEmail = true
-        assertEquals(CreateAccountState.Failed(CreateAccountFailure.EMAIL_UNAVAILABLE),
+        assertEquals(CreateAccountState.CodeRequired(),
             rig.engine.begin("Valid Name", "rahmvn", email))
+        assertEquals(CreateAccountState.CodeRequired(CreateAccountCodeIssue.INVALID_OR_EXPIRED),
+            rig.engine.submitCode("123456"))
         assertEquals(ownerA, rig.gateway.sessionId)
         assertEquals(ownerA, rig.store.expectedTravellerUserId())
         assertTrue(rig.gateway.user.isAnonymous == true)
+        assertNull(rig.gateway.user.email)
         assertTrue(rig.activeJourney)
         assertEquals(5, rig.telemetryRows)
+        assertEquals(0, rig.gateway.verifyCount)
         assertEquals(0, rig.gateway.saveCount)
+        rig.engine.cancel()
+        assertEquals(CreateAccountState.Ready, rig.engine.state.value)
+        assertEquals(CreateAccountState.CodeRequired(),
+            rig.engine.begin("Valid Name", "rahmvn", email))
+        assertEquals(2, rig.gateway.requestCount)
+    }
+
+    @Test fun duplicateEmailPendingCannotCompleteProfile() = runBlocking {
+        val rig = Rig()
+        rig.gateway.duplicateEmail = true
+        assertEquals(CreateAccountState.CodeRequired(),
+            rig.engine.begin("Valid Name", "rahmvn", email))
+
+        assertEquals(CreateAccountState.Busy,
+            rig.engine.completeProfile("Valid Name", "rahmvn"))
+        assertEquals(CreateAccountState.CodeRequired(), rig.engine.state.value)
+        assertEquals(0, rig.gateway.saveCount)
+        assertNull(rig.gateway.profile)
+        assertEquals(ownerA, rig.gateway.sessionId)
+        assertEquals(ownerA, rig.store.expectedTravellerUserId())
+        assertTrue(rig.gateway.user.isAnonymous == true)
+        assertFalse(rig.gateway.user.emailConfirmed)
+    }
+
+    @Test fun cancelledDuplicateEmailCannotCompleteProfileWhileOwnerIsAnonymous() = runBlocking {
+        val rig = Rig()
+        rig.gateway.duplicateEmail = true
+        assertEquals(CreateAccountState.CodeRequired(),
+            rig.engine.begin("Valid Name", "rahmvn", email))
+        rig.engine.cancel()
+        assertEquals(CreateAccountState.Ready, rig.engine.state.value)
+
+        assertEquals(CreateAccountState.Failed(CreateAccountFailure.AUTH_UNAVAILABLE),
+            rig.engine.completeProfile("Valid Name", "rahmvn"))
+        assertEquals(0, rig.gateway.saveCount)
+        assertNull(rig.gateway.profile)
+        assertEquals(ownerA, rig.gateway.sessionId)
+        assertEquals(ownerA, rig.store.expectedTravellerUserId())
+        assertTrue(rig.gateway.user.isAnonymous == true)
+        assertFalse(rig.gateway.user.emailConfirmed)
+    }
+
+    @Test fun usableAndDuplicateEmailsHaveEquivalentPreVerificationState() = runBlocking {
+        val usable = Rig()
+        val duplicate = Rig()
+        duplicate.gateway.duplicateEmail = true
+
+        assertEquals(usable.engine.begin("Valid Name", "rahmvn", email),
+            duplicate.engine.begin("Valid Name", "rahmvn", email))
+        assertEquals(usable.engine.state.value, duplicate.engine.state.value)
+        assertEquals(0, duplicate.gateway.verifyCount)
+        assertEquals(0, duplicate.gateway.saveCount)
+    }
+
+    @Test fun genericEmailRequestFailureRemainsFailure() = runBlocking {
+        val rig = Rig()
+        rig.gateway.requestFailure = true
+        assertEquals(CreateAccountState.Failed(CreateAccountFailure.EMAIL_REQUEST_FAILED),
+            rig.engine.begin("Valid Name", "rahmvn", email))
+        assertEquals(0, rig.gateway.verifyCount)
+        assertEquals(0, rig.gateway.saveCount)
+        assertEquals(ownerA, rig.store.expectedTravellerUserId())
     }
 
     @Test fun wrongExpiredAndReplayedCodesDoNotUpgradeOrStopMonitoring() = runBlocking {
@@ -351,6 +417,8 @@ class TravellerCreateAccountEngineTest {
         val occupiedHandles = mutableSetOf<String>()
         var availabilityFails = false
         var duplicateEmail = false
+        var requestFailure = false
+        var verifyCount = 0
         var verificationFailure: String? = null
         var verificationResultId: String? = null
         var lostVerificationResponse = false
@@ -371,9 +439,11 @@ class TravellerCreateAccountEngineTest {
             requestStarted?.complete(Unit)
             releaseRequest?.await()
             if (duplicateEmail) throw EmailAlreadyInUseException()
+            if (requestFailure) throw IOException("transport unavailable")
             if (immediateConfirmation) user = user.copy(isAnonymous = false, email = email, emailConfirmed = true)
         }
         override suspend fun verifyEmailChange(email: String, code: String): String? {
+            verifyCount++
             assertEquals(requestedEmail, email)
             assertEquals("123456", code)
             verificationStarted?.complete(Unit)

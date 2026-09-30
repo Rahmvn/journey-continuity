@@ -67,7 +67,6 @@ enum class CreateAccountFailure {
     OWNER_UNAVAILABLE,
     OWNER_MISMATCH,
     AUTH_UNAVAILABLE,
-    EMAIL_UNAVAILABLE,
     EMAIL_REQUEST_FAILED,
     CODE_REQUIRED,
     CANCELLED,
@@ -92,10 +91,13 @@ class TravellerCreateAccountEngine internal constructor(
     private val ownerStore: TravellerIdentityStore,
     private val identityCoordinator: TravellerIdentityCoordinator,
 ) {
+    private enum class CodeRequestKind { SENT, DUPLICATE_EMAIL }
+
     private data class Pending(
         val ownerId: String,
         val email: String,
         val identity: TravellerProfileIdentity,
+        val codeRequestKind: CodeRequestKind = CodeRequestKind.SENT,
     )
 
     private val attemptMutex = Mutex()
@@ -141,15 +143,26 @@ class TravellerCreateAccountEngine internal constructor(
 
             mutableState.value = CreateAccountState.EmailChangeRequesting
             pending = Pending(owner, proposedEmail, identity)
+            var duplicateEmail = false
             try {
                 gateway.requestEmailChange(proposedEmail)
             } catch (_: EmailAlreadyInUseException) {
-                return finish(CreateAccountState.Failed(CreateAccountFailure.EMAIL_UNAVAILABLE))
+                duplicateEmail = true
             }
             if (cancellationRequested) return finish(CreateAccountState.Failed(CreateAccountFailure.CANCELLED))
             if (guardedOwner() != owner) return mismatch(owner)
             val afterRequest = gateway.currentIdentity()
             if (afterRequest.userId != owner) return mismatch(owner)
+            if (duplicateEmail) {
+                // Present the same conditional OTP route without issuing or verifying a code.
+                // The anonymous owner's Auth identity must remain unchanged.
+                if (afterRequest.isAnonymous != true || afterRequest.emailConfirmed ||
+                    afterRequest.email != authUser.email) {
+                    return finish(CreateAccountState.Failed(CreateAccountFailure.AUTH_UNAVAILABLE))
+                }
+                pending = pending?.copy(codeRequestKind = CodeRequestKind.DUPLICATE_EMAIL)
+                return finish(CreateAccountState.CodeRequired())
+            }
             // A code must genuinely be required. If the Auth deployment verifies
             // immediately, leave the same-ID account intact for profile completion.
             if (isVerified(afterRequest)) return finish(CreateAccountState.ProfileRequired(
@@ -185,6 +198,10 @@ class TravellerCreateAccountEngine internal constructor(
             }
             if (cancellationRequested) return finish(CreateAccountState.Failed(CreateAccountFailure.CANCELLED))
             if (guardedOwner() != current.ownerId) return mismatch(current.ownerId)
+            if (current.codeRequestKind == CodeRequestKind.DUPLICATE_EMAIL) {
+                // This pending route cannot call verifyEmailChange or saveProfile.
+                return finish(CreateAccountState.CodeRequired(CreateAccountCodeIssue.INVALID_OR_EXPIRED))
+            }
             mutableState.value = CreateAccountState.Verifying
             // Verification may have succeeded server-side even if the caller is
             // cancelled. Finish the same-ID check and profile outcome together.

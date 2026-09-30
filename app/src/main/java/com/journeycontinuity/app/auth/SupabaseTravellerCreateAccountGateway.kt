@@ -33,8 +33,7 @@ internal class SupabaseTravellerCreateAccountGateway(
         try {
             client.auth.updateUser { this.email = email }
         } catch (error: AuthRestException) {
-            if (error.errorCode in setOf(AuthErrorCode.EmailExists,
-                    AuthErrorCode.UserAlreadyExists, AuthErrorCode.IdentityAlreadyExists)) {
+            if (isDuplicateCreateAccountEmailResponse(error.statusCode, error.errorCode)) {
                 throw EmailAlreadyInUseException()
             }
             throw error
@@ -96,3 +95,7 @@ internal class SupabaseTravellerCreateAccountGateway(
         }
     }
 }
+
+/** The local GoTrue integration test observes this exact response for a duplicate email. */
+internal fun isDuplicateCreateAccountEmailResponse(statusCode: Int, errorCode: AuthErrorCode?): Boolean =
+    statusCode == 422 && errorCode == AuthErrorCode.EmailExists

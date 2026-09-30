@@ -147,6 +147,7 @@ internal fun Throwable.toCloudSyncException(stage: CloudStage): CloudSyncExcepti
     if (travellerAuthError != null) {
         val kind = when (travellerAuthError.failureKind) {
             TravellerAuthFailureKind.TEMPORARY_UNAVAILABLE -> SyncFailureKind.TRANSIENT
+            TravellerAuthFailureKind.IDENTITY_NOT_ESTABLISHED,
             TravellerAuthFailureKind.IDENTITY_MISMATCH,
             TravellerAuthFailureKind.IDENTITY_RECOVERY_REQUIRED,
             -> SyncFailureKind.AUTHENTICATION
