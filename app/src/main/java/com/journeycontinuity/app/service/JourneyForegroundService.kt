@@ -42,6 +42,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.StateFlow
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CompletableDeferred
 
@@ -139,7 +140,7 @@ class JourneyForegroundService : Service() {
 
     private fun startCollecting(journeyId: String) {
         stopCollecting()
-        isMonitoringInThisProcess = true
+        val registration = runtimeSignals.begin(journeyId)
         val channel = Channel<Location>(Channel.UNLIMITED)
         locationChannel = channel
         persistenceJob = serviceScope.launch {
@@ -164,26 +165,43 @@ class JourneyForegroundService : Service() {
                 if (location.isUsableObservation()) channel.trySend(location)
             },
             onFailure = { stopServiceCompletely() },
+            onReady = { runtimeSignals.listenerRegistered(registration, journeyId) },
         )
-        startHeartbeats(journeyId)
+        startHeartbeats(journeyId, registration)
     }
 
-    private fun startHeartbeats(journeyId: String) {
+    private fun startHeartbeats(journeyId: String, registration: Long) {
         val signal = Channel<Unit>(Channel.CONFLATED)
         val degradedStateInitialized = CompletableDeferred<Unit>()
         heartbeatSignal = signal
         heartbeatJob = serviceScope.launch(Dispatchers.IO) {
+            val initiallyUsable = deviceContextReader.usableInternet()
             degradedConnectivityCoordinator.activate(
                 journeyId = journeyId,
-                validatedInternetAvailable = deviceContextReader.usableInternet(),
+                validatedInternetAvailable = initiallyUsable,
+            )
+            val currentlyUsable = deviceContextReader.usableInternet()
+            if (currentlyUsable != initiallyUsable) {
+                if (currentlyUsable) {
+                    degradedConnectivityCoordinator.validatedInternetAvailable(journeyId)
+                } else {
+                    degradedConnectivityCoordinator.validatedInternetLost(journeyId)
+                }
+            }
+            runtimeSignals.initialConnectivityReconciled(
+                registration, journeyId, currentlyUsable,
             )
             degradedStateInitialized.complete(Unit)
             for (ignored in signal) {
                 // A cloud failure can interrupt recovery without a NetworkCallback transition.
                 // Reconcile the currently validated network before capturing the heartbeat start.
-                if (deviceContextReader.usableInternet()) {
+                val usableInternet = deviceContextReader.usableInternet()
+                if (usableInternet) {
                     degradedConnectivityCoordinator.validatedInternetAvailable(journeyId)
                 }
+                runtimeSignals.connectivityReconciled(
+                    registration, journeyId, deviceContextReader.usableInternet(),
+                )
                 degradedConnectivityCoordinator.timeAdvanced(journeyId)
                 val heartbeatStartedAt = System.currentTimeMillis()
                 val battery = deviceContextReader.battery()
@@ -199,8 +217,10 @@ class JourneyForegroundService : Service() {
                 )) {
                     HeartbeatAttemptResult.Sent ->
                         degradedConnectivityCoordinator.freshHeartbeatSucceeded(journeyId, heartbeatStartedAt)
-                    HeartbeatAttemptResult.RetryableFailure ->
+                    HeartbeatAttemptResult.RetryableFailure -> {
+                        runtimeSignals.connectivityReconciled(registration, journeyId, false)
                         degradedConnectivityCoordinator.retryableCloudFailure(journeyId)
+                    }
                     HeartbeatAttemptResult.Failed,
                     HeartbeatAttemptResult.Skipped,
                     -> Unit
@@ -225,6 +245,9 @@ class JourneyForegroundService : Service() {
                 if (nowUsable && usable.compareAndSet(false, true)) {
                     serviceScope.launch(Dispatchers.IO) {
                         degradedConnectivityCoordinator.validatedInternetAvailable(journeyId)
+                        runtimeSignals.connectivityReconciled(
+                            registration, journeyId, deviceContextReader.usableInternet(),
+                        )
                         runCatching {
                             (application as JourneyContinuityApplication).syncScheduler.schedule(
                                 SyncRequestUrgency.URGENT,
@@ -233,14 +256,18 @@ class JourneyForegroundService : Service() {
                         signal.trySend(Unit)
                     }
                 }
-                if (!nowUsable && usable.compareAndSet(true, false)) {
-                    serviceScope.launch(Dispatchers.IO) {
-                        degradedConnectivityCoordinator.validatedInternetLost(journeyId)
+                if (!nowUsable) {
+                    runtimeSignals.connectivityReconciled(registration, journeyId, false)
+                    if (usable.compareAndSet(true, false)) {
+                        serviceScope.launch(Dispatchers.IO) {
+                            degradedConnectivityCoordinator.validatedInternetLost(journeyId)
+                        }
                     }
                 }
             }
 
             override fun onLost(network: Network) {
+                runtimeSignals.connectivityReconciled(registration, journeyId, false)
                 if (usable.compareAndSet(true, false)) {
                     serviceScope.launch(Dispatchers.IO) {
                         degradedConnectivityCoordinator.validatedInternetLost(journeyId)
@@ -254,7 +281,7 @@ class JourneyForegroundService : Service() {
     }
 
     private fun stopCollecting() {
-        isMonitoringInThisProcess = false
+        runtimeSignals.stop()
         locationSource.stop()
         locationChannel?.close()
         locationChannel = null
@@ -346,9 +373,13 @@ class JourneyForegroundService : Service() {
             accuracy.isFinite() && accuracy >= 0f
 
     companion object {
-        @Volatile
-        var isMonitoringInThisProcess: Boolean = false
-            private set
+        /** Process-local evidence that the location foreground service started for this Journey. */
+        private val runtimeSignals = JourneyRuntimeSignals()
+        val monitoringJourneyId: StateFlow<String?> = runtimeSignals.monitoringJourneyId
+        val currentConnectivity: StateFlow<CurrentJourneyConnectivity?> =
+            runtimeSignals.currentConnectivity
+        val isMonitoringInThisProcess: Boolean
+            get() = monitoringJourneyId.value != null
         private const val CHANNEL_ID = "active_journey"
         private const val NOTIFICATION_ID = 1001
     }

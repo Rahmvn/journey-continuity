@@ -199,6 +199,31 @@ private fun SmsFallbackSection(
     )
 }
 
+/** Existing management controls, retained behind the Home utility until its dedicated slice. */
+@Composable
+fun LegacySmsFallbackContent(
+    status: SmsFallbackStatus,
+    onRequestPermissions: () -> Unit,
+    onSelectSubscription: (Int) -> Unit,
+) = SmsFallbackSection(status, onRequestPermissions, onSelectSubscription)
+
+@Composable
+fun LegacyTrustedContactsContent(viewModel: JourneyViewModel) {
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    TrustedContactsSection(
+        contacts = state.trustedContacts,
+        availability = state.trustedContactsAvailability,
+        unavailableMessage = state.trustedContactsUnavailableMessage,
+        actionInProgress = state.trustedContactActionInProgress,
+        invitationShareUrl = state.invitationShareUrl,
+        onCreate = viewModel::createTrustedContact,
+        onRevoke = viewModel::revokeTrustedContact,
+        onRefresh = viewModel::refreshTrustedContacts,
+        onShared = viewModel::clearInvitationShareUrl,
+        onMessage = viewModel::showMessage,
+    )
+}
+
 @Composable
 private fun TrustedContactsSection(
     contacts: List<TrustedContactSummary>,

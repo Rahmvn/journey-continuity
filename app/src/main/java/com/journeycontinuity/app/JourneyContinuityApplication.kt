@@ -72,6 +72,8 @@ import com.journeycontinuity.app.ui.LoginEntryStore
 import com.journeycontinuity.app.ui.CreateAccountEntryStore
 import com.journeycontinuity.app.ui.ProductionTravellerRootAuth
 import io.github.jan.supabase.auth.Auth
+import io.github.jan.supabase.auth.auth
+import io.github.jan.supabase.auth.status.SessionStatus
 import io.github.jan.supabase.createSupabaseClient
 import io.github.jan.supabase.postgrest.Postgrest
 
@@ -223,6 +225,10 @@ class JourneyContinuityApplication : Application() {
                     canEstablishAnonymousOwner = firstOwnerBoundary::canEstablishAnonymousOwner,
                 )
                 CloudGateways(
+                    accountEmail = {
+                        (client.auth.sessionStatus.value as? SessionStatus.Authenticated)
+                            ?.session?.user?.email
+                    },
                     identityCoordinator = identityCoordinator,
                     sync = SupabaseCloudSyncGateway(client, identityCoordinator, logger),
                     heartbeat = SupabaseHeartbeatGateway(client, identityCoordinator, logger),
@@ -296,6 +302,9 @@ class JourneyContinuityApplication : Application() {
     val trustedContactGateway: TrustedContactGateway
         get() = cloudGateways.trustedContacts
 
+    val currentAccountEmail: String?
+        get() = cloudGateways.accountEmail()
+
     val returningLoginEngine: ReturningTravellerLoginEngine?
         get() = cloudGateways.returningLogin
 
@@ -358,6 +367,7 @@ class JourneyContinuityApplication : Application() {
     }
 
     private data class CloudGateways(
+        val accountEmail: () -> String? = { null },
         val identityCoordinator: TravellerIdentityCoordinator?,
         val sync: CloudSyncGateway,
         val heartbeat: HeartbeatGateway,

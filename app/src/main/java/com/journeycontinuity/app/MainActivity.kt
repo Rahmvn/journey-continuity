@@ -22,7 +22,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.journeycontinuity.app.telemetry.ForegroundLocationAccess
 import com.journeycontinuity.app.telemetry.LocationPrerequisites
 import com.journeycontinuity.app.degraded.SmsFallbackStatus
-import com.journeycontinuity.app.ui.JourneyScreen
+import com.journeycontinuity.app.ui.JourneyProductRoot
 import com.journeycontinuity.app.ui.JourneyViewModel
 import com.journeycontinuity.app.ui.JourneyViewModelFactory
 import com.journeycontinuity.app.ui.TravellerRootHost
@@ -49,6 +49,7 @@ class MainActivity : ComponentActivity() {
             lifecycle = app.journeyLifecycle,
             serviceController = app.journeyServiceController,
             trustedContactGateway = app.trustedContactGateway,
+            degradedConnectivityCoordinator = app.degradedConnectivityCoordinator,
         )
     }
 
@@ -121,10 +122,10 @@ class MainActivity : ComponentActivity() {
         setContent {
             JourneyContinuityTheme {
                 TravellerRootHost(rootViewModel) {
-                    JourneyScreen(
+                    JourneyProductRoot(
                         viewModel = journeyViewModel,
-                        notificationsVisible = notificationsVisible,
                         locationUiState = locationUiState,
+                        accountEmail = app.currentAccountEmail,
                         onStartRequested = ::startAfterPrerequisites,
                         onRetryMonitoring = ::retryMonitoringPrerequisites,
                         onOpenLocationSettings = ::openLocationSettings,

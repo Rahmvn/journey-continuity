@@ -12,11 +12,16 @@ import com.journeycontinuity.app.domain.JourneyInputValidation
 import com.journeycontinuity.app.domain.JourneySyncState
 import com.journeycontinuity.app.domain.StartJourneyResult
 import com.journeycontinuity.app.domain.TelemetryObservation
+import com.journeycontinuity.app.degraded.DegradedConnectivityCoordinator
+import com.journeycontinuity.app.degraded.DegradedConnectivityState
 import com.journeycontinuity.app.service.JourneyServiceController
+import com.journeycontinuity.app.service.JourneyForegroundService
+import com.journeycontinuity.app.service.CurrentJourneyConnectivity
 import com.journeycontinuity.app.sync.CloudSyncException
 import com.journeycontinuity.app.sync.SyncFailureKind
 import com.journeycontinuity.app.trusted.TrustedContactGateway
 import com.journeycontinuity.app.trusted.TrustedContactSummary
+import com.journeycontinuity.app.trusted.TrustedContactStatus
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.StateFlow
@@ -34,6 +39,8 @@ enum class TrustedContactsAvailability {
     AVAILABLE,
     UNAVAILABLE,
 }
+
+enum class JourneyProductRoute { HOME, START, CHECKPOINT, ACTIVE, CONTACTS, RESILIENCE }
 
 internal data class TrustedContactsFailurePresentation(
     val availability: TrustedContactsAvailability,
@@ -64,6 +71,13 @@ data class JourneyUiState(
     val latestTelemetry: TelemetryObservation? = null,
     val syncState: JourneySyncState? = null,
     val monitoringState: CloudMonitoringState? = null,
+    val degradation: DegradedConnectivityState? = null,
+    val monitoringJourneyId: String? = null,
+    val currentConnectivity: CurrentJourneyConnectivity? = null,
+    val productRoute: JourneyProductRoute = JourneyProductRoute.HOME,
+    val utilityReturnRoute: JourneyProductRoute = JourneyProductRoute.HOME,
+    val draftDestination: String = "",
+    val draftExpectedArrivalAt: Long? = null,
     val isActionInProgress: Boolean = false,
     val trustedContacts: List<TrustedContactSummary> = emptyList(),
     val trustedContactsAvailability: TrustedContactsAvailability = TrustedContactsAvailability.LOADING,
@@ -87,12 +101,25 @@ class JourneyViewModel(
     private val lifecycle: JourneyLifecycle,
     private val serviceController: JourneyServiceController,
     private val trustedContactGateway: TrustedContactGateway,
+    private val degradedConnectivityCoordinator: DegradedConnectivityCoordinator,
+    currentConnectivity: StateFlow<CurrentJourneyConnectivity?> =
+        JourneyForegroundService.currentConnectivity,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(JourneyUiState())
     val uiState: StateFlow<JourneyUiState> = _uiState.asStateFlow()
 
     init {
         refreshTrustedContacts()
+        viewModelScope.launch {
+            JourneyForegroundService.monitoringJourneyId.collect { journeyId ->
+                _uiState.update { it.copy(monitoringJourneyId = journeyId) }
+            }
+        }
+        viewModelScope.launch {
+            currentConnectivity.collect { observation ->
+                _uiState.update { it.copy(currentConnectivity = observation) }
+            }
+        }
         viewModelScope.launch {
             repository.activeJourney
                 .flatMapLatest { active ->
@@ -103,13 +130,15 @@ class JourneyViewModel(
                             repository.observeTelemetry(active.id),
                             repository.observeSyncState(active.id),
                             repository.observeMonitoringState(active.id),
-                        ) { summary, syncState, monitoringState ->
+                            degradedConnectivityCoordinator.observe(active.id),
+                        ) { summary, syncState, monitoringState, degradation ->
                             ActiveJourneyUiData(
                                 journey = active,
                                 telemetryCount = summary.count,
                                 latestTelemetry = summary.latest,
                                 syncState = syncState,
                                 monitoringState = monitoringState,
+                                degradation = degradation,
                             )
                         }
                     }
@@ -128,9 +157,64 @@ class JourneyViewModel(
                             latestTelemetry = activeData.latestTelemetry,
                             syncState = activeData.syncState,
                             monitoringState = activeData.monitoringState,
+                            degradation = activeData.degradation,
+                            productRoute = routeAfterJourneyChange(it.productRoute, activeData.journey),
                         )
                     }
                 }
+        }
+    }
+
+    fun openStart() = _uiState.update {
+        if (it.activeJourney == null) it.copy(productRoute = JourneyProductRoute.START) else it
+    }
+
+    fun openActive() = _uiState.update {
+        if (it.activeJourney != null) it.copy(productRoute = JourneyProductRoute.ACTIVE) else it
+    }
+
+    fun openContacts() = _uiState.update {
+        it.copy(productRoute = JourneyProductRoute.CONTACTS,
+            utilityReturnRoute = if (it.productRoute == JourneyProductRoute.CHECKPOINT)
+                JourneyProductRoute.START else JourneyProductRoute.HOME)
+    }
+
+    fun openResilience() = _uiState.update {
+        it.copy(productRoute = JourneyProductRoute.RESILIENCE,
+            utilityReturnRoute = if (it.productRoute == JourneyProductRoute.CHECKPOINT)
+                JourneyProductRoute.START else JourneyProductRoute.HOME)
+    }
+
+    fun closeUtility() = _uiState.update { it.copy(productRoute = it.utilityReturnRoute) }
+
+    fun backToHome() = _uiState.update { it.copy(productRoute = JourneyProductRoute.HOME) }
+
+    fun backToStart() = _uiState.update { it.copy(productRoute = JourneyProductRoute.START) }
+
+    fun updateDestination(value: String) = _uiState.update { it.copy(draftDestination = value) }
+
+    fun updateExpectedArrival(value: Long) = _uiState.update {
+        it.copy(draftExpectedArrivalAt = value)
+    }
+
+    /** The checkpoint is advisory; it never changes Journey eligibility. */
+    fun requestStart(smsFallbackReady: Boolean, begin: (String, Long) -> Unit) {
+        val state = _uiState.value
+        if (state.isActionInProgress || state.activeJourney != null) return
+        val arrival = state.draftExpectedArrivalAt ?: return
+        if (!validateStart(state.draftDestination, arrival)) return
+        val accepted = state.trustedContacts.any { it.status == TrustedContactStatus.ACCEPTED }
+        if (needsResilienceCheckpoint(accepted, smsFallbackReady)) {
+            _uiState.update { it.copy(productRoute = JourneyProductRoute.CHECKPOINT) }
+        } else begin(state.draftDestination, arrival)
+    }
+
+    fun startAnyway(begin: (String, Long) -> Unit) {
+        val state = _uiState.value
+        val arrival = state.draftExpectedArrivalAt ?: return
+        if (state.productRoute == JourneyProductRoute.CHECKPOINT &&
+            !state.isActionInProgress && validateStart(state.draftDestination, arrival)) {
+            begin(state.draftDestination, arrival)
         }
     }
 
@@ -307,6 +391,7 @@ private data class ActiveJourneyUiData(
     val latestTelemetry: TelemetryObservation? = null,
     val syncState: JourneySyncState? = null,
     val monitoringState: CloudMonitoringState? = null,
+    val degradation: DegradedConnectivityState? = null,
 )
 
 class JourneyViewModelFactory(
@@ -314,8 +399,10 @@ class JourneyViewModelFactory(
     private val lifecycle: JourneyLifecycle,
     private val serviceController: JourneyServiceController,
     private val trustedContactGateway: TrustedContactGateway,
+    private val degradedConnectivityCoordinator: DegradedConnectivityCoordinator,
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T =
-        JourneyViewModel(repository, lifecycle, serviceController, trustedContactGateway) as T
+        JourneyViewModel(repository, lifecycle, serviceController, trustedContactGateway,
+            degradedConnectivityCoordinator) as T
 }

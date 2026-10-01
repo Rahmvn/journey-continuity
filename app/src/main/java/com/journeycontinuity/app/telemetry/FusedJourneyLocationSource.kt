@@ -20,6 +20,7 @@ class FusedJourneyLocationSource(
     fun start(
         onLocation: (Location) -> Unit,
         onFailure: (Exception) -> Unit,
+        onReady: () -> Unit = {},
     ) {
         stop()
         val newCallback = object : LocationCallback() {
@@ -32,7 +33,9 @@ class FusedJourneyLocationSource(
             LocationTrackingConfig.createRequest(),
             newCallback,
             Looper.getMainLooper(),
-        ).addOnFailureListener { error ->
+        ).addOnSuccessListener {
+            if (callback === newCallback) onReady()
+        }.addOnFailureListener { error ->
             if (callback === newCallback) {
                 callback = null
                 onFailure(error)
