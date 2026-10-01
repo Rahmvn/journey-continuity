@@ -67,6 +67,8 @@ fun ReturningLoginEmailScreen(
     onCreateAccount: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    serviceNotice: String? = null,
+    requestInProgress: Boolean = false,
 ) {
     Column(
         modifier = modifier.fillMaxSize().background(LoginBackground)
@@ -108,9 +110,18 @@ fun ReturningLoginEmailScreen(
                     }
                 },
             )
+            if (serviceNotice != null) {
+                AuthInlineNotice(serviceNotice)
+                Spacer(Modifier.height(16.dp))
+                LoginPrimaryAction("Continue", submissionEnabled, onContinue)
+                LoginTextAction("Need an Alabarin account? Create one", LoginBrand, onCreateAccount)
+            }
         }
-        LoginPrimaryAction("Continue", submissionEnabled, onContinue)
-        LoginTextAction("Need an Alabarin account? Create one", LoginBrand, onCreateAccount)
+        if (serviceNotice == null) {
+            LoginPrimaryAction(if (requestInProgress) "Sending code…" else "Continue",
+                submissionEnabled, onContinue)
+            LoginTextAction("Need an Alabarin account? Create one", LoginBrand, onCreateAccount)
+        }
     }
 }
 
@@ -127,6 +138,8 @@ fun ReturningLoginCheckEmailScreen(
     onCreateAccount: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    serviceNotice: String? = null,
+    requestInProgress: Boolean = false,
 ) {
     Column(
         modifier = modifier.fillMaxSize().background(LoginBackground)
@@ -155,11 +168,18 @@ fun ReturningLoginCheckEmailScreen(
             } else {
                 Spacer(Modifier.height(14.dp))
             }
+            if (serviceNotice != null) {
+                AuthInlineNotice(serviceNotice)
+                Spacer(Modifier.height(16.dp))
+                LoginPrimaryAction("Verify and continue", submissionEnabled, onVerify)
+            }
             LoginTextAction("Send a new code", LoginBrand, onSendNewCode)
             LoginTextAction("No account yet? Create one", LoginBody, onCreateAccount)
             LoginTextAction("Use a different email", LoginBody, onUseDifferentEmail)
         }
-        LoginPrimaryAction("Verify and continue", submissionEnabled, onVerify)
+        if (serviceNotice == null) LoginPrimaryAction(
+            if (requestInProgress) "Checking code…" else "Verify and continue",
+            submissionEnabled, onVerify)
     }
 }
 

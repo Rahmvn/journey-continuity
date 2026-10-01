@@ -25,14 +25,24 @@ import com.journeycontinuity.app.degraded.SmsFallbackStatus
 import com.journeycontinuity.app.ui.JourneyScreen
 import com.journeycontinuity.app.ui.JourneyViewModel
 import com.journeycontinuity.app.ui.JourneyViewModelFactory
+import com.journeycontinuity.app.ui.TravellerRootHost
+import com.journeycontinuity.app.ui.TravellerRootRoute
+import com.journeycontinuity.app.ui.TravellerRootViewModel
+import com.journeycontinuity.app.ui.TravellerRootViewModelFactory
 import com.journeycontinuity.app.ui.LocationUiState
 import com.journeycontinuity.app.ui.theme.JourneyContinuityTheme
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private val app by lazy { application as JourneyContinuityApplication }
+    private val rootViewModel by viewModels<TravellerRootViewModel> {
+        TravellerRootViewModelFactory(app.travellerRootAuth, app.introCompletionStore,
+            app.createAccountProgressStore, app.createAccountEntryStore, app.loginEntryStore)
+    }
     private val journeyViewModel by viewModels<JourneyViewModel> {
         JourneyViewModelFactory(
             repository = app.journeyRepository,
@@ -59,6 +69,7 @@ class MainActivity : ComponentActivity() {
         ActivityResultContracts.RequestMultiplePermissions(),
     ) { permissions ->
         refreshPrerequisiteState()
+        if (!isAdmitted()) return@registerForActivityResult
         val hasFine = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true
         val hasCoarse = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
         when {
@@ -86,6 +97,7 @@ class MainActivity : ComponentActivity() {
         ActivityResultContracts.RequestPermission(),
     ) {
         refreshPrerequisiteState()
+        if (!isAdmitted()) return@registerForActivityResult
         beginPendingJourney()
     }
 
@@ -95,27 +107,32 @@ class MainActivity : ComponentActivity() {
         refreshPrerequisiteState()
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
-                journeyViewModel.uiState
-                    .map { it.activeJourney?.id }
+                rootViewModel.state.map { it.route }.distinctUntilChanged().collectLatest { route ->
+                    if (route != TravellerRootRoute.ADMITTED_EXISTING &&
+                        route != TravellerRootRoute.ADMITTED_NEW) return@collectLatest
+                    journeyViewModel.uiState.map { it.activeJourney?.id }
                     .distinctUntilChanged()
                     .collect { activeJourneyId ->
                         if (activeJourneyId != null) startServiceForActiveJourneyIfReady()
                     }
+                }
             }
         }
         setContent {
             JourneyContinuityTheme {
-                JourneyScreen(
-                    viewModel = journeyViewModel,
-                    notificationsVisible = notificationsVisible,
-                    locationUiState = locationUiState,
-                    onStartRequested = ::startAfterPrerequisites,
-                    onRetryMonitoring = ::retryMonitoringPrerequisites,
-                    onOpenLocationSettings = ::openLocationSettings,
-                    smsFallbackStatus = smsFallbackStatus,
-                    onRequestSmsPermissions = ::requestSmsFallbackPermissions,
-                    onSelectSmsSubscription = ::selectSmsFallbackSubscription,
-                )
+                TravellerRootHost(rootViewModel) {
+                    JourneyScreen(
+                        viewModel = journeyViewModel,
+                        notificationsVisible = notificationsVisible,
+                        locationUiState = locationUiState,
+                        onStartRequested = ::startAfterPrerequisites,
+                        onRetryMonitoring = ::retryMonitoringPrerequisites,
+                        onOpenLocationSettings = ::openLocationSettings,
+                        smsFallbackStatus = smsFallbackStatus,
+                        onRequestSmsPermissions = ::requestSmsFallbackPermissions,
+                        onSelectSmsSubscription = ::selectSmsFallbackSubscription,
+                    )
+                }
             }
         }
     }
@@ -124,6 +141,10 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         refreshPrerequisiteState()
         refreshSmsFallbackState()
+        if (!isAdmitted()) {
+            resumeEstablishedLocalMonitoring()
+            return
+        }
         if (pendingStart != null && locationUiState.locationServicesEnabled) {
             continuePendingStart()
         } else {
@@ -189,6 +210,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun startServiceForActiveJourneyIfReady() {
+        if (!isAdmitted()) return
         refreshPrerequisiteState()
         if (
             journeyViewModel.uiState.value.activeJourney != null &&
@@ -215,6 +237,19 @@ class MainActivity : ComponentActivity() {
         )
     }
 
+    /** Local monitoring can resume during a cloud-auth outage without constructing JourneyViewModel. */
+    private fun resumeEstablishedLocalMonitoring() {
+        if (locationUiState.access == ForegroundLocationAccess.NONE ||
+            !locationUiState.locationServicesEnabled) return
+        lifecycleScope.launch {
+            val hasActiveJourney = runCatching { app.journeyRepository.activeJourney.first() != null }
+                .getOrDefault(false)
+            if (hasActiveJourney && lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+                runCatching { app.journeyServiceController.start() }
+            }
+        }
+    }
+
     private fun refreshSmsFallbackState() {
         smsFallbackStatus = app.smsFallbackConfiguration.status()
     }
@@ -226,9 +261,14 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun selectSmsFallbackSubscription(subscriptionId: Int) {
+        if (!isAdmitted()) return
         if (!app.smsFallbackConfiguration.selectSubscription(subscriptionId)) {
             journeyViewModel.showMessage("That SIM is no longer active. Refresh and select an active SIM.")
         }
         refreshSmsFallbackState()
     }
+
+    private fun isAdmitted(): Boolean = rootViewModel.state.value.route ==
+        TravellerRootRoute.ADMITTED_EXISTING || rootViewModel.state.value.route ==
+        TravellerRootRoute.ADMITTED_NEW
 }

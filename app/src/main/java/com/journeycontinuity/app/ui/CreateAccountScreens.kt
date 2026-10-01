@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -75,9 +76,13 @@ fun CreateAccountDetailsScreen(
     onBack: () -> Unit,
     onLogIn: () -> Unit,
     modifier: Modifier = Modifier,
+    allowUncheckedHandle: Boolean = false,
+    serviceNotice: String? = null,
+    requestInProgress: Boolean = false,
 ) {
     val feedback = handleFeedback?.takeIf { it.handle == handle }?.status
-    val canContinue = submissionEnabled && feedback == CreateAccountHandleStatus.AVAILABLE
+    val canContinue = submissionEnabled && (feedback == CreateAccountHandleStatus.AVAILABLE ||
+        (allowUncheckedHandle && feedback == null))
 
     Column(
         modifier = modifier.fillMaxSize().background(Background)
@@ -127,9 +132,18 @@ fun CreateAccountDetailsScreen(
 
             LabeledField("Email address", email, "you@example.com", onEmailChange,
                 keyboardType = KeyboardType.Email)
+            if (serviceNotice != null) {
+                AuthInlineNotice(serviceNotice)
+                Spacer(Modifier.height(16.dp))
+                PrimaryAction("Continue", canContinue, onContinue)
+                TextAction("Already have an account? Log in", Brand, onLogIn)
+            }
         }
-        PrimaryAction("Continue", canContinue, onContinue)
-        TextAction("Already have an account? Log in", Brand, onLogIn)
+        if (serviceNotice == null) {
+            PrimaryAction(if (requestInProgress) "Checking details…" else "Continue",
+                canContinue, onContinue)
+            TextAction("Already have an account? Log in", Brand, onLogIn)
+        }
     }
 }
 
@@ -145,6 +159,9 @@ fun CreateAccountCheckEmailScreen(
     onLogIn: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    invalidOrExpired: Boolean = false,
+    serviceNotice: String? = null,
+    requestInProgress: Boolean = false,
 ) {
     Column(
         modifier = modifier.fillMaxSize().background(Background)
@@ -157,13 +174,27 @@ fun CreateAccountCheckEmailScreen(
             Spacer(Modifier.height(10.dp))
             SupportingCopy("If this email can be used to create an Alabarin account, a one-time code will arrive shortly.", 64)
             Spacer(Modifier.height(28.dp))
-            SixDigitCodeField(code, onCodeChange)
-            Spacer(Modifier.height(14.dp))
+            SixDigitCodeField(code, onCodeChange, if (invalidOrExpired) Color(0xFF992E2E) else OtpBorder)
+            Spacer(Modifier.height(if (invalidOrExpired) 10.dp else 14.dp))
+            if (invalidOrExpired) {
+                Text("That code is invalid or has expired. Request a new code and try again.",
+                    modifier = Modifier.widthIn(max = 312.dp).fillMaxWidth().heightIn(min = 38.dp),
+                    color = Color(0xFF992E2E),
+                    style = TextStyle(fontFamily = FontFamily.SansSerif, fontSize = 12.sp,
+                        lineHeight = 17.sp, platformStyle = NoFontPadding))
+            }
+            if (serviceNotice != null) AuthInlineNotice(serviceNotice)
+            if (serviceNotice != null) {
+                Spacer(Modifier.height(16.dp))
+                PrimaryAction("Verify and continue", submissionEnabled, onVerify)
+            }
             TextAction("Send a new code", Brand, onSendNewCode)
             TextAction("Already have an account? Log in", Body, onLogIn)
             TextAction("Use a different email", Body, onUseDifferentEmail)
         }
-        PrimaryAction("Verify and continue", submissionEnabled, onVerify)
+        if (serviceNotice == null) PrimaryAction(
+            if (requestInProgress) "Checking code…" else "Verify and continue",
+            submissionEnabled, onVerify)
     }
 }
 
@@ -233,7 +264,7 @@ private fun LabeledField(
 }
 
 @Composable
-private fun SixDigitCodeField(code: String, onCodeChange: (String) -> Unit) {
+private fun SixDigitCodeField(code: String, onCodeChange: (String) -> Unit, borderColor: Color) {
     BasicTextField(
         value = code,
         onValueChange = { changed -> onCodeChange(changed.filter { it in '0'..'9' }.take(6)) },
@@ -252,7 +283,7 @@ private fun SixDigitCodeField(code: String, onCodeChange: (String) -> Unit) {
                     repeat(6) { index ->
                         Box(
                             Modifier.weight(1f).height(56.dp)
-                                .border(1.dp, OtpBorder, RoundedCornerShape(8.dp))
+                                .border(1.dp, borderColor, RoundedCornerShape(8.dp))
                                 .clearAndSetSemantics { testTag = "otpCell" },
                             contentAlignment = Alignment.Center,
                         ) {

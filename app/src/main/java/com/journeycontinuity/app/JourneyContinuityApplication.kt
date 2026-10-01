@@ -66,6 +66,11 @@ import com.journeycontinuity.app.sync.WorkManagerSyncScheduler
 import com.journeycontinuity.app.trusted.SupabaseTrustedContactGateway
 import com.journeycontinuity.app.trusted.TrustedContactGateway
 import com.journeycontinuity.app.trusted.UnavailableTrustedContactGateway
+import com.journeycontinuity.app.ui.IntroCompletionStore
+import com.journeycontinuity.app.ui.CreateAccountProgressStore
+import com.journeycontinuity.app.ui.LoginEntryStore
+import com.journeycontinuity.app.ui.CreateAccountEntryStore
+import com.journeycontinuity.app.ui.ProductionTravellerRootAuth
 import io.github.jan.supabase.auth.Auth
 import io.github.jan.supabase.createSupabaseClient
 import io.github.jan.supabase.postgrest.Postgrest
@@ -218,6 +223,7 @@ class JourneyContinuityApplication : Application() {
                     canEstablishAnonymousOwner = firstOwnerBoundary::canEstablishAnonymousOwner,
                 )
                 CloudGateways(
+                    identityCoordinator = identityCoordinator,
                     sync = SupabaseCloudSyncGateway(client, identityCoordinator, logger),
                     heartbeat = SupabaseHeartbeatGateway(client, identityCoordinator, logger),
                     trustedContacts = SupabaseTrustedContactGateway(
@@ -296,6 +302,16 @@ class JourneyContinuityApplication : Application() {
     val createAccountEngine: TravellerCreateAccountEngine?
         get() = cloudGateways.createAccount
 
+    val introCompletionStore by lazy { IntroCompletionStore(applicationContext) }
+    val createAccountProgressStore by lazy { CreateAccountProgressStore(applicationContext) }
+    val loginEntryStore by lazy { LoginEntryStore(applicationContext) }
+    val createAccountEntryStore by lazy { CreateAccountEntryStore(applicationContext) }
+
+    val travellerRootAuth by lazy {
+        ProductionTravellerRootAuth(cloudGateways.identityCoordinator,
+            cloudGateways.createAccount, cloudGateways.returningLogin)
+    }
+
     override fun onCreate() {
         super.onCreate()
         // Re-evaluate durable requested state after process restart. An urgent wake can
@@ -329,6 +345,7 @@ class JourneyContinuityApplication : Application() {
             )
 
         fun asGateways() = CloudGateways(
+            identityCoordinator = null,
             sync = this,
             heartbeat = this,
             trustedContacts = UnavailableTrustedContactGateway(safeError),
@@ -341,6 +358,7 @@ class JourneyContinuityApplication : Application() {
     }
 
     private data class CloudGateways(
+        val identityCoordinator: TravellerIdentityCoordinator?,
         val sync: CloudSyncGateway,
         val heartbeat: HeartbeatGateway,
         val trustedContacts: TrustedContactGateway,

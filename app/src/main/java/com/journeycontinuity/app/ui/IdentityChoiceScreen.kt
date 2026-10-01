@@ -3,6 +3,7 @@ package com.journeycontinuity.app.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -52,45 +54,46 @@ fun IdentityChoiceScreen(
             .background(Background)
             .padding(start = 24.dp, top = 34.dp, end = 24.dp, bottom = 24.dp),
     ) {
-        Text(
-            text = "Alabarin",
-            color = Brand,
-            style = TextStyle(
-                fontFamily = InstrumentSans,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 18.sp,
-                lineHeight = 22.sp,
-                letterSpacing = 0.sp,
-                platformStyle = NoFontPadding,
-            ),
-        )
-        Spacer(Modifier.height(126.dp))
-        Text(
-            text = "Your Journey, your account",
-            modifier = Modifier.semantics { heading() },
-            color = Heading,
-            style = TextStyle(
-                fontFamily = FontFamily.SansSerif,
-                fontWeight = FontWeight.Bold,
-                fontSize = 30.sp,
-                lineHeight = 36.sp,
-                platformStyle = NoFontPadding,
-            ),
-        )
-        Spacer(Modifier.height(12.dp))
-        Text(
-            text = "Create an Alabarin account or log in with your verified email. Your session normally stays signed in.",
-            modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp),
-            color = Body,
-            style = TextStyle(
-                fontFamily = FontFamily.SansSerif,
-                fontWeight = FontWeight.Normal,
-                fontSize = 14.sp,
-                lineHeight = 20.sp,
-                platformStyle = NoFontPadding,
-            ),
-        )
-        Spacer(Modifier.weight(1f))
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+            Text(
+                text = "Alabarin",
+                color = Brand,
+                style = TextStyle(
+                    fontFamily = InstrumentSans,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 18.sp,
+                    lineHeight = 22.sp,
+                    letterSpacing = 0.sp,
+                    platformStyle = NoFontPadding,
+                ),
+            )
+            Spacer(Modifier.height(126.dp))
+            Text(
+                text = "Your Journey, your account",
+                modifier = Modifier.semantics { heading() },
+                color = Heading,
+                style = TextStyle(
+                    fontFamily = FontFamily.SansSerif,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 30.sp,
+                    lineHeight = 36.sp,
+                    platformStyle = NoFontPadding,
+                ),
+            )
+            Spacer(Modifier.height(12.dp))
+            Text(
+                text = "Create an Alabarin account or log in with your verified email. Your session normally stays signed in.",
+                modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp),
+                color = Body,
+                style = TextStyle(
+                    fontFamily = FontFamily.SansSerif,
+                    fontWeight = FontWeight.Normal,
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp,
+                    platformStyle = NoFontPadding,
+                ),
+            )
+        }
         val buttonShape = RoundedCornerShape(18.dp)
         Box(
             modifier = Modifier
