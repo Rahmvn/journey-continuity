@@ -252,7 +252,7 @@ internal fun JourneyHome(
                             overflow = TextOverflow.Ellipsis)
                         Spacer(Modifier.height(3.dp))
                         Text("Expected ${formatTime(journey.expectedArrivalAt)}", color = Body,
-                            style = textStyle(13, 17))
+                            style = textStyle(15, 21))
                     }
                 }
                 Spacer(Modifier.height(14.dp))
@@ -288,9 +288,9 @@ private fun UtilityRow(icon: Int, title: String, summary: String, onClick: () ->
         }
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
-            Text(title, color = Heading, style = textStyle(15, 19, FontWeight.Medium))
+            Text(title, color = Heading, style = textStyle(16, 22, FontWeight.Medium))
             Spacer(Modifier.height(2.dp))
-            Text(summary, color = Body, style = textStyle(13, 18), maxLines = 2,
+            Text(summary, color = Body, style = textStyle(15, 21), maxLines = 2,
                 overflow = TextOverflow.Ellipsis)
         }
         Text("›", color = Body, style = textStyle(24, 24))
@@ -315,12 +315,12 @@ internal fun JourneyStartScreen(
             JourneyHeader("Start Journey", onBack)
             Spacer(Modifier.height(38.dp))
             Text("Where are you going?", color = Heading,
-                style = textStyle(15, 20, FontWeight.Medium))
+                style = textStyle(16, 22, FontWeight.Medium))
             Spacer(Modifier.height(8.dp))
             JourneyInput(state.draftDestination, "e.g. Ilorin", onDestinationChange)
             Spacer(Modifier.height(24.dp))
             Text("When do you expect to arrive?", color = Heading,
-                style = textStyle(15, 20, FontWeight.Medium))
+                style = textStyle(16, 22, FontWeight.Medium))
             Spacer(Modifier.height(8.dp))
             Row(Modifier.fillMaxWidth().height(58.dp)
                 .border(1.dp, Color(0xBF676F74), RoundedCornerShape(4.dp))
@@ -339,7 +339,7 @@ internal fun JourneyStartScreen(
                 }.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(state.draftExpectedArrivalAt?.let { formatArrival(it) } ?: "Choose date and time",
                     color = if (state.draftExpectedArrivalAt == null) Body else Heading,
-                    style = textStyle(14, 19), modifier = Modifier.weight(1f), maxLines = 1,
+                    style = textStyle(15, 21), modifier = Modifier.weight(1f), maxLines = 1,
                     overflow = TextOverflow.Ellipsis)
                 Image(painterResource(R.drawable.alabarin_calendar), null, Modifier.size(19.dp))
             }
@@ -358,9 +358,9 @@ private fun JourneyInput(value: String, hint: String, onValueChange: (String) ->
     androidx.compose.material3.OutlinedTextField(
         value = value, onValueChange = onValueChange,
         modifier = Modifier.fillMaxWidth().height(58.dp).testTag("journey_destination"),
-        placeholder = { Text(hint, color = Body, style = textStyle(14, 19)) },
+        placeholder = { Text(hint, color = Body, style = textStyle(15, 21)) },
         singleLine = true,
-        textStyle = textStyle(14, 19),
+        textStyle = textStyle(15, 21).copy(color = Heading),
         shape = RoundedCornerShape(4.dp),
         colors = OutlinedTextFieldDefaults.colors(
             focusedBorderColor = Brand,
@@ -376,28 +376,29 @@ internal fun JourneyCheckpoint(
     onStartAnyway: () -> Unit,
     onSetup: () -> Unit,
 ) {
-    Column(Modifier.fillMaxWidth().height(382.dp).padding(horizontal = 24.dp, vertical = 12.dp)) {
+    Column(Modifier.fillMaxWidth().height(382.dp)
+        .padding(start = 24.dp, end = 24.dp, top = 12.dp, bottom = 28.dp)) {
         Text("Resilience setup needed", color = Heading,
             style = textStyle(21, 26, FontWeight.Bold), modifier = Modifier.semantics { heading() })
         Spacer(Modifier.height(10.dp))
         Text("You can still start this Journey, but fresh outward information may be harder to preserve if internet becomes limited.",
-            color = Body, style = textStyle(13, 18))
+            color = Body, style = textStyle(15, 21))
         Spacer(Modifier.height(20.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Column {
                 Text(if (acceptedContact) "SMS fallback" else "Trusted contact", color = Heading,
-                    style = textStyle(15, 19, FontWeight.Medium))
+                    style = textStyle(16, 22, FontWeight.Medium))
                 Text(if (acceptedContact) "Unavailable" else "None added", color = Body,
-                    style = textStyle(13, 17))
+                    style = textStyle(15, 21))
             }
-            Text("Setup needed", color = Warning, style = textStyle(12, 16, FontWeight.Medium))
+            Text("Setup needed", color = Warning, style = textStyle(14, 20, FontWeight.Medium))
         }
         Spacer(Modifier.weight(1f))
         PrimaryAction("Start anyway", onStartAnyway)
         Box(Modifier.fillMaxWidth().height(48.dp).clickable(role = Role.Button, onClick = onSetup),
             contentAlignment = Alignment.Center) {
             Text(if (acceptedContact) "Set up resilience" else "Set up trusted contact",
-                color = Brand, style = textStyle(15, 19, FontWeight.Medium))
+                color = Brand, style = textStyle(16, 22, FontWeight.Medium))
         }
     }
 }
@@ -439,12 +440,12 @@ internal fun JourneyActiveScreen(
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
                     Text(if (monitoringReady) "Monitoring in background" else "Monitoring needs attention",
-                        color = Heading, style = textStyle(14, 19, FontWeight.Medium))
+                        color = Heading, style = textStyle(15, 21, FontWeight.Medium))
                     Spacer(Modifier.height(8.dp))
                     Text(if (monitoringReady)
                         "You can leave the app. Alabarin keeps monitoring this Journey."
                         else "Background monitoring is not running. Check Location Services and retry.",
-                        color = Body, style = textStyle(12, 17))
+                        color = Body, style = textStyle(14, 20))
                     if (!monitoringReady) TextButton(onClick = onRetry) {
                         Text("Retry monitoring", color = Brand)
                     }
@@ -462,9 +463,9 @@ internal fun JourneyActiveScreen(
                     Spacer(Modifier.width(10.dp))
                     Column(Modifier.weight(1f)) {
                         Text(copy.title, color = if (copy.detail.startsWith("Fresh")) Warning else ContextBlue,
-                            style = textStyle(13, 17, FontWeight.Medium))
+                            style = textStyle(15, 21, FontWeight.Medium))
                         Spacer(Modifier.height(6.dp))
-                        Text(copy.detail, color = Body, style = textStyle(12, 17))
+                        Text(copy.detail, color = Body, style = textStyle(14, 20))
                     }
                 }
             }
@@ -474,7 +475,7 @@ internal fun JourneyActiveScreen(
         Box(Modifier.fillMaxWidth().height(52.dp)
             .clickable(role = Role.Button) { confirmCompletion = true },
             contentAlignment = Alignment.Center) {
-            Text("End Journey", color = Heading, style = textStyle(15, 19, FontWeight.Medium))
+            Text("End Journey", color = Heading, style = textStyle(16, 22, FontWeight.Medium))
         }
     }
     if (confirmCompletion) AlertDialog(
@@ -494,9 +495,9 @@ internal fun JourneyActiveScreen(
 @Composable
 private fun JourneyTimeRow(label: String, value: String) {
     Row {
-        Text(label, color = Body, style = textStyle(13, 18))
+        Text(label, color = Body, style = textStyle(15, 21))
         Spacer(Modifier.width(8.dp))
-        Text(value, color = Heading, style = textStyle(13, 18, FontWeight.Medium))
+        Text(value, color = Heading, style = textStyle(15, 21, FontWeight.Medium))
     }
 }
 
