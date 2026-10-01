@@ -27,6 +27,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -43,6 +44,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -98,12 +100,14 @@ fun JourneyProductRoot(
     onSelectSmsSubscription: (Int) -> Unit,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val journeySheetHeight = LocalConfiguration.current.screenHeightDp.dp * 0.84f
     val snackbar = remember { SnackbarHostState() }
     var accountOpen by remember { mutableStateOf(false) }
     LaunchedEffect(state.message) {
         state.message?.let { snackbar.showSnackbar(it); viewModel.clearMessage() }
     }
-    BackHandler(state.productRoute != JourneyProductRoute.HOME) {
+    BackHandler(state.productRoute != JourneyProductRoute.HOME &&
+        state.productRoute != JourneyProductRoute.ACTIVE) {
         if (state.productRoute == JourneyProductRoute.CHECKPOINT) viewModel.backToStart()
         else if (state.productRoute == JourneyProductRoute.CONTACTS ||
             state.productRoute == JourneyProductRoute.RESILIENCE) viewModel.closeUtility()
@@ -115,17 +119,44 @@ fun JourneyProductRoot(
             state.isRestoring -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = Brand)
             }
-            state.productRoute == JourneyProductRoute.HOME -> JourneyHome(
-                state = state,
-                accountEmail = accountEmail,
-                smsFallbackReady = smsFallbackStatus.ready,
-                onPrimary = {
-                    if (state.activeJourney == null) viewModel.openStart() else viewModel.openActive()
-                },
-                onContacts = viewModel::openContacts,
-                onResilience = viewModel::openResilience,
-                onAccount = { accountOpen = true },
-            )
+            state.productRoute == JourneyProductRoute.HOME ||
+                state.productRoute == JourneyProductRoute.ACTIVE -> {
+                JourneyHome(
+                    state = state,
+                    accountEmail = accountEmail,
+                    smsFallbackReady = smsFallbackStatus.ready,
+                    onPrimary = {
+                        if (state.activeJourney == null) viewModel.openStart() else viewModel.openActive()
+                    },
+                    onContacts = viewModel::openContacts,
+                    onResilience = viewModel::openResilience,
+                    onAccount = { accountOpen = true },
+                )
+                if (state.productRoute == JourneyProductRoute.ACTIVE) {
+                    state.activeJourney?.let { journey ->
+                        ModalBottomSheet(
+                            onDismissRequest = viewModel::backToHome,
+                            modifier = Modifier.testTag("journey_sheet"),
+                            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+                            containerColor = Background,
+                            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+                            dragHandle = { JourneySheetHandle() },
+                        ) {
+                            JourneyActiveScreen(
+                                journey = journey,
+                                state = state,
+                                locationUiState = locationUiState,
+                                smsFallbackReady = smsFallbackStatus.ready,
+                                onBack = viewModel::backToHome,
+                                onRetry = onRetryMonitoring,
+                                onEndCompleted = viewModel::endJourney,
+                                // Material 3 measures the handle and bottom inset outside this content.
+                                modifier = Modifier.fillMaxWidth().height(journeySheetHeight - 40.dp),
+                            )
+                        }
+                    }
+                }
+            }
             state.productRoute == JourneyProductRoute.START ||
                 state.productRoute == JourneyProductRoute.CHECKPOINT -> {
                 JourneyStartScreen(
@@ -155,17 +186,6 @@ fun JourneyProductRoot(
                     }
                 }
             }
-            state.productRoute == JourneyProductRoute.ACTIVE -> state.activeJourney?.let { journey ->
-                JourneyActiveScreen(
-                    journey = journey,
-                    state = state,
-                    locationUiState = locationUiState,
-                    smsFallbackReady = smsFallbackStatus.ready,
-                    onBack = viewModel::backToHome,
-                    onRetry = onRetryMonitoring,
-                    onEndCompleted = viewModel::endJourney,
-                )
-            }
             state.productRoute == JourneyProductRoute.CONTACTS -> JourneyUtilityScreen(
                 title = "Trusted Contacts", onBack = viewModel::closeUtility,
             ) { LegacyTrustedContactsContent(viewModel) }
@@ -185,6 +205,14 @@ fun JourneyProductRoot(
             text = { Text(accountEmail ?: "Signed in to Alabarin") },
             confirmButton = { TextButton(onClick = { accountOpen = false }) { Text("Close") } },
         )
+    }
+}
+
+@Composable
+private fun JourneySheetHandle() {
+    Box(Modifier.fillMaxWidth().height(24.dp), contentAlignment = Alignment.TopCenter) {
+        Box(Modifier.padding(top = 10.dp).size(width = 38.dp, height = 4.dp)
+            .clip(RoundedCornerShape(2.dp)).background(Color(0xFFB5BABD)))
     }
 }
 
@@ -383,6 +411,7 @@ internal fun JourneyActiveScreen(
     onBack: () -> Unit,
     onRetry: () -> Unit,
     onEndCompleted: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     var confirmCompletion by remember { mutableStateOf(false) }
     val monitoringReady = backgroundMonitoringReady(journey, state.monitoringJourneyId) &&
@@ -392,10 +421,10 @@ internal fun JourneyActiveScreen(
     val connectivity = travellerConnectivityCopy(
         state.degradation, state.currentConnectivity, smsFallbackReady, accepted,
     )
-    Column(Modifier.fillMaxSize().padding(start = 24.dp, end = 24.dp, top = 28.dp, bottom = 24.dp)) {
+    Column(modifier.fillMaxSize().padding(start = 24.dp, end = 24.dp, bottom = 24.dp)) {
         Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
             BackIcon(onBack)
-            Spacer(Modifier.height(56.dp))
+            Spacer(Modifier.height(22.dp))
             Text(journey.destination, color = Heading, style = textStyle(40, 46, FontWeight.Bold),
                 maxLines = 2, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.semantics { heading() })

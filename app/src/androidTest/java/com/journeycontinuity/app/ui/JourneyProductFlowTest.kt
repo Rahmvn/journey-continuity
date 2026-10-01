@@ -2,17 +2,16 @@ package com.journeycontinuity.app.ui
 
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.test.espresso.Espresso
+import androidx.test.platform.app.InstrumentationRegistry
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.test.platform.app.InstrumentationRegistry
-import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
-import androidx.test.runner.lifecycle.Stage
 import com.journeycontinuity.app.data.repository.JourneyRepository
 import com.journeycontinuity.app.degraded.ConnectivityPhase
 import com.journeycontinuity.app.degraded.DegradedConnectivityCoordinator
@@ -40,7 +39,6 @@ import com.journeycontinuity.app.trusted.TrustedContactSummary
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
-import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Rule
@@ -48,8 +46,7 @@ import org.junit.Test
 
 /** Exercises the real product root and JourneyLifecycle against isolated in-memory state. */
 class JourneyProductFlowTest {
-    @get:Rule val compose = createEmptyComposeRule()
-    private var host: ComponentActivity? = null
+    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
 
     @Test fun homeFirstStartCheckpointOpenAndReturn() {
         val repository = FakeRepository()
@@ -91,7 +88,10 @@ class JourneyProductFlowTest {
         }
         compose.runOnIdle { assertNotNull(repository.active.value) }
         compose.onNodeWithText("Open Journey").performClick()
+        compose.onNodeWithTag("journey_sheet").assertIsDisplayed()
         compose.onNodeWithText("Monitoring needs attention").assertIsDisplayed()
+        compose.onNodeWithText("Latitude").assertDoesNotExist()
+        compose.onNodeWithText("Evidence fresh").assertDoesNotExist()
         degradationStore.state.value = DegradedConnectivityState(
             journeyId = repository.active.value!!.id, journeyActive = true,
             connectivityPhase = ConnectivityPhase.RECOVERING,
@@ -99,11 +99,14 @@ class JourneyProductFlowTest {
         )
         compose.onNodeWithText("Checking connection").assertIsDisplayed()
         compose.onNodeWithText("Connection restored").assertDoesNotExist()
+        compose.onNodeWithTag("journey_sheet").assertIsDisplayed()
 
         currentConnectivity.value = CurrentJourneyConnectivity(repository.active.value!!.id, true)
         compose.onNodeWithText("Connection restored").assertIsDisplayed()
+        compose.onNodeWithTag("journey_sheet").assertIsDisplayed()
         currentConnectivity.value = CurrentJourneyConnectivity(repository.active.value!!.id, false)
         compose.onNodeWithText("Limited connectivity").assertIsDisplayed()
+        compose.onNodeWithTag("journey_sheet").assertIsDisplayed()
         degradationStore.state.value = degradationStore.state.value!!.copy(
             connectivityPhase = ConnectivityPhase.DEGRADED)
         compose.onNodeWithText("Limited connectivity").assertIsDisplayed()
@@ -116,17 +119,38 @@ class JourneyProductFlowTest {
         compose.onNodeWithText("Connection restored").assertDoesNotExist()
         degradationStore.state.value = degradationStore.state.value!!.copy(
             connectivityPhase = ConnectivityPhase.RECOVERING)
+        compose.onNodeWithText("End Journey").performClick()
+        compose.onNodeWithText("Journey completed?").assertIsDisplayed()
+        compose.onNodeWithText("Keep Journey running").performClick()
+        compose.runOnIdle {
+            assertEquals(JourneyStatus.ACTIVE, repository.active.value?.status)
+            assertEquals(0, repository.completions)
+        }
         compose.onNodeWithContentDescription("Return to Home").performClick()
+        compose.onNodeWithTag("journey_sheet").assertDoesNotExist()
         compose.onNodeWithText("Open Journey").assertIsDisplayed()
         compose.runOnIdle {
             assertEquals(JourneyStatus.ACTIVE, repository.active.value?.status)
             assertEquals(0, repository.completions)
         }
 
+        compose.onNodeWithText("Open Journey").performClick()
+        compose.onNodeWithTag("journey_sheet").assertIsDisplayed()
+        Espresso.pressBack()
+        compose.onNodeWithTag("journey_sheet").assertDoesNotExist()
+        compose.onNodeWithText("Open Journey").assertIsDisplayed()
+        compose.runOnIdle {
+            assertEquals(JourneyStatus.ACTIVE, repository.active.value?.status)
+            assertEquals(0, repository.completions)
+        }
+
+        compose.onNodeWithText("Open Journey").performClick()
+        compose.onNodeWithTag("journey_sheet").assertIsDisplayed()
+
         // A new ViewModel models a new process: persisted active state still opens Home first.
         currentConnectivity.value = null
         compose.runOnUiThread {
-            host!!.setContent {
+            compose.activity.setContent {
                 val restarted = remember {
                     JourneyViewModel(repository, JourneyLifecycle(repository),
                         JourneyServiceController(context), EmptyContacts, coordinator,
@@ -137,30 +161,15 @@ class JourneyProductFlowTest {
             }
         }
         compose.onNodeWithText("Open Journey").assertIsDisplayed()
+        compose.onNodeWithTag("journey_sheet").assertDoesNotExist()
         compose.onNodeWithText("Open Journey").performClick()
+        compose.onNodeWithTag("journey_sheet").assertIsDisplayed()
         compose.onNodeWithText("Checking connection").assertIsDisplayed()
         currentConnectivity.value = CurrentJourneyConnectivity(repository.active.value!!.id, false)
         compose.onNodeWithText("Limited connectivity").assertIsDisplayed()
     }
 
-    private fun setContent(content: @Composable () -> Unit) {
-        val instrumentation = InstrumentationRegistry.getInstrumentation()
-        val packageName = instrumentation.targetContext.packageName
-        instrumentation.uiAutomation.executeShellCommand(
-            "am start -n $packageName/androidx.activity.ComponentActivity",
-        ).use { }
-        compose.waitUntil("Compose host did not resume", 10_000) {
-            compose.runOnUiThread {
-                host = ActivityLifecycleMonitorRegistry.getInstance()
-                    .getActivitiesInStage(Stage.RESUMED).firstOrNull() as? ComponentActivity
-            }
-            host != null
-        }
-        compose.runOnUiThread { host!!.setContent { content() } }
-        compose.waitForIdle()
-    }
-
-    @After fun closeHost() { compose.runOnUiThread { host?.finish() } }
+    private fun setContent(content: @Composable () -> Unit) = compose.setContent { content() }
 
     private class FakeRepository : JourneyRepository {
         val active = MutableStateFlow<Journey?>(null)
