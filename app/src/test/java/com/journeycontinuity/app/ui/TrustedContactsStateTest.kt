@@ -8,6 +8,14 @@ import org.junit.Test
 
 class TrustedContactsStateTest {
     @Test
+    fun trustedContactsReturnToStartFromCheckpointAndHomeFromHome() {
+        assertEquals(JourneyProductRoute.START,
+            trustedContactsReturnRoute(JourneyProductRoute.CHECKPOINT))
+        assertEquals(JourneyProductRoute.HOME,
+            trustedContactsReturnRoute(JourneyProductRoute.HOME))
+    }
+
+    @Test
     fun temporaryAuthFailureIsUnavailableRatherThanSuccessfulEmptyContacts() {
         val state = JourneyUiState().withTrustedContactsFailure(
             CloudSyncException(

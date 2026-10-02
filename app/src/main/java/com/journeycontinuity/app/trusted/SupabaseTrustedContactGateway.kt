@@ -20,6 +20,9 @@ class SupabaseTrustedContactGateway(
     private val trustedViewerBaseUrl: String,
     private val logger: SyncDiagnosticLogger = NoOpSyncDiagnosticLogger,
 ) : TrustedContactGateway {
+    override val invitationSharingAvailable: Boolean =
+        viewerShareConfigurationAvailable(trustedViewerBaseUrl)
+
     override suspend fun list(): List<TrustedContactSummary> = trustedCall {
         authenticate()
         client.postgrest.rpc("list_trusted_contact_management")
@@ -31,6 +34,7 @@ class SupabaseTrustedContactGateway(
         displayName: String,
         email: String,
     ): CreatedTrustedContactInvitation = trustedCall {
+        check(invitationSharingAvailable) { "Trusted contact invitation sharing is unavailable." }
         authenticate()
         val row = client.postgrest.rpc(
             function = "create_trusted_contact_invitation",

@@ -28,6 +28,7 @@ data class CreatedTrustedContactInvitation(
 )
 
 interface TrustedContactGateway {
+    val invitationSharingAvailable: Boolean
     suspend fun list(): List<TrustedContactSummary>
     suspend fun create(displayName: String, email: String): CreatedTrustedContactInvitation
     suspend fun revoke(subjectId: String): Boolean
@@ -36,14 +37,25 @@ interface TrustedContactGateway {
 class UnavailableTrustedContactGateway(
     private val message: String,
 ) : TrustedContactGateway {
+    override val invitationSharingAvailable: Boolean = false
     override suspend fun list(): List<TrustedContactSummary> = throw IllegalStateException(message)
     override suspend fun create(displayName: String, email: String): CreatedTrustedContactInvitation =
         throw IllegalStateException(message)
     override suspend fun revoke(subjectId: String): Boolean = throw IllegalStateException(message)
 }
 
+internal fun viewerShareConfigurationAvailable(baseUrl: String): Boolean = runCatching {
+    val uri = java.net.URI(baseUrl.trim())
+    uri.scheme.equals("https", ignoreCase = true) &&
+        !uri.host.isNullOrBlank() &&
+        uri.userInfo == null &&
+        uri.fragment == null
+}.getOrDefault(false)
+
 internal fun invitationUrl(baseUrl: String, token: String): String {
-    require(baseUrl.isNotBlank()) { "Trusted viewer URL is not configured." }
+    require(viewerShareConfigurationAvailable(baseUrl)) {
+        "Trusted viewer URL is not configured securely."
+    }
     val separator = if ('?' in baseUrl) '&' else '?'
     return baseUrl.trimEnd('/') + separator + "token=" +
         URLEncoder.encode(token, StandardCharsets.UTF_8.toString())

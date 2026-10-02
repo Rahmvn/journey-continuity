@@ -2,6 +2,7 @@ package com.journeycontinuity.app.ui
 
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
+import android.content.Intent
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -34,6 +35,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
@@ -60,6 +62,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.repeatOnLifecycle
 import com.journeycontinuity.app.R
 import com.journeycontinuity.app.degraded.SmsFallbackStatus
 import com.journeycontinuity.app.domain.Journey
@@ -71,6 +77,14 @@ import java.time.LocalTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.delay
+
+internal suspend fun pollTrustedContacts(refresh: () -> Unit, intervalMillis: Long = 30_000L) {
+    require(intervalMillis > 0)
+    while (true) {
+        delay(intervalMillis)
+        refresh()
+    }
+}
 
 private val Background = Color(0xFFFBFBF8)
 private val SheetBackground = Color(0xFFFEFDFB)
@@ -100,11 +114,27 @@ fun JourneyProductRoot(
     onSelectSmsSubscription: (Int) -> Unit,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val context = LocalContext.current
     val journeySheetHeight = LocalConfiguration.current.screenHeightDp.dp * 0.84f
     val snackbar = remember { SnackbarHostState() }
     var accountOpen by remember { mutableStateOf(false) }
     LaunchedEffect(state.message) {
         state.message?.let { snackbar.showSnackbar(it); viewModel.clearMessage() }
+    }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) viewModel.refreshTrustedContacts()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    LaunchedEffect(state.productRoute, lifecycleOwner) {
+        if (state.productRoute == JourneyProductRoute.CONTACTS) {
+            lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                pollTrustedContacts(viewModel::refreshTrustedContacts)
+            }
+        }
     }
     BackHandler(state.productRoute != JourneyProductRoute.HOME &&
         state.productRoute != JourneyProductRoute.ACTIVE) {
@@ -120,6 +150,7 @@ fun JourneyProductRoot(
                 CircularProgressIndicator(color = Brand)
             }
             state.productRoute == JourneyProductRoute.HOME ||
+                state.productRoute == JourneyProductRoute.CONTACTS ||
                 state.productRoute == JourneyProductRoute.ACTIVE -> {
                 JourneyHome(
                     state = state,
@@ -156,6 +187,29 @@ fun JourneyProductRoot(
                         }
                     }
                 }
+                if (state.productRoute == JourneyProductRoute.CONTACTS) {
+                    ModalBottomSheet(
+                        onDismissRequest = viewModel::closeUtility,
+                        modifier = Modifier.testTag("trusted_contacts_sheet"),
+                        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+                        containerColor = SheetBackground,
+                        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+                        dragHandle = { JourneySheetHandle() },
+                    ) {
+                        TrustedContactsSheet(
+                            state = state,
+                            onDismiss = viewModel::closeUtility,
+                            onAdd = viewModel::openAddTrustedContact,
+                            onCreate = viewModel::createTrustedContact,
+                            onDone = viewModel::doneWithInvitation,
+                            onRemove = viewModel::revokeTrustedContact,
+                            onShare = { url ->
+                                context.startActivity(Intent.createChooser(
+                                    trustedContactShareIntent(url), "Share invitation"))
+                            },
+                        )
+                    }
+                }
             }
             state.productRoute == JourneyProductRoute.START ||
                 state.productRoute == JourneyProductRoute.CHECKPOINT -> {
@@ -186,9 +240,6 @@ fun JourneyProductRoot(
                     }
                 }
             }
-            state.productRoute == JourneyProductRoute.CONTACTS -> JourneyUtilityScreen(
-                title = "Trusted Contacts", onBack = viewModel::closeUtility,
-            ) { LegacyTrustedContactsContent(viewModel) }
             state.productRoute == JourneyProductRoute.RESILIENCE -> JourneyUtilityScreen(
                 title = "Resilience", onBack = viewModel::closeUtility,
             ) {
@@ -262,12 +313,14 @@ internal fun JourneyHome(
     }
 }
 
-private fun trustedContactsSummary(state: JourneyUiState): String {
+internal fun trustedContactsSummary(state: JourneyUiState): String {
     if (state.trustedContactsAvailability == TrustedContactsAvailability.LOADING) return "Checking contacts"
     if (state.trustedContactsAvailability == TrustedContactsAvailability.UNAVAILABLE) return "Currently unavailable"
-    val accepted = state.trustedContacts.filter { it.status == TrustedContactStatus.ACCEPTED }
-    val pending = state.trustedContacts.count { it.status == TrustedContactStatus.PENDING }
-    if (accepted.isEmpty()) return if (pending == 0) "None added" else "$pending pending"
+    val activeContacts = activeTrustedContacts(state.trustedContacts)
+    val accepted = activeContacts.filter { it.status == TrustedContactStatus.ACCEPTED }
+    val pending = activeContacts.count { it.status == TrustedContactStatus.PENDING }
+    if (accepted.isEmpty()) return if (pending == 0) "No trusted contacts"
+        else "$pending invitation${if (pending == 1) "" else "s"} pending"
     val names = accepted.take(2).joinToString(", ") { it.displayName }
     val more = if (accepted.size > 2) " +${accepted.size - 2}" else ""
     val pendingText = if (pending > 0) " · $pending pending" else ""

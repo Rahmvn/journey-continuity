@@ -22,6 +22,7 @@ import com.journeycontinuity.app.sync.SyncFailureKind
 import com.journeycontinuity.app.trusted.TrustedContactGateway
 import com.journeycontinuity.app.trusted.TrustedContactSummary
 import com.journeycontinuity.app.trusted.TrustedContactStatus
+import com.journeycontinuity.app.trusted.TrustedContactSubjectKind
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.StateFlow
@@ -33,6 +34,9 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 enum class TrustedContactsAvailability {
     LOADING,
@@ -41,6 +45,11 @@ enum class TrustedContactsAvailability {
 }
 
 enum class JourneyProductRoute { HOME, START, CHECKPOINT, ACTIVE, CONTACTS, RESILIENCE }
+enum class TrustedContactsPage { LIST, ADD, READY }
+
+internal fun trustedContactsReturnRoute(route: JourneyProductRoute): JourneyProductRoute =
+    if (route == JourneyProductRoute.CHECKPOINT) JourneyProductRoute.START
+    else JourneyProductRoute.HOME
 
 internal data class TrustedContactsFailurePresentation(
     val availability: TrustedContactsAvailability,
@@ -83,6 +92,10 @@ data class JourneyUiState(
     val trustedContactsAvailability: TrustedContactsAvailability = TrustedContactsAvailability.LOADING,
     val trustedContactsUnavailableMessage: String? = null,
     val trustedContactActionInProgress: Boolean = false,
+    val trustedContactsPage: TrustedContactsPage = TrustedContactsPage.LIST,
+    val invitationReadyId: String? = null,
+    val invitationReadyName: String? = null,
+    val invitationReadyEmail: String? = null,
     val invitationShareUrl: String? = null,
     val message: String? = null,
 )
@@ -92,6 +105,26 @@ internal fun JourneyUiState.withTrustedContactsFailure(error: Throwable): Journe
     return copy(
         trustedContactsAvailability = presentation.availability,
         trustedContactsUnavailableMessage = presentation.message,
+    )
+}
+
+internal fun JourneyUiState.withTrustedContactsSnapshot(
+    contacts: List<TrustedContactSummary>,
+): JourneyUiState {
+    val readyInvitationIsPending = invitationReadyId == null || contacts.any {
+        it.id == invitationReadyId && it.kind == TrustedContactSubjectKind.INVITATION &&
+            it.status == TrustedContactStatus.PENDING
+    }
+    return copy(
+        trustedContacts = contacts,
+        trustedContactsAvailability = TrustedContactsAvailability.AVAILABLE,
+        trustedContactsUnavailableMessage = null,
+        trustedContactsPage = if (readyInvitationIsPending) trustedContactsPage
+            else TrustedContactsPage.LIST,
+        invitationReadyId = if (readyInvitationIsPending) invitationReadyId else null,
+        invitationReadyName = if (readyInvitationIsPending) invitationReadyName else null,
+        invitationReadyEmail = if (readyInvitationIsPending) invitationReadyEmail else null,
+        invitationShareUrl = if (readyInvitationIsPending) invitationShareUrl else null,
     )
 }
 
@@ -107,6 +140,8 @@ class JourneyViewModel(
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(JourneyUiState())
     val uiState: StateFlow<JourneyUiState> = _uiState.asStateFlow()
+    private val trustedContactRequests = Mutex()
+    private var trustedRefreshInFlight = false
 
     init {
         refreshTrustedContacts()
@@ -173,10 +208,35 @@ class JourneyViewModel(
         if (it.activeJourney != null) it.copy(productRoute = JourneyProductRoute.ACTIVE) else it
     }
 
-    fun openContacts() = _uiState.update {
-        it.copy(productRoute = JourneyProductRoute.CONTACTS,
-            utilityReturnRoute = if (it.productRoute == JourneyProductRoute.CHECKPOINT)
-                JourneyProductRoute.START else JourneyProductRoute.HOME)
+    fun openContacts() {
+        _uiState.update {
+            val pendingResult = it.trustedContactsPage == TrustedContactsPage.READY &&
+                it.invitationShareUrl != null
+            it.copy(productRoute = JourneyProductRoute.CONTACTS,
+                utilityReturnRoute = trustedContactsReturnRoute(it.productRoute),
+                trustedContactsPage = if (pendingResult) TrustedContactsPage.READY
+                else TrustedContactsPage.LIST,
+                invitationReadyId = if (pendingResult) it.invitationReadyId else null,
+                invitationReadyName = if (pendingResult) it.invitationReadyName else null,
+                invitationReadyEmail = if (pendingResult) it.invitationReadyEmail else null,
+                invitationShareUrl = if (pendingResult) it.invitationShareUrl else null)
+        }
+        refreshTrustedContacts()
+    }
+
+    fun openAddTrustedContact() = _uiState.update {
+        if (it.productRoute == JourneyProductRoute.CONTACTS)
+            it.copy(trustedContactsPage = TrustedContactsPage.ADD) else it
+    }
+
+    fun doneWithInvitation() {
+        _uiState.update {
+            it.copy(trustedContactsPage = TrustedContactsPage.LIST,
+                invitationReadyId = null,
+                invitationReadyName = null, invitationReadyEmail = null,
+                invitationShareUrl = null)
+        }
+        refreshTrustedContacts()
     }
 
     fun openResilience() = _uiState.update {
@@ -185,7 +245,13 @@ class JourneyViewModel(
                 JourneyProductRoute.START else JourneyProductRoute.HOME)
     }
 
-    fun closeUtility() = _uiState.update { it.copy(productRoute = it.utilityReturnRoute) }
+    fun closeUtility() = _uiState.update {
+        it.copy(productRoute = it.utilityReturnRoute,
+            trustedContactsPage = TrustedContactsPage.LIST,
+            invitationReadyId = null,
+            invitationReadyName = null, invitationReadyEmail = null,
+            invitationShareUrl = null)
+    }
 
     fun backToHome() = _uiState.update { it.copy(productRoute = JourneyProductRoute.HOME) }
 
@@ -280,30 +346,32 @@ class JourneyViewModel(
     fun clearMessage() = _uiState.update { it.copy(message = null) }
 
     fun refreshTrustedContacts() {
-        if (_uiState.value.trustedContactActionInProgress) return
+        if (_uiState.value.trustedContactActionInProgress || trustedRefreshInFlight) return
+        trustedRefreshInFlight = true
         _uiState.update {
             it.copy(
-                trustedContactsAvailability = TrustedContactsAvailability.LOADING,
+                trustedContactsAvailability = if (it.trustedContactsAvailability ==
+                    TrustedContactsAvailability.AVAILABLE) TrustedContactsAvailability.AVAILABLE
+                else TrustedContactsAvailability.LOADING,
                 trustedContactsUnavailableMessage = null,
             )
         }
         viewModelScope.launch {
-            runCatching { trustedContactGateway.list() }.fold(
-                onSuccess = { contacts ->
-                    _uiState.update {
-                        it.copy(
-                            trustedContacts = contacts,
-                            trustedContactsAvailability = TrustedContactsAvailability.AVAILABLE,
-                            trustedContactsUnavailableMessage = null,
-                        )
-                    }
-                },
-                onFailure = { error ->
-                    val presentation = trustedContactsFailurePresentation(error)
-                    _uiState.update { it.withTrustedContactsFailure(error) }
-                    setMessage(presentation.message)
-                },
-            )
+            try {
+                runCatching { trustedContactRequests.withLock { trustedContactGateway.list() } }.fold(
+                    onSuccess = { contacts ->
+                        _uiState.update { it.withTrustedContactsSnapshot(contacts) }
+                    },
+                    onFailure = { error ->
+                        if (error is CancellationException) throw error
+                        val presentation = trustedContactsFailurePresentation(error)
+                        _uiState.update { it.withTrustedContactsFailure(error) }
+                        setMessage(presentation.message)
+                    },
+                )
+            } finally {
+                trustedRefreshInFlight = false
+            }
         }
     }
 
@@ -311,7 +379,7 @@ class JourneyViewModel(
         if (_uiState.value.trustedContactActionInProgress) return
         val normalizedName = displayName.trim()
         val normalizedEmail = email.trim().lowercase()
-        if (normalizedName.isEmpty()) {
+        if (normalizedName.length !in 1..100) {
             setMessage("Enter the trusted contact's name.")
             return
         }
@@ -319,26 +387,36 @@ class JourneyViewModel(
             setMessage("Enter a valid trusted contact email.")
             return
         }
+        if (!trustedContactGateway.invitationSharingAvailable) {
+            setMessage("Trusted contact invitation sharing is unavailable.")
+            return
+        }
         _uiState.update { it.copy(trustedContactActionInProgress = true, invitationShareUrl = null) }
         viewModelScope.launch {
-            runCatching { trustedContactGateway.create(normalizedName, normalizedEmail) }.fold(
+            runCatching { trustedContactRequests.withLock {
+                trustedContactGateway.create(normalizedName, normalizedEmail)
+            } }.fold(
                 onSuccess = { invitation ->
                     val contactsResult = runCatching { trustedContactGateway.list() }
                     _uiState.update { state ->
                         val refreshed = contactsResult.fold(
-                            onSuccess = { contacts -> state.copy(
-                                trustedContacts = contacts,
-                                trustedContactsAvailability = TrustedContactsAvailability.AVAILABLE,
-                                trustedContactsUnavailableMessage = null,
-                            ) },
+                            onSuccess = state::withTrustedContactsSnapshot,
                             onFailure = state::withTrustedContactsFailure,
                         )
+                        val stillPending = contactsResult.getOrNull()?.any {
+                            it.id == invitation.id && it.kind == TrustedContactSubjectKind.INVITATION &&
+                                it.status == TrustedContactStatus.PENDING
+                        } ?: true
                         refreshed.copy(
                             trustedContactActionInProgress = false,
-                            invitationShareUrl = invitation.shareUrl,
+                            trustedContactsPage = if (stillPending) TrustedContactsPage.READY
+                                else TrustedContactsPage.LIST,
+                            invitationReadyId = if (stillPending) invitation.id else null,
+                            invitationReadyName = if (stillPending) invitation.displayName else null,
+                            invitationReadyEmail = if (stillPending) invitation.email else null,
+                            invitationShareUrl = if (stillPending) invitation.shareUrl else null,
                         )
                     }
-                    setMessage("Invitation created. Share this one-time link with ${invitation.displayName}.")
                 },
                 onFailure = { error ->
                     _uiState.update { it.copy(trustedContactActionInProgress = false) }
@@ -352,16 +430,12 @@ class JourneyViewModel(
         if (_uiState.value.trustedContactActionInProgress) return
         _uiState.update { it.copy(trustedContactActionInProgress = true, invitationShareUrl = null) }
         viewModelScope.launch {
-            runCatching { trustedContactGateway.revoke(subjectId) }.fold(
+            runCatching { trustedContactRequests.withLock { trustedContactGateway.revoke(subjectId) } }.fold(
                 onSuccess = { revoked ->
                     val contactsResult = runCatching { trustedContactGateway.list() }
                     _uiState.update { state ->
                         val refreshed = contactsResult.fold(
-                            onSuccess = { contacts -> state.copy(
-                                trustedContacts = contacts,
-                                trustedContactsAvailability = TrustedContactsAvailability.AVAILABLE,
-                                trustedContactsUnavailableMessage = null,
-                            ) },
+                            onSuccess = state::withTrustedContactsSnapshot,
                             onFailure = state::withTrustedContactsFailure,
                         )
                         refreshed.copy(
