@@ -5,6 +5,7 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import kotlinx.coroutines.runBlocking
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -37,12 +38,17 @@ class OwnerAdoptionStateDatabaseTest {
     @Test fun orphanedEvidenceAndFallbackRowsEachBlockAdoption() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val database = Room.inMemoryDatabaseBuilder(context, JourneyDatabase::class.java).build()
+        val sqlite = database.openHelper.writableDatabase
         try {
-            val sqlite = database.openHelper.writableDatabase
             // Model a partial restore: SQLite tables survived but the parent
             // Journey and owner preference did not. Production never creates
             // these rows without a Journey.
-            sqlite.setForeignKeyConstraintsEnabled(false)
+            assertFalse(sqlite.inTransaction())
+            sqlite.execSQL("PRAGMA foreign_keys = OFF")
+            sqlite.query("PRAGMA foreign_keys").use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals(0, cursor.getInt(0))
+            }
             val rows = listOf(
                 "telemetry_observations" to """INSERT INTO telemetry_observations
                     (journeyId, sequence, eventTime, latitude, longitude, accuracyMeters, connectivity)
@@ -79,7 +85,15 @@ class OwnerAdoptionStateDatabaseTest {
                 sqlite.execSQL("DELETE FROM $table")
             }
         } finally {
-            database.close()
+            try {
+                sqlite.execSQL("PRAGMA foreign_keys = ON")
+                sqlite.query("PRAGMA foreign_keys").use { cursor ->
+                    assertTrue(cursor.moveToFirst())
+                    assertEquals(1, cursor.getInt(0))
+                }
+            } finally {
+                database.close()
+            }
         }
     }
 }
