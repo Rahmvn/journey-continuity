@@ -5,6 +5,7 @@ import com.journeycontinuity.app.data.local.DegradedConnectivityDao
 import com.journeycontinuity.app.data.local.JourneyDatabase
 import com.journeycontinuity.app.data.local.toDomain
 import com.journeycontinuity.app.data.local.toEntity
+import com.journeycontinuity.app.domain.JourneyStatus
 import com.journeycontinuity.app.domain.TelemetryObservation
 import com.journeycontinuity.app.sync.NoOpSyncDiagnosticLogger
 import com.journeycontinuity.app.sync.SyncDiagnosticLogger
@@ -73,6 +74,9 @@ class RoomDegradedConnectivityStateStore(
         )
         val reduction = transform(dao.get(journeyId)?.toDomain(), backlog) ?: return@withTransaction null
         require(reduction.state.journeyId == journeyId)
+        if (reduction.state.journeyActive &&
+            database.journeyDao().getById(journeyId)?.status != JourneyStatus.ACTIVE
+        ) return@withTransaction null
         var state = reduction.state
         dao.upsert(state.toEntity())
         reduction.actions.forEach { action ->

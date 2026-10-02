@@ -1,6 +1,7 @@
 package com.journeycontinuity.app.sync
 
 import com.journeycontinuity.app.domain.Journey
+import com.journeycontinuity.app.domain.JourneyStatus
 import com.journeycontinuity.app.domain.TelemetryObservation
 
 data class PendingSyncCandidate(
@@ -20,6 +21,7 @@ val LEGACY_AUTHORIZATION_ERRORS = listOf("Journey upsert", "Telemetry batch").ma
 }
 
 interface LocalSyncStore {
+    suspend fun activeJourney(): Journey?
     suspend fun legacyAuthorizationBlocks(): List<LegacyAuthorizationBlock> = emptyList()
     suspend fun reactivateLegacyAuthorization(block: LegacyAuthorizationBlock, verifiedAt: Long): Boolean = false
     suspend fun hasOutstandingWork(): Boolean = false
@@ -43,6 +45,7 @@ interface LocalSyncStore {
 
 interface CloudSyncGateway {
     suspend fun authenticatedOwnerId(): String
+    suspend fun ownerJourneyState(journeyId: String, ownerId: String): RemoteJourneyState?
     suspend fun verifyJourneyOwner(journeyId: String, ownerId: String): Boolean = false
     suspend fun upsertJourney(journey: Journey, ownerId: String)
     suspend fun upsertTelemetry(observations: List<TelemetryObservation>)
@@ -50,10 +53,19 @@ interface CloudSyncGateway {
 
 enum class SyncFailureKind {
     TRANSIENT,
+    TERMINAL_CONFLICT,
     AUTHENTICATION,
     AUTHORIZATION,
     PERMANENT,
 }
+
+data class RemoteJourneyState(
+    val journeyId: String,
+    val ownerId: String,
+    val status: JourneyStatus,
+    val endedAt: Long?,
+    val completedAt: Long?,
+)
 
 class CloudSyncException(
     val kind: SyncFailureKind,

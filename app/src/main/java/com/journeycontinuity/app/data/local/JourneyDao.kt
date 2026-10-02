@@ -47,6 +47,35 @@ abstract class JourneyDao {
         completedStatus: JourneyStatus,
     ): Int
 
+    @Query(
+        """UPDATE journeys
+           SET status = :cancelledStatus, endedAt = :endedAt, activeSlot = NULL
+           WHERE id = :journeyId AND activeSlot = 1 AND status = :activeStatus
+             AND completedAt IS NULL""",
+    )
+    protected abstract suspend fun markMonitoringStopped(
+        journeyId: String,
+        endedAt: Long,
+        cancelledStatus: JourneyStatus = JourneyStatus.CANCELLED,
+        activeStatus: JourneyStatus = JourneyStatus.ACTIVE,
+    ): Int
+
+    @Query(
+        """UPDATE journey_degradation_states
+           SET journeyActive = 0, fallbackDisposition = 'INACTIVE',
+               recoveryStartedAtMillis = NULL
+           WHERE journeyId = :journeyId""",
+    )
+    protected abstract suspend fun deactivateFallback(journeyId: String)
+
+    @Query(
+        """UPDATE fallback_attempts
+           SET transportState = 'SUPERSEDED', terminalAt = :endedAt
+           WHERE journeyId = :journeyId
+             AND transportState IN ('ALLOCATED', 'RETRY_PENDING')""",
+    )
+    protected abstract suspend fun supersedeUnsentFallback(journeyId: String, endedAt: Long)
+
     @Transaction
     open suspend fun insertIfNoActive(journey: JourneyEntity): Boolean {
         if (getActive() != null) return false
@@ -64,6 +93,21 @@ abstract class JourneyDao {
         return active.copy(
             status = JourneyStatus.COMPLETED,
             completedAt = completedAt,
+            activeSlot = null,
+        )
+    }
+
+    @Transaction
+    open suspend fun stopMonitoringActive(journeyId: String, endedAt: Long): JourneyEntity? {
+        val active = getActive() ?: return null
+        if (active.id != journeyId) return null
+        if (markMonitoringStopped(active.id, endedAt) != 1) return null
+        deactivateFallback(active.id)
+        supersedeUnsentFallback(active.id, endedAt)
+        markSyncPending(active.id)
+        return active.copy(
+            status = JourneyStatus.CANCELLED,
+            endedAt = endedAt,
             activeSlot = null,
         )
     }

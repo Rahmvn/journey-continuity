@@ -49,6 +49,7 @@ class JourneyDatabaseTest {
             TEST_DATABASE_4_5,
             TEST_DATABASE_5_6,
             TEST_DATABASE_6_7,
+            TEST_DATABASE_9_10,
         ).forEach(context::deleteDatabase)
     }
 
@@ -395,6 +396,50 @@ class JourneyDatabaseTest {
     }
 
     @Test
+    @Throws(IOException::class)
+    fun migrationFrom9To10PreservesCompletedHistoryWithoutInventingEndTime() {
+        migrationHelper.createDatabase(TEST_DATABASE_9_10, 9).use { db ->
+            db.execSQL("""INSERT INTO journeys
+                (id, destination, expectedArrivalAt, startedAt, status, completedAt, activeSlot)
+                VALUES ('old-completed', 'Abuja', 5000, 1000, 'COMPLETED', 4000, NULL)""")
+        }
+        migrationHelper.runMigrationsAndValidate(
+            TEST_DATABASE_9_10, 10, true, MIGRATION_9_10,
+        ).use { db ->
+            db.query("SELECT status, completedAt, endedAt FROM journeys WHERE id = 'old-completed'").use { row ->
+                assertEquals(true, row.moveToFirst())
+                assertEquals("COMPLETED", row.getString(0))
+                assertEquals(4_000L, row.getLong(1))
+                assertEquals(true, row.isNull(2))
+            }
+        }
+    }
+
+    @Test
+    fun monitoringStopIsDurableAndRejectsNewEvidence() = runBlocking {
+        val db = createInMemoryDatabase()
+        val dao = db.journeyDao()
+        assertEquals(true, dao.insertIfNoActive(journey("stopped").toEntity()))
+        assertNotNull(db.telemetryDao().insertForActiveJourney(sample("stopped", 1_000L)))
+        assertNotNull(db.heartbeatDao().allocateForActiveJourney("stopped", 1_000L, 0))
+        assertNull(dao.stopMonitoringActive("another-journey", 2_000L))
+        assertEquals(JourneyStatus.ACTIVE, dao.getActive()?.status)
+
+        val stopped = dao.stopMonitoringActive("stopped", 2_000L)
+
+        assertEquals(JourneyStatus.CANCELLED, stopped?.status)
+        assertEquals(2_000L, stopped?.endedAt)
+        assertNull(stopped?.completedAt)
+        assertNull(stopped?.activeSlot)
+        assertNull(dao.observeActive().first())
+        assertEquals(stopped, dao.getById("stopped"))
+        assertNull(db.telemetryDao().insertForActiveJourney(sample("stopped", 3_000L)))
+        assertNull(db.heartbeatDao().allocateForActiveJourney("stopped", 3_000L, 0))
+        assertEquals(1L, db.telemetryDao().observeCount("stopped").first())
+        assertNull(dao.stopMonitoringActive("stopped", 4_000L))
+    }
+
+    @Test
     fun degradationStateIsUniquePerJourneyAndDoesNotBlockTelemetryPersistence() = runBlocking {
         val db = createInMemoryDatabase()
         assertEquals(true, db.journeyDao().insertIfNoActive(journey("degraded").toEntity()))
@@ -478,5 +523,6 @@ class JourneyDatabaseTest {
         const val TEST_DATABASE_4_5 = "journey-migration-4-5-test"
         const val TEST_DATABASE_5_6 = "journey-migration-5-6-test"
         const val TEST_DATABASE_6_7 = "journey-migration-6-7-test"
+        const val TEST_DATABASE_9_10 = "journey-migration-9-10-test"
     }
 }

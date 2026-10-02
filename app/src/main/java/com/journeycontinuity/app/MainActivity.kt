@@ -111,6 +111,11 @@ class MainActivity : ComponentActivity() {
                 rootViewModel.state.map { it.route }.distinctUntilChanged().collectLatest { route ->
                     if (route != TravellerRootRoute.ADMITTED_EXISTING &&
                         route != TravellerRootRoute.ADMITTED_NEW) return@collectLatest
+                    // A same-owner session may return after the startup worker could not
+                    // authenticate; recheck remote terminal truth before relying on sync backlog.
+                    runCatching {
+                        app.syncScheduler.schedule(com.journeycontinuity.app.sync.SyncRequestUrgency.URGENT)
+                    }
                     journeyViewModel.uiState.map { it.activeJourney?.id }
                     .distinctUntilChanged()
                     .collect { activeJourneyId ->

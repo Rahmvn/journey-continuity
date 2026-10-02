@@ -4,6 +4,7 @@ import com.journeycontinuity.app.auth.TravellerIdentityCoordinator
 import com.journeycontinuity.app.auth.TravellerAuthException
 import com.journeycontinuity.app.auth.TravellerAuthFailureKind
 import com.journeycontinuity.app.domain.Journey
+import com.journeycontinuity.app.domain.JourneyStatus
 import com.journeycontinuity.app.domain.TelemetryObservation
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.exception.AuthRestException
@@ -58,6 +59,37 @@ class SupabaseCloudSyncGateway(
                 identityCoordinator.requireAuthenticatedTraveller().userId == ownerId
         }
 
+    override suspend fun ownerJourneyState(journeyId: String, ownerId: String): RemoteJourneyState? =
+        cloudCall(CloudStage.JOURNEY_UPSERT) {
+            if (identityCoordinator.requireAuthenticatedTraveller().userId != ownerId) {
+                throw CloudSyncException(SyncFailureKind.AUTHENTICATION, "Traveller owner changed during reconciliation.")
+            }
+            // The user JWT and journeys_select_own RLS both constrain this exact owner read.
+            val row = client.from("journeys").select(
+                Columns.list("id", "owner_id", "status", "ended_at", "completed_at"),
+            ) {
+                filter {
+                    eq("id", journeyId)
+                    eq("owner_id", ownerId)
+                }
+            }.decodeList<RemoteJourneyRow>().singleOrNull()
+            if (identityCoordinator.requireAuthenticatedTraveller().userId != ownerId) {
+                throw CloudSyncException(SyncFailureKind.AUTHENTICATION, "Traveller owner changed during reconciliation.")
+            }
+            row?.let {
+                if (it.id != journeyId || it.ownerId != ownerId) {
+                    throw CloudSyncException(SyncFailureKind.AUTHORIZATION, "Journey owner proof did not match.")
+                }
+                RemoteJourneyState(
+                    journeyId = it.id,
+                    ownerId = it.ownerId,
+                    status = JourneyStatus.valueOf(it.status),
+                    endedAt = it.endedAt?.let { value -> Instant.parse(value).toEpochMilli() },
+                    completedAt = it.completedAt?.let { value -> Instant.parse(value).toEpochMilli() },
+                )
+            }
+        }
+
     override suspend fun upsertTelemetry(observations: List<TelemetryObservation>) {
         if (observations.isEmpty()) return
         val firstSequence = observations.first().sequence
@@ -96,6 +128,15 @@ internal enum class CloudStage(val label: String) {
 private data class JourneyOwnerProof(val id: String, @SerialName("owner_id") val ownerId: String)
 
 @Serializable
+private data class RemoteJourneyRow(
+    val id: String,
+    @SerialName("owner_id") val ownerId: String,
+    val status: String,
+    @SerialName("ended_at") val endedAt: String?,
+    @SerialName("completed_at") val completedAt: String?,
+)
+
+@Serializable
 private data class CloudJourneyRow(
     val id: String,
     @SerialName("owner_id") val ownerId: String,
@@ -104,6 +145,7 @@ private data class CloudJourneyRow(
     @SerialName("started_at") val startedAt: String,
     val status: String,
     @SerialName("completed_at") val completedAt: String?,
+    @SerialName("ended_at") val endedAt: String?,
 )
 
 @Serializable
@@ -127,6 +169,7 @@ private fun Journey.toCloudRow(ownerId: String) = CloudJourneyRow(
     startedAt = Instant.ofEpochMilli(startedAt).toString(),
     status = status.name,
     completedAt = completedAt?.let { Instant.ofEpochMilli(it).toString() },
+    endedAt = endedAt?.let { Instant.ofEpochMilli(it).toString() },
 )
 
 private fun TelemetryObservation.toCloudRow() = CloudTelemetryRow(
@@ -183,6 +226,7 @@ internal fun Throwable.toCloudSyncException(stage: CloudStage): CloudSyncExcepti
     val isRlsOrAuthorization = postgrestCode == "42501" ||
         stage in setOf(CloudStage.JOURNEY_UPSERT, CloudStage.TELEMETRY_UPSERT) && status in setOf(401, 403)
     val isSchemaMismatch = postgrestCode in setOf("42P01", "42703", "42883", "PGRST200", "PGRST204", "PGRST205")
+    val isTerminalConflict = stage == CloudStage.JOURNEY_UPSERT && postgrestCode == "JT001"
     val kind = when {
         status == 408 || status == 425 || status == 429 || status != null && status >= 500 ->
             SyncFailureKind.TRANSIENT
@@ -191,6 +235,7 @@ internal fun Throwable.toCloudSyncException(stage: CloudStage): CloudSyncExcepti
         authError != null || status == 401 ->
             SyncFailureKind.AUTHENTICATION
         isRlsOrAuthorization -> SyncFailureKind.AUTHORIZATION
+        isTerminalConflict -> SyncFailureKind.TERMINAL_CONFLICT
         isSchemaMismatch || postgrestError != null ->
             SyncFailureKind.PERMANENT
         causeChain.any { it::class.simpleName?.contains("Auth", ignoreCase = true) == true } ->
@@ -212,6 +257,8 @@ internal fun Throwable.toCloudSyncException(stage: CloudStage): CloudSyncExcepti
             "Authentication failed: ${statusText ?: "HTTP error"} ($exceptionName)."
         isRlsOrAuthorization ->
             "${stage.label} failed: PostgREST authorization/RLS error (${statusText ?: "HTTP error"}$codeText)."
+        isTerminalConflict ->
+            "${stage.label} conflicts with a terminal Journey state (${statusText ?: "PostgREST error"}$codeText)."
         isSchemaMismatch ->
             "${stage.label} failed: cloud schema mismatch (${statusText ?: "PostgREST error"}$codeText)."
         postgrestError != null ->

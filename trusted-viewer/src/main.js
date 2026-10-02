@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { normalizeE164 } from './smsPreferences.js'
+import { journeyPresentation } from './journeyPresentation.js'
 
 const supabaseUrl = import.meta.env.NEXT_PUBLIC_SUPABASE_URL || import.meta.env.VITE_SUPABASE_URL
 const publishableKey = import.meta.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
@@ -177,19 +178,20 @@ async function loadJourneys(supabase) {
 function journeyCard(snapshot, openCase) {
   const article = document.createElement('article')
   article.className = 'card'
-  const healthy = snapshot.monitoring_phase === 'EVIDENCE_FRESH'
+  const presentation = journeyPresentation(snapshot)
   article.innerHTML = `
     <p class="eyebrow">${escapeText(snapshot.monitoring_phase)}</p>
     <h2>${escapeText(snapshot.destination)}</h2>
     <dl>
-      ${detail('Journey lifecycle', snapshot.journey_status)}
+      ${detail('Journey lifecycle', presentation.lifecycle)}
+      ${presentation.stoppedAt ? detail('Stopped at', formatTime(presentation.stoppedAt)) : ''}
       ${detail('Started', formatTime(snapshot.started_at))}
       ${detail('Expected arrival', formatTime(snapshot.expected_arrival_at))}
       ${detail('Last cloud contact', formatTime(snapshot.last_cloud_contact_at))}
     </dl>
-    <div class="${healthy ? 'evidence healthy' : 'evidence uncertain'}">
-      <strong>${healthy ? 'Monitoring evidence is fresh.' : 'Current whereabouts are unknown.'}</strong>
-      <p>${healthy ? 'Precise location is private and is not returned in this response.' : 'Open the verification case for the immutable evidence known when contact was lost.'}</p>
+    <div class="${presentation.healthy ? 'evidence healthy' : 'evidence uncertain'}">
+      <strong>${presentation.headline}</strong>
+      <p>${presentation.explanation}</p>
     </div>`
   if (snapshot.available_case_id) {
     const button = document.createElement('button')

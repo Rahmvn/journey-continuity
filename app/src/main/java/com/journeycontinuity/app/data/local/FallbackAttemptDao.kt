@@ -16,6 +16,7 @@ interface FallbackAttemptDao {
     @Query(
         """SELECT * FROM fallback_attempts
            WHERE journeyId = :journeyId
+             AND EXISTS (SELECT 1 FROM journeys WHERE id = :journeyId AND status = 'ACTIVE')
              AND transportAttemptCount < 2
              AND (transportState = :allocated
                OR (transportState = :retryPending AND (nextRetryAt IS NULL OR nextRetryAt <= :atMillis)))
@@ -82,6 +83,8 @@ interface FallbackAttemptDao {
                lastTransportResultCode = NULL,
                uncertainSince = NULL
            WHERE localAttemptId = :localAttemptId
+             AND EXISTS (SELECT 1 FROM journeys
+                         WHERE id = fallback_attempts.journeyId AND status = 'ACTIVE')
              AND transportAttemptCount < 2
              AND (transportState = :allocated
                OR (transportState = :retryPending AND (nextRetryAt IS NULL OR nextRetryAt <= :atMillis)))""",

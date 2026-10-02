@@ -631,6 +631,12 @@ class JourneyProductFlowTest {
             active.value = null
             return journey.copy(status = JourneyStatus.COMPLETED, completedAt = completedAt)
         }
+        override suspend fun stopMonitoringActive(journeyId: String, endedAt: Long): Journey? {
+            val journey = active.value ?: return null
+            if (journey.id != journeyId) return null
+            active.value = null
+            return journey.copy(status = JourneyStatus.CANCELLED, endedAt = endedAt)
+        }
         override fun observeTelemetry(journeyId: String) = flowOf(TelemetrySummary())
         override suspend fun recordTelemetry(sample: TelemetrySample): TelemetryObservation? = null
         override fun observeSyncState(journeyId: String) = flowOf<JourneySyncState?>(null)

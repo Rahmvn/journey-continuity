@@ -35,6 +35,8 @@ import com.journeycontinuity.app.domain.ConnectivityState
 import com.journeycontinuity.app.domain.Journey
 import com.journeycontinuity.app.domain.JourneyStatus
 import com.journeycontinuity.app.domain.TelemetrySample
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
@@ -223,6 +225,129 @@ class FallbackAttemptDatabaseTest {
         assertEquals(FallbackTransportState.SUPERSEDED, attempts[1].transportState)
         assertEquals(1_020L, attempts[0].terminalAt)
         assertEquals(1_201L, attempts[1].terminalAt)
+    }
+
+    @Test
+    fun monitoringStopAtomicallySupersedesUnsentAttemptAndBlocksLateClaim() = runBlocking {
+        val coordinator = coordinator()
+        coordinator.activate(JOURNEY_ID, false)
+        now = 1_000
+        coordinator.timeAdvanced(JOURNEY_ID)
+        val attempt = database.fallbackAttemptDao().allForJourney(JOURNEY_ID).single()
+
+        assertEquals(JourneyStatus.CANCELLED, database.journeyDao().stopMonitoringActive(JOURNEY_ID, 2_000)!!.status)
+        assertEquals(FallbackTransportState.SUPERSEDED,
+            database.fallbackAttemptDao().getByLocalAttemptId(attempt.localAttemptId)!!.transportState)
+        assertEquals(0, database.fallbackAttemptDao().claimForHandoff(attempt.localAttemptId, 2_001))
+        assertNull(database.fallbackAttemptDao().getNextReadyAttempt(JOURNEY_ID, 2_001))
+        assertFalse(database.degradedConnectivityDao().get(JOURNEY_ID)!!.journeyActive)
+        assertEquals(FallbackDisposition.INACTIVE,
+            database.degradedConnectivityDao().get(JOURNEY_ID)!!.fallbackDisposition)
+        now = 2_002
+        coordinator.timeAdvanced(JOURNEY_ID)
+        assertEquals(1, database.fallbackAttemptDao().allForJourney(JOURNEY_ID).size)
+    }
+
+    @Test
+    fun delayedActivationCannotCreateActiveDegradationAfterMonitoringStops() = runBlocking {
+        val activationStarted = CompletableDeferred<Unit>()
+        val continueActivation = CompletableDeferred<Unit>()
+        val coordinator = coordinator(FallbackCapabilityReader {
+            activationStarted.complete(Unit)
+            continueActivation.await()
+            true
+        })
+        val activation = async { coordinator.activate(JOURNEY_ID, validatedInternetAvailable = false) }
+
+        activationStarted.await()
+        try {
+            assertNull(database.degradedConnectivityDao().get(JOURNEY_ID))
+            assertEquals(JourneyStatus.CANCELLED, database.journeyDao().stopMonitoringActive(JOURNEY_ID, 2_000)!!.status)
+        } finally {
+            continueActivation.complete(Unit)
+        }
+        activation.await()
+
+        assertNull(database.degradedConnectivityDao().get(JOURNEY_ID))
+        assertTrue(database.fallbackAttemptDao().allForJourney(JOURNEY_ID).isEmpty())
+        assertNull(database.fallbackAttemptDao().getNextReadyAttempt(JOURNEY_ID, 2_001))
+    }
+
+    @Test
+    fun activeJourneyActivationStillCreatesActiveDegradation() = runBlocking {
+        coordinator().activate(JOURNEY_ID, validatedInternetAvailable = false)
+
+        assertTrue(database.degradedConnectivityDao().get(JOURNEY_ID)!!.journeyActive)
+    }
+
+    @Test
+    fun cancelledJourneyWithoutDegradationCannotActivate() = runBlocking {
+        val coordinator = coordinator()
+        database.journeyDao().stopMonitoringActive(JOURNEY_ID, 2_000)
+        coordinator.activate(JOURNEY_ID, validatedInternetAvailable = false)
+        assertNull(database.degradedConnectivityDao().get(JOURNEY_ID))
+
+        assertTrue(database.fallbackAttemptDao().allForJourney(JOURNEY_ID).isEmpty())
+    }
+
+    @Test
+    fun cancelledJourneyCannotReactivateExistingDegradationOrChangeFallbackHistory() = runBlocking {
+        val coordinator = coordinator()
+        coordinator.activate(JOURNEY_ID, validatedInternetAvailable = false)
+        now = 1_000
+        coordinator.timeAdvanced(JOURNEY_ID)
+        val attempt = database.fallbackAttemptDao().allForJourney(JOURNEY_ID).single()
+
+        database.journeyDao().stopMonitoringActive(JOURNEY_ID, 2_000)
+        val stoppedState = database.degradedConnectivityDao().get(JOURNEY_ID)!!
+        val stoppedAttempt = database.fallbackAttemptDao().getByLocalAttemptId(attempt.localAttemptId)!!
+        coordinator.activate(JOURNEY_ID, validatedInternetAvailable = false)
+
+        assertEquals(stoppedState, database.degradedConnectivityDao().get(JOURNEY_ID))
+        assertFalse(database.degradedConnectivityDao().get(JOURNEY_ID)!!.journeyActive)
+        val retainedAttempt = database.fallbackAttemptDao().allForJourney(JOURNEY_ID).single()
+        assertEquals(stoppedAttempt.localAttemptId, retainedAttempt.localAttemptId)
+        assertEquals(stoppedAttempt.transportState, retainedAttempt.transportState)
+        assertEquals(stoppedAttempt.protectedPayloadText, retainedAttempt.protectedPayloadText)
+        assertArrayEquals(stoppedAttempt.payloadSha256, retainedAttempt.payloadSha256)
+        assertNull(database.fallbackAttemptDao().getNextReadyAttempt(JOURNEY_ID, 2_001))
+        assertEquals(0, database.fallbackAttemptDao().claimForHandoff(attempt.localAttemptId, 2_001))
+    }
+
+    @Test
+    fun completedJourneyCannotActivateDegradation() = runBlocking {
+        database.journeyDao().completeActive(2_000)
+        coordinator().activate(JOURNEY_ID, validatedInternetAvailable = false)
+
+        assertNull(database.degradedConnectivityDao().get(JOURNEY_ID))
+        assertTrue(database.fallbackAttemptDao().allForJourney(JOURNEY_ID).isEmpty())
+    }
+
+    @Test
+    fun missingJourneyCannotActivateDegradation() = runBlocking {
+        coordinator().activate("missing-journey", validatedInternetAvailable = false)
+
+        assertNull(database.degradedConnectivityDao().get("missing-journey"))
+    }
+
+    @Test
+    fun monitoringStopPreservesAlreadyClaimedUncertainty() = runBlocking {
+        val coordinator = coordinator()
+        coordinator.activate(JOURNEY_ID, false)
+        now = 1_000
+        coordinator.timeAdvanced(JOURNEY_ID)
+        val attempt = database.fallbackAttemptDao().allForJourney(JOURNEY_ID).single()
+        val dao = database.fallbackAttemptDao()
+        assertEquals(1, dao.claimForHandoff(attempt.localAttemptId, 1_010))
+
+        database.journeyDao().stopMonitoringActive(JOURNEY_ID, 2_000)
+
+        assertEquals(FallbackTransportState.HANDOFF_IN_PROGRESS,
+            dao.getByLocalAttemptId(attempt.localAttemptId)!!.transportState)
+        assertEquals(1, dao.markUnknownOutcome(attempt.localAttemptId, 1, 1_010, 2_100))
+        assertEquals(FallbackTransportState.UNKNOWN_OUTCOME,
+            dao.getByLocalAttemptId(attempt.localAttemptId)!!.transportState)
+        assertEquals(0, dao.claimForHandoff(attempt.localAttemptId, 2_200))
     }
 
     @Test
@@ -460,7 +585,10 @@ class FallbackAttemptDatabaseTest {
         }
     }
 
-    private fun coordinator(maximumFallbackAttemptsPerWindow: Int = 4): DegradedConnectivityCoordinator {
+    private fun coordinator(
+        capabilityReader: FallbackCapabilityReader? = null,
+        maximumFallbackAttemptsPerWindow: Int = 4,
+    ): DegradedConnectivityCoordinator {
         val policy = policy(maximumFallbackAttemptsPerWindow)
         return DegradedConnectivityCoordinator(
             store = RoomDegradedConnectivityStateStore(
@@ -471,7 +599,7 @@ class FallbackAttemptDatabaseTest {
                 policy,
             ),
             latestTelemetryReader = { journeyId -> database.telemetryDao().getLatest(journeyId)?.toDomain() },
-            fallbackCapabilityReader = FallbackCapabilityReader { journeyId ->
+            fallbackCapabilityReader = capabilityReader ?: FallbackCapabilityReader { journeyId ->
                 database.fallbackAttemptDao().getBinding(journeyId)?.let {
                     it.status == FallbackBindingStatus.PROVISIONED && keyStore.hasKey(it.keyId)
                 } == true

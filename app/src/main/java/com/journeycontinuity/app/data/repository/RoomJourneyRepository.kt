@@ -20,6 +20,7 @@ import com.journeycontinuity.app.sync.SyncScheduler
 import com.journeycontinuity.app.sync.SyncRequestUrgency
 import com.journeycontinuity.app.degraded.DegradedConnectivityCoordinator
 import com.journeycontinuity.app.auth.OwnerAdmissionGate
+import com.journeycontinuity.app.degraded.JourneyTerminalHandoffGate
 
 class RoomJourneyRepository(
     private val journeyDao: JourneyDao,
@@ -29,6 +30,7 @@ class RoomJourneyRepository(
     private val syncScheduler: SyncScheduler,
     private val degradedConnectivityCoordinator: DegradedConnectivityCoordinator,
     private val admissionGate: OwnerAdmissionGate = OwnerAdmissionGate(),
+    private val terminalHandoffGate: JourneyTerminalHandoffGate = JourneyTerminalHandoffGate(),
 ) : JourneyRepository {
     override val activeJourney: Flow<Journey?> =
         journeyDao.observeActive().map { it?.toDomain() }
@@ -48,6 +50,13 @@ class RoomJourneyRepository(
         journeyDao.completeActive(completedAt)?.toDomain()?.also {
             runCatching { degradedConnectivityCoordinator.journeyCompleted(it.id, completedAt) }
             scheduleSyncWithoutAffectingLocalWrite(SyncRequestUrgency.URGENT)
+        }
+
+    override suspend fun stopMonitoringActive(journeyId: String, endedAt: Long): Journey? =
+        terminalHandoffGate.withLock {
+            journeyDao.stopMonitoringActive(journeyId, endedAt)?.toDomain()?.also {
+                scheduleSyncWithoutAffectingLocalWrite(SyncRequestUrgency.URGENT)
+            }
         }
 
     override fun observeTelemetry(journeyId: String): Flow<TelemetrySummary> =

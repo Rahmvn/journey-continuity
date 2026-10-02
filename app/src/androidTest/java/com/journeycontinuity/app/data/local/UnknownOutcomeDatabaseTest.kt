@@ -109,6 +109,7 @@ class UnknownOutcomeDatabaseTest {
                 }
             }
             Room.databaseBuilder(context, JourneyDatabase::class.java, name)
+                .addMigrations(MIGRATION_9_10)
                 .addCallback(FALLBACK_ATTEMPT_INVARIANT_CALLBACK).build().useDatabase { db ->
                     runBlocking {
                         val dao = db.fallbackAttemptDao()

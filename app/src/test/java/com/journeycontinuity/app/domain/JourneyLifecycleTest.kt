@@ -54,6 +54,7 @@ class JourneyLifecycleTest {
         assertEquals(1_000L, journey.startedAt)
         assertEquals(JourneyStatus.ACTIVE, journey.status)
         assertNull(journey.completedAt)
+        assertNull(journey.endedAt)
     }
 
     @Test
@@ -78,8 +79,34 @@ class JourneyLifecycleTest {
         val completed = (result as CompleteJourneyResult.Completed).journey
         assertEquals(JourneyStatus.COMPLETED, completed.status)
         assertEquals(3_000L, completed.completedAt)
+        assertNull(completed.endedAt)
         assertNull(repository.currentActive())
         assertEquals(completed, repository.allJourneys.single())
+    }
+
+    @Test
+    fun intentionalStopRetainsDistinctTerminalMeaning() = runBlocking {
+        lifecycle.start("Abuja", 5_000L)
+        clock.now = 3_500L
+
+        val result = lifecycle.stopMonitoring("journey-1", 3_000L)
+
+        assertTrue(result is StopMonitoringResult.Stopped)
+        val stopped = (result as StopMonitoringResult.Stopped).journey
+        assertEquals(JourneyStatus.CANCELLED, stopped.status)
+        assertEquals(3_000L, stopped.endedAt)
+        assertNull(stopped.completedAt)
+        assertNull(repository.currentActive())
+        assertEquals(stopped, repository.allJourneys.single())
+        assertEquals(StopMonitoringResult.NoActiveJourney, lifecycle.stopMonitoring("journey-1", 3_000L))
+    }
+
+    @Test
+    fun acknowledgementForAnotherJourneyCannotStopTheActiveOne() = runBlocking {
+        lifecycle.start("Abuja", 5_000L)
+
+        assertEquals(StopMonitoringResult.NoActiveJourney, lifecycle.stopMonitoring("another-journey", 3_000L))
+        assertEquals(JourneyStatus.ACTIVE, repository.currentActive()?.status)
     }
 
     private class MutableJourneyClock(var now: Long) : JourneyClock {
@@ -109,6 +136,15 @@ class JourneyLifecycleTest {
             allJourneys[allJourneys.indexOfFirst { it.id == existing.id }] = completed
             active.value = null
             completed
+        }
+
+        override suspend fun stopMonitoringActive(journeyId: String, endedAt: Long): Journey? = mutex.withLock {
+            val existing = active.value ?: return@withLock null
+            if (existing.id != journeyId) return@withLock null
+            val stopped = existing.copy(status = JourneyStatus.CANCELLED, endedAt = endedAt)
+            allJourneys[allJourneys.indexOfFirst { it.id == existing.id }] = stopped
+            active.value = null
+            stopped
         }
 
         override fun observeTelemetry(journeyId: String) = flowOf(TelemetrySummary())

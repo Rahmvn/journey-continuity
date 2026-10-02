@@ -10,6 +10,7 @@ class RoomLocalSyncStore(
     private val telemetryDao: TelemetryDao,
     private val syncStateDao: SyncStateDao,
 ) : LocalSyncStore {
+    override suspend fun activeJourney() = journeyDao.getActive()?.toDomain()
     override suspend fun legacyAuthorizationBlocks() =
         syncStateDao.legacyAuthorizationBlocks(LEGACY_AUTHORIZATION_ERRORS)
 

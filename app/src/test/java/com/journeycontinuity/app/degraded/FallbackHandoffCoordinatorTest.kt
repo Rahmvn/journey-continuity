@@ -2,6 +2,8 @@ package com.journeycontinuity.app.degraded
 
 import com.journeycontinuity.app.data.local.FallbackAttemptEntity
 import java.security.MessageDigest
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -22,6 +24,24 @@ class FallbackHandoffCoordinatorTest {
         assertEquals(FallbackTransportState.HANDOFF_IN_PROGRESS, store.attempt.transportState)
         assertEquals(1, store.attempt.handoffGeneration)
         assertEquals(store.attempt.protectedPayloadText, gateway.sent.single().exactPersistedText)
+    }
+
+    @Test
+    fun terminalizationGatePreventsHandoffFromCrossingDurableStop() = runBlocking {
+        val gate = JourneyTerminalHandoffGate()
+        val store = FakeStore(validAttempt())
+        val gateway = FakeGateway()
+        val handoff = gate.withLock {
+            val pending = async(start = CoroutineStart.UNDISPATCHED) {
+                coordinator(store, gateway, terminalGate = gate).handoff(ATTEMPT_ID)
+            }
+            store.attempt = store.attempt.copy(transportState = FallbackTransportState.SUPERSEDED)
+            pending
+        }
+
+        assertEquals(FallbackHandoffResult.NotReady, handoff.await())
+        assertEquals(0, store.claims)
+        assertTrue(gateway.sent.isEmpty())
     }
 
     @Test
@@ -264,6 +284,7 @@ class FallbackHandoffCoordinatorTest {
         gateway: FakeGateway,
         uncertaintyWindow: Long = 100,
         scheduler: FallbackHandoffScheduler = NoOpFallbackHandoffScheduler,
+        terminalGate: JourneyTerminalHandoffGate = JourneyTerminalHandoffGate(),
     ) = FallbackHandoffCoordinator(
         attempts = store,
         configuration = object : SmsFallbackConfiguration {
@@ -275,6 +296,7 @@ class FallbackHandoffCoordinatorTest {
         clock = { now },
         scheduler = scheduler,
         uncertaintyWindowMillis = uncertaintyWindow,
+        terminalHandoffGate = terminalGate,
     )
 
     private fun validAttempt(): FallbackAttemptEntity {

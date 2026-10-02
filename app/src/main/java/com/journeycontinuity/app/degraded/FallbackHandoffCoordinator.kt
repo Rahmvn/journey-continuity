@@ -12,40 +12,41 @@ class FallbackHandoffCoordinator(
     private val scheduler: FallbackHandoffScheduler = NoOpFallbackHandoffScheduler,
     private val clock: () -> Long = System::currentTimeMillis,
     private val uncertaintyWindowMillis: Long = DEFAULT_UNCERTAINTY_WINDOW_MILLIS,
+    private val terminalHandoffGate: JourneyTerminalHandoffGate = JourneyTerminalHandoffGate(),
 ) {
     suspend fun processNextReady(journeyId: String): FallbackHandoffResult {
         val attempt = attempts.nextReady(journeyId, clock()) ?: return FallbackHandoffResult.NotReady
         return handoff(attempt.localAttemptId)
     }
 
-    suspend fun handoff(localAttemptId: Long): FallbackHandoffResult {
+    suspend fun handoff(localAttemptId: Long): FallbackHandoffResult = terminalHandoffGate.withLock {
         val now = clock()
         val attempt = attempts.get(localAttemptId)
-            ?: return FallbackHandoffResult.AlreadyHandled
-        if (!attempt.isReady(now)) return FallbackHandoffResult.NotReady
+            ?: return@withLock FallbackHandoffResult.AlreadyHandled
+        if (!attempt.isReady(now)) return@withLock FallbackHandoffResult.NotReady
 
         validatePersistedAttempt(attempt)?.let { safeReason ->
             attempts.preflightPermanent(localAttemptId, now)
-            return FallbackHandoffResult.Rejected(safeReason)
+            return@withLock FallbackHandoffResult.Rejected(safeReason)
         }
         val resolved = configuration.resolveForSend()
         if (resolved is SmsTransportResolution.Unavailable) {
-            return FallbackHandoffResult.Unavailable(resolved.safeReason)
+            return@withLock FallbackHandoffResult.Unavailable(resolved.safeReason)
         }
         resolved as SmsTransportResolution.Available
         val parts = try {
             telephony.divideMessage(resolved.subscriptionId, attempt.protectedPayloadText)
         } catch (_: SecurityException) {
-            return FallbackHandoffResult.Unavailable("SMS permission is unavailable.")
+            return@withLock FallbackHandoffResult.Unavailable("SMS permission is unavailable.")
         } catch (_: RuntimeException) {
-            return FallbackHandoffResult.Unavailable("Android telephony is unavailable.")
+            return@withLock FallbackHandoffResult.Unavailable("Android telephony is unavailable.")
         }
         if (parts.size != 1) {
             attempts.preflightPermanent(localAttemptId, now)
-            return FallbackHandoffResult.Rejected("The persisted JC1 payload is not one SMS segment.")
+            return@withLock FallbackHandoffResult.Rejected("The persisted JC1 payload is not one SMS segment.")
         }
         if (!attempts.claim(localAttemptId, now)) {
-            return FallbackHandoffResult.AlreadyHandled
+            return@withLock FallbackHandoffResult.AlreadyHandled
         }
         val claimed = checkNotNull(attempts.get(localAttemptId))
         val request = SmsHandoffRequest(
@@ -56,7 +57,7 @@ class FallbackHandoffCoordinator(
             exactPersistedText = claimed.protectedPayloadText,
         )
         scheduler.scheduleUncertainCheck(localAttemptId, claimed.handoffGeneration, uncertaintyWindowMillis)
-        return try {
+        return@withLock try {
             telephony.send(request)
             FallbackHandoffResult.SubmittedAwaitingCallback
         } catch (_: SecurityException) {

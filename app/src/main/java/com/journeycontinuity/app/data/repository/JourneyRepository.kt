@@ -12,6 +12,8 @@ interface JourneyRepository {
     val activeJourney: Flow<Journey?>
     suspend fun createIfNoActive(journey: Journey): Boolean
     suspend fun completeActive(completedAt: Long): Journey?
+    /** Persist only after the owner-authenticated cloud terminal transition is acknowledged. */
+    suspend fun stopMonitoringActive(journeyId: String, endedAt: Long): Journey?
     fun observeTelemetry(journeyId: String): Flow<TelemetrySummary>
     suspend fun recordTelemetry(sample: TelemetrySample): TelemetryObservation?
     fun observeSyncState(journeyId: String): Flow<JourneySyncState?>

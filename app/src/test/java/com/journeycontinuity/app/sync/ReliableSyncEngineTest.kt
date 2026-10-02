@@ -40,6 +40,8 @@ class ReliableSyncEngineTest {
             } catch (error: Throwable) {
                 throw error.toCloudSyncException(CloudStage.AUTH_INITIALIZATION)
             }
+            override suspend fun ownerJourneyState(journeyId: String, ownerId: String): RemoteJourneyState? =
+                error("Unbound Journey must not perform an owner lookup")
             override suspend fun upsertJourney(journey: Journey, ownerId: String) =
                 error("Unbound Journey must not upload")
             override suspend fun upsertTelemetry(observations: List<TelemetryObservation>) =
@@ -219,6 +221,146 @@ class ReliableSyncEngineTest {
     }
 
     @Test
+    fun cancelledJourneySynchronizesDistinctEndWithoutCompletion() = runBlocking {
+        val cancelled = journey("one").copy(status = JourneyStatus.CANCELLED, endedAt = 9_000L)
+        val local = FakeLocalSyncStore(cancelled, telemetry("one", 1..2))
+        val remote = FakeCloudGateway()
+
+        assertEquals(SyncRunResult.Success, engine(local, remote).synchronize())
+
+        assertEquals(cancelled, remote.cloudJourneys.getValue("one"))
+        assertEquals(null, remote.cloudJourneys.getValue("one").completedAt)
+        assertEquals(9_000L, remote.cloudJourneys.getValue("one").endedAt)
+    }
+
+    @Test
+    fun cancellationDuringInitialUpsertWinsAtFinalRead() = runBlocking {
+        val local = FakeLocalSyncStore(journey("one"), telemetry("one", 1..2))
+        val remote = FakeCloudGateway(afterFirstJourneyUpsert = {
+            local.transitionJourney("one") {
+                it.copy(status = JourneyStatus.CANCELLED, endedAt = 9_000L)
+            }
+        })
+
+        assertEquals(SyncRunResult.Success, engine(local, remote).synchronize())
+        assertEquals(JourneyStatus.CANCELLED, remote.cloudJourneys.getValue("one").status)
+        assertEquals(9_000L, remote.cloudJourneys.getValue("one").endedAt)
+        assertEquals(null, remote.cloudJourneys.getValue("one").completedAt)
+    }
+
+    @Test
+    fun terminalConflictDuringInitialUpsertReconcilesWithoutClaimingConnectivityLoss() = runBlocking {
+        val local = FakeLocalSyncStore(journey("one"), telemetry("one", 1..2))
+        val cloudTerminal = journey("one").copy(
+            status = JourneyStatus.CANCELLED,
+            endedAt = 9_000L,
+        )
+        var uploaded: Journey? = null
+        var lookups = 0
+        val remote = object : CloudSyncGateway {
+            override suspend fun authenticatedOwnerId() = "owner"
+            override suspend fun ownerJourneyState(journeyId: String, ownerId: String): RemoteJourneyState {
+                lookups++
+                return if (lookups == 1) RemoteJourneyState(journeyId, ownerId, JourneyStatus.ACTIVE, null, null)
+                else RemoteJourneyState(journeyId, ownerId, JourneyStatus.CANCELLED, 9_000L, null)
+            }
+            override suspend fun upsertJourney(journey: Journey, ownerId: String) {
+                if (journey.status == JourneyStatus.ACTIVE) {
+                    throw CloudSyncException(
+                        SyncFailureKind.TERMINAL_CONFLICT,
+                        "Journey upsert conflicts with a terminal Journey state.",
+                    )
+                }
+                assertEquals(cloudTerminal.endedAt, journey.endedAt)
+                uploaded = journey
+            }
+            override suspend fun upsertTelemetry(observations: List<TelemetryObservation>) = Unit
+        }
+        val degradationObservations = mutableListOf<String>()
+        val engine = ReliableSyncEngine(
+            local = local,
+            remote = remote,
+            attemptObserver = { degradationObservations += it },
+            reconcileCancelled = local::stopMonitoringActive,
+        )
+
+        assertEquals(SyncRunResult.Success, engine.synchronize())
+        assertTrue(degradationObservations.isEmpty())
+        assertEquals(cloudTerminal, local.journey("one"))
+        assertEquals(JourneyStatus.CANCELLED, uploaded?.status)
+        assertEquals(9_000L, uploaded?.endedAt)
+        assertEquals(2L, local.checkpoint("one"))
+    }
+
+    @Test
+    fun processRestartWithCleanLocalBacklogReconcilesExactRemoteStopTime() = runBlocking {
+        val local = FakeLocalSyncStore(journey("one"), telemetry("one", 1..2))
+        local.clearWorkRequest("one")
+        val remote = FakeCloudGateway()
+        remote.cloudJourneys["one"] = journey("one").copy(
+            status = JourneyStatus.CANCELLED, endedAt = 9_123L,
+        )
+
+        assertEquals(SyncRunResult.Success, reconciliationEngine(local, remote).synchronize())
+        assertEquals(JourneyStatus.CANCELLED, local.journey("one")?.status)
+        assertEquals(9_123L, local.journey("one")?.endedAt)
+        assertEquals(null, local.journey("one")?.completedAt)
+        assertEquals(null, local.activeJourney())
+        assertEquals(2, local.allTelemetry("one").size)
+    }
+
+    @Test
+    fun sameOwnerReauthenticationConvergesOnNextSyncWake() = runBlocking {
+        val local = FakeLocalSyncStore(journey("one"))
+        local.clearWorkRequest("one")
+        val remote = FakeCloudGateway(authFailure = CloudSyncException(
+            SyncFailureKind.AUTHENTICATION, "Sign-in required",
+        ))
+        remote.cloudJourneys["one"] = journey("one").copy(
+            status = JourneyStatus.CANCELLED, endedAt = 9_000L,
+        )
+
+        assertEquals(SyncRunResult.Retry, reconciliationEngine(local, remote).synchronize())
+        assertEquals(JourneyStatus.ACTIVE, local.activeJourney()?.status)
+        remote.restoreOwnerSession()
+        assertEquals(SyncRunResult.Success, reconciliationEngine(local, remote).synchronize())
+        assertEquals(JourneyStatus.CANCELLED, local.journey("one")?.status)
+    }
+
+    @Test
+    fun unavailableRemoteLookupKeepsMonitoringActive() = runBlocking {
+        val local = FakeLocalSyncStore(journey("one"))
+        val remote = FakeCloudGateway(lookupFailure = CloudSyncException(
+            SyncFailureKind.TRANSIENT, "Network unavailable",
+        ))
+        assertEquals(SyncRunResult.Retry, reconciliationEngine(local, remote).synchronize())
+        assertEquals(JourneyStatus.ACTIVE, local.activeJourney()?.status)
+    }
+
+    @Test
+    fun wrongOwnerProofCannotReconcileOrStopLocalJourney() = runBlocking {
+        val local = FakeLocalSyncStore(journey("one"))
+        val remote = FakeCloudGateway(lookupOwner = "different-owner")
+        remote.cloudJourneys["one"] = journey("one").copy(
+            status = JourneyStatus.CANCELLED, endedAt = 9_000L,
+        )
+        assertEquals(SyncRunResult.Retry, reconciliationEngine(local, remote).synchronize())
+        assertEquals(JourneyStatus.ACTIVE, local.activeJourney()?.status)
+    }
+
+    @Test
+    fun remoteCompletionDoesNotInventLocalCompletionOrSafety() = runBlocking {
+        val local = FakeLocalSyncStore(journey("one"))
+        val remote = FakeCloudGateway()
+        remote.cloudJourneys["one"] = journey("one").copy(
+            status = JourneyStatus.COMPLETED, completedAt = 9_000L,
+        )
+        assertEquals(SyncRunResult.Retry, reconciliationEngine(local, remote).synchronize())
+        assertEquals(JourneyStatus.ACTIVE, local.activeJourney()?.status)
+        assertEquals(null, local.journey("one")?.completedAt)
+    }
+
+    @Test
     fun provisioningRunsOnlyAfterActiveJourneyExistsInCloud() = runBlocking {
         val local = FakeLocalSyncStore(journey("one"))
         val remote = FakeCloudGateway()
@@ -299,6 +441,9 @@ class ReliableSyncEngineTest {
         attemptObserver = observer,
     )
 
+    private fun reconciliationEngine(local: FakeLocalSyncStore, remote: FakeCloudGateway) =
+        ReliableSyncEngine(local, remote, reconcileCancelled = local::stopMonitoringActive)
+
     private fun journey(id: String) = Journey(
         id = id,
         destination = "Destination $id",
@@ -377,6 +522,15 @@ class ReliableSyncEngineTest {
             ?.let { PendingSyncCandidate(it.key, it.value.version) }
 
         override suspend fun journey(journeyId: String) = journeys[journeyId]
+        override suspend fun activeJourney() = journeys.values.firstOrNull { it.status == JourneyStatus.ACTIVE }
+
+        suspend fun stopMonitoringActive(journeyId: String, endedAt: Long): Boolean {
+            if (activeJourney()?.id != journeyId) return false
+            transitionJourney(journeyId) {
+                it.copy(status = JourneyStatus.CANCELLED, endedAt = endedAt, completedAt = null)
+            }
+            return true
+        }
         override suspend fun checkpoint(journeyId: String) = states.getValue(journeyId).checkpoint
         override suspend fun telemetryAfter(journeyId: String, afterSequence: Long, limit: Int) =
             observations[journeyId].orEmpty()
@@ -429,6 +583,11 @@ class ReliableSyncEngineTest {
             }
         }
 
+        fun transitionJourney(journeyId: String, transform: (Journey) -> Journey) {
+            journeys[journeyId] = transform(journeys.getValue(journeyId))
+            states.getValue(journeyId).apply { version++; requested = true }
+        }
+
         fun requestAgain(journeyId: String) {
             states.getValue(journeyId).apply {
                 version++
@@ -437,6 +596,7 @@ class ReliableSyncEngineTest {
         }
 
         fun allTelemetry(journeyId: String) = observations[journeyId].orEmpty()
+        fun clearWorkRequest(journeyId: String) { states.getValue(journeyId).requested = false }
         fun noWorkRequested(journeyId: String) = !states.getValue(journeyId).requested
     }
 
@@ -446,6 +606,8 @@ class ReliableSyncEngineTest {
         private val afterFirstJourneyUpsert: (() -> Unit)? = null,
         private var authFailure: CloudSyncException? = null,
         private val verifiedOwner: Boolean = false,
+        private val lookupFailure: CloudSyncException? = null,
+        private val lookupOwner: String = "owner",
     ) : CloudSyncGateway {
         val cloudJourneys = linkedMapOf<String, Journey>()
         val cloudTelemetry = linkedMapOf<Pair<String, Long>, TelemetryObservation>()
@@ -459,6 +621,13 @@ class ReliableSyncEngineTest {
         }
 
         override suspend fun authenticatedOwnerId(): String = authFailure?.let { throw it } ?: "owner"
+
+        override suspend fun ownerJourneyState(journeyId: String, ownerId: String): RemoteJourneyState? {
+            lookupFailure?.let { throw it }
+            return cloudJourneys[journeyId]?.let {
+                RemoteJourneyState(journeyId, lookupOwner, it.status, it.endedAt, it.completedAt)
+            }
+        }
 
         override suspend fun upsertJourney(journey: Journey, ownerId: String) {
             cloudJourneys[journey.id] = journey

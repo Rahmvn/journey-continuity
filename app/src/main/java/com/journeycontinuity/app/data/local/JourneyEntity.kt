@@ -19,6 +19,7 @@ data class JourneyEntity(
     val completedAt: Long?,
     // SQLite permits many NULLs in a unique index, but only one ACTIVE row can hold 1.
     val activeSlot: Int?,
+    val endedAt: Long? = null,
 )
 
 fun JourneyEntity.toDomain() = Journey(
@@ -28,6 +29,7 @@ fun JourneyEntity.toDomain() = Journey(
     startedAt = startedAt,
     status = status,
     completedAt = completedAt,
+    endedAt = endedAt,
 )
 
 fun Journey.toEntity() = JourneyEntity(
@@ -38,4 +40,5 @@ fun Journey.toEntity() = JourneyEntity(
     status = status,
     completedAt = completedAt,
     activeSlot = if (status == JourneyStatus.ACTIVE) 1 else null,
+    endedAt = endedAt,
 )

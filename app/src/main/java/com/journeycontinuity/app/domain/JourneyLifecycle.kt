@@ -23,6 +23,11 @@ sealed interface CompleteJourneyResult {
     data object NoActiveJourney : CompleteJourneyResult
 }
 
+sealed interface StopMonitoringResult {
+    data class Stopped(val journey: Journey) : StopMonitoringResult
+    data object NoActiveJourney : StopMonitoringResult
+}
+
 sealed interface JourneyInputValidation {
     data object Valid : JourneyInputValidation
     data object BlankDestination : JourneyInputValidation
@@ -72,5 +77,17 @@ class JourneyLifecycle(
         val completed = repository.completeActive(clock.nowMillis())
             ?: return CompleteJourneyResult.NoActiveJourney
         return CompleteJourneyResult.Completed(completed)
+    }
+
+    /**
+     * Local persistence step only. Account must first receive the authenticated cloud
+     * closure acknowledgement and pass its ended_at, in epoch milliseconds, here.
+     */
+    suspend fun stopMonitoring(journeyId: String, confirmedEndedAt: Long): StopMonitoringResult {
+        require(journeyId.isNotBlank())
+        require(confirmedEndedAt > 0L)
+        val stopped = repository.stopMonitoringActive(journeyId, confirmedEndedAt)
+            ?: return StopMonitoringResult.NoActiveJourney
+        return StopMonitoringResult.Stopped(stopped)
     }
 }

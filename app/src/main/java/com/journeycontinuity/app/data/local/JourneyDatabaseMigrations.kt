@@ -294,6 +294,13 @@ val MIGRATION_8_9 = object : Migration(8, 9) {
     }
 }
 
+/** Adds a distinct terminal timestamp without rewriting historical completed rows. */
+val MIGRATION_9_10 = object : Migration(9, 10) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `journeys` ADD COLUMN `endedAt` INTEGER")
+    }
+}
+
 val FALLBACK_ATTEMPT_INVARIANT_CALLBACK = object : RoomDatabase.Callback() {
     override fun onOpen(db: SupportSQLiteDatabase) {
         super.onOpen(db)
