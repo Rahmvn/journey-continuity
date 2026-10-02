@@ -29,6 +29,7 @@ data class SmsFallbackStatus(
     val destinationConfigured: Boolean,
     val ready: Boolean,
     val unavailableReason: String?,
+    val selectedSubscriptionLastKnownLabel: String? = null,
 )
 
 fun evaluateSmsFallbackStatus(
@@ -38,6 +39,7 @@ fun evaluateSmsFallbackStatus(
     activeSubscriptions: List<SmsSubscriptionChoice>,
     selectedSubscriptionId: Int?,
     destinationConfigured: Boolean,
+    selectedSubscriptionLastKnownLabel: String? = null,
 ): SmsFallbackStatus {
     val reason = when {
         !telephonyMessagingSupported -> "SMS messaging is not supported on this device."
@@ -59,6 +61,7 @@ fun evaluateSmsFallbackStatus(
         destinationConfigured,
         reason == null,
         reason,
+        selectedSubscriptionLastKnownLabel,
     )
 }
 

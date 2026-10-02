@@ -131,7 +131,9 @@ class MainActivity : ComponentActivity() {
                         onOpenLocationSettings = ::openLocationSettings,
                         smsFallbackStatus = smsFallbackStatus,
                         onRequestSmsPermissions = ::requestSmsFallbackPermissions,
+                        onRequestPhoneStatePermission = ::requestPhoneStatePermission,
                         onSelectSmsSubscription = ::selectSmsFallbackSubscription,
+                        onRefreshSmsFallback = ::refreshSmsFallbackState,
                     )
                 }
             }
@@ -256,9 +258,11 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun requestSmsFallbackPermissions() {
-        smsPermissionLauncher.launch(
-            arrayOf(Manifest.permission.SEND_SMS, Manifest.permission.READ_PHONE_STATE),
-        )
+        smsPermissionLauncher.launch(arrayOf(Manifest.permission.SEND_SMS))
+    }
+
+    private fun requestPhoneStatePermission() {
+        smsPermissionLauncher.launch(arrayOf(Manifest.permission.READ_PHONE_STATE))
     }
 
     private fun selectSmsFallbackSubscription(subscriptionId: Int) {

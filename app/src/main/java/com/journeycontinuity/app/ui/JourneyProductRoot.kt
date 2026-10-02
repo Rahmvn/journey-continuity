@@ -112,6 +112,8 @@ fun JourneyProductRoot(
     onOpenLocationSettings: () -> Unit,
     onRequestSmsPermissions: () -> Unit,
     onSelectSmsSubscription: (Int) -> Unit,
+    onRequestPhoneStatePermission: () -> Unit = {},
+    onRefreshSmsFallback: () -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -136,6 +138,9 @@ fun JourneyProductRoot(
             }
         }
     }
+    LaunchedEffect(state.productRoute) {
+        if (state.productRoute == JourneyProductRoute.RESILIENCE) onRefreshSmsFallback()
+    }
     BackHandler(state.productRoute != JourneyProductRoute.HOME &&
         state.productRoute != JourneyProductRoute.ACTIVE) {
         if (state.productRoute == JourneyProductRoute.CHECKPOINT) viewModel.backToStart()
@@ -151,11 +156,17 @@ fun JourneyProductRoot(
             }
             state.productRoute == JourneyProductRoute.HOME ||
                 state.productRoute == JourneyProductRoute.CONTACTS ||
+                state.productRoute == JourneyProductRoute.RESILIENCE ||
                 state.productRoute == JourneyProductRoute.ACTIVE -> {
+                val resilience = resiliencePresentation(smsFallbackStatus,
+                    state.trustedContactsAvailability,
+                    activeTrustedContacts(state.trustedContacts).count {
+                        it.status == TrustedContactStatus.ACCEPTED
+                    })
                 JourneyHome(
                     state = state,
                     accountEmail = accountEmail,
-                    smsFallbackReady = smsFallbackStatus.ready,
+                    resilienceSummary = resilience.homeSummary,
                     onPrimary = {
                         if (state.activeJourney == null) viewModel.openStart() else viewModel.openActive()
                     },
@@ -210,6 +221,31 @@ fun JourneyProductRoot(
                         )
                     }
                 }
+                if (state.productRoute == JourneyProductRoute.RESILIENCE) {
+                    ModalBottomSheet(
+                        onDismissRequest = viewModel::closeUtility,
+                        modifier = Modifier.testTag("resilience_sheet"),
+                        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+                        containerColor = Color(0xFFFEFEFC),
+                        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+                        dragHandle = { JourneySheetHandle() },
+                    ) {
+                        ResilienceSheet(
+                            presentation = resilience,
+                            status = smsFallbackStatus,
+                            page = state.resiliencePage,
+                            onDismiss = viewModel::closeUtility,
+                            onAddContact = viewModel::openContacts,
+                            onAllowSms = onRequestSmsPermissions,
+                            onAllowPhoneAccess = onRequestPhoneStatePermission,
+                            onChooseSim = viewModel::openChooseSim,
+                            onSelectSim = { choice ->
+                                onSelectSmsSubscription(choice)
+                                viewModel.returnToResilienceStatus()
+                            },
+                        )
+                    }
+                }
             }
             state.productRoute == JourneyProductRoute.START ||
                 state.productRoute == JourneyProductRoute.CHECKPOINT -> {
@@ -240,12 +276,6 @@ fun JourneyProductRoot(
                     }
                 }
             }
-            state.productRoute == JourneyProductRoute.RESILIENCE -> JourneyUtilityScreen(
-                title = "Resilience", onBack = viewModel::closeUtility,
-            ) {
-                LegacySmsFallbackContent(smsFallbackStatus, onRequestSmsPermissions,
-                    onSelectSmsSubscription)
-            }
         }
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
     }
@@ -271,7 +301,7 @@ private fun JourneySheetHandle() {
 internal fun JourneyHome(
     state: JourneyUiState,
     accountEmail: String?,
-    smsFallbackReady: Boolean,
+    resilienceSummary: String,
     onPrimary: () -> Unit,
     onContacts: () -> Unit,
     onResilience: () -> Unit,
@@ -286,7 +316,7 @@ internal fun JourneyHome(
                 trustedContactsSummary(state), onContacts)
             Spacer(Modifier.height(12.dp))
             UtilityRow(R.drawable.alabarin_resilience, "Resilience",
-                resilienceSummary(state, smsFallbackReady), onResilience)
+                resilienceSummary, onResilience)
             Spacer(Modifier.height(18.dp))
             UtilityRow(R.drawable.alabarin_account, "Account",
                 accountEmail ?: "Signed in to Alabarin", onAccount)
@@ -325,11 +355,6 @@ internal fun trustedContactsSummary(state: JourneyUiState): String {
     val more = if (accepted.size > 2) " +${accepted.size - 2}" else ""
     val pendingText = if (pending > 0) " · $pending pending" else ""
     return "$names$more$pendingText"
-}
-
-private fun resilienceSummary(state: JourneyUiState, smsFallbackReady: Boolean): String {
-    val accepted = state.trustedContacts.any { it.status == TrustedContactStatus.ACCEPTED }
-    return if (accepted && smsFallbackReady) "Ready" else "Setup needed"
 }
 
 @Composable

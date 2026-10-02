@@ -85,6 +85,7 @@ data class JourneyUiState(
     val currentConnectivity: CurrentJourneyConnectivity? = null,
     val productRoute: JourneyProductRoute = JourneyProductRoute.HOME,
     val utilityReturnRoute: JourneyProductRoute = JourneyProductRoute.HOME,
+    val resiliencePage: ResiliencePage = ResiliencePage.STATUS,
     val draftDestination: String = "",
     val draftExpectedArrivalAt: Long? = null,
     val isActionInProgress: Boolean = false,
@@ -213,7 +214,8 @@ class JourneyViewModel(
             val pendingResult = it.trustedContactsPage == TrustedContactsPage.READY &&
                 it.invitationShareUrl != null
             it.copy(productRoute = JourneyProductRoute.CONTACTS,
-                utilityReturnRoute = trustedContactsReturnRoute(it.productRoute),
+                utilityReturnRoute = if (it.productRoute == JourneyProductRoute.RESILIENCE)
+                    it.utilityReturnRoute else trustedContactsReturnRoute(it.productRoute),
                 trustedContactsPage = if (pendingResult) TrustedContactsPage.READY
                 else TrustedContactsPage.LIST,
                 invitationReadyId = if (pendingResult) it.invitationReadyId else null,
@@ -239,14 +241,28 @@ class JourneyViewModel(
         refreshTrustedContacts()
     }
 
-    fun openResilience() = _uiState.update {
-        it.copy(productRoute = JourneyProductRoute.RESILIENCE,
-            utilityReturnRoute = if (it.productRoute == JourneyProductRoute.CHECKPOINT)
-                JourneyProductRoute.START else JourneyProductRoute.HOME)
+    fun openResilience() {
+        _uiState.update {
+            it.copy(productRoute = JourneyProductRoute.RESILIENCE,
+                resiliencePage = ResiliencePage.STATUS,
+                utilityReturnRoute = if (it.productRoute == JourneyProductRoute.CHECKPOINT)
+                    JourneyProductRoute.START else JourneyProductRoute.HOME)
+        }
+        refreshTrustedContacts()
+    }
+
+    fun openChooseSim() = _uiState.update {
+        if (it.productRoute == JourneyProductRoute.RESILIENCE)
+            it.copy(resiliencePage = ResiliencePage.CHOOSE_SIM) else it
+    }
+
+    fun returnToResilienceStatus() = _uiState.update {
+        it.copy(resiliencePage = ResiliencePage.STATUS)
     }
 
     fun closeUtility() = _uiState.update {
         it.copy(productRoute = it.utilityReturnRoute,
+            resiliencePage = ResiliencePage.STATUS,
             trustedContactsPage = TrustedContactsPage.LIST,
             invitationReadyId = null,
             invitationReadyName = null, invitationReadyEmail = null,

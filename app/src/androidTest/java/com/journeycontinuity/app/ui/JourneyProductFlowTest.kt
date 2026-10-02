@@ -6,6 +6,7 @@ import androidx.test.espresso.Espresso
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -24,6 +25,8 @@ import com.journeycontinuity.app.degraded.DegradedConnectivityStateStore
 import com.journeycontinuity.app.degraded.LatestTelemetryReader
 import com.journeycontinuity.app.degraded.RecoveryBacklogSnapshot
 import com.journeycontinuity.app.degraded.SmsFallbackStatus
+import com.journeycontinuity.app.degraded.SmsSubscriptionChoice
+import com.journeycontinuity.app.degraded.evaluateSmsFallbackStatus
 import com.journeycontinuity.app.domain.CloudMonitoringState
 import com.journeycontinuity.app.domain.Journey
 import com.journeycontinuity.app.domain.JourneyLifecycle
@@ -51,6 +54,200 @@ import org.junit.Test
 /** Exercises the real product root and JourneyLifecycle against isolated in-memory state. */
 class JourneyProductFlowTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+
+    @Test fun resilienceIsOneSheetOverHomeAndCloseDoesNotChangeJourney() {
+        val contacts = FakeContacts()
+        val repository = FakeRepository()
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val coordinator = DegradedConnectivityCoordinator(FakeDegradationStore(),
+            LatestTelemetryReader { null }, policy = DegradedConnectivityPolicy(
+                DegradedConnectivityLabConfiguration.policyConfig()))
+        var refreshes = 0
+        lateinit var viewModel: JourneyViewModel
+        setContent {
+            viewModel = remember { JourneyViewModel(repository, JourneyLifecycle(repository),
+                JourneyServiceController(context), contacts, coordinator) }
+            JourneyProductRoot(viewModel, LocationUiState(), unavailableSms, "test@example.com",
+                viewModel::startJourney, {}, {}, {}, {}, onRefreshSmsFallback = { refreshes++ })
+        }
+        compose.waitUntil("Home did not restore", 10_000) {
+            !viewModel.uiState.value.isRestoring &&
+                viewModel.uiState.value.trustedContactsAvailability == TrustedContactsAvailability.AVAILABLE
+        }
+        val priorContactLoads = contacts.listCalls
+        compose.onNodeWithText("Resilience").performClick()
+        compose.onNodeWithTag("resilience_sheet").assertIsDisplayed()
+        compose.onNodeWithText("Device SMS fallback is not available in the current Alabarin configuration.")
+            .assertIsDisplayed()
+        compose.onNodeWithText("Destination").assertDoesNotExist()
+        compose.onNodeWithText("Transport").assertDoesNotExist()
+        compose.waitUntil("Opening did not refresh SMS status", 10_000) { refreshes == 1 }
+        compose.waitUntil("Opening did not refresh trusted contacts", 10_000) {
+            contacts.listCalls > priorContactLoads
+        }
+        compose.onNodeWithTag("resilience_close").performClick()
+        compose.onNodeWithTag("resilience_sheet").assertDoesNotExist()
+        compose.runOnIdle {
+            assertEquals(JourneyProductRoute.HOME, viewModel.uiState.value.productRoute)
+            assertEquals(null, repository.active.value)
+        }
+    }
+
+    @Test fun resilienceChooserStaysInSameSheetAndReturnsToStatus() {
+        val contacts = FakeContacts().apply {
+            items += TrustedContactSummary("relationship-1", TrustedContactSubjectKind.RELATIONSHIP,
+                "Aisha", "aisha@example.com", TrustedContactStatus.ACCEPTED, null, null, 1)
+        }
+        val repository = FakeRepository()
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val coordinator = DegradedConnectivityCoordinator(FakeDegradationStore(),
+            LatestTelemetryReader { null }, policy = DegradedConnectivityPolicy(
+                DegradedConnectivityLabConfiguration.policyConfig()))
+        val choices = listOf(SmsSubscriptionChoice(7, "SIM 1 - MTN"),
+            SmsSubscriptionChoice(8, "SIM 2 - Airtel"))
+        val status = mutableStateOf(evaluateSmsFallbackStatus(true, true, true, choices, null, true))
+        lateinit var viewModel: JourneyViewModel
+        setContent {
+            viewModel = remember { JourneyViewModel(repository, JourneyLifecycle(repository),
+                JourneyServiceController(context), contacts, coordinator) }
+            JourneyProductRoot(viewModel, LocationUiState(), status.value, "test@example.com",
+                viewModel::startJourney, {}, {}, {}, { id ->
+                    status.value = evaluateSmsFallbackStatus(true, true, true, choices, id, true)
+                })
+        }
+        compose.waitUntil("Contacts did not load", 10_000) {
+            viewModel.uiState.value.trustedContactsAvailability == TrustedContactsAvailability.AVAILABLE
+        }
+        compose.onNodeWithText("Resilience").performClick()
+        compose.onNodeWithTag("resilience_sheet").assertIsDisplayed()
+        compose.onNodeWithText("Choose SIM").performClick()
+        compose.onNodeWithTag("resilience_sheet").assertIsDisplayed()
+        compose.runOnIdle { assertEquals(ResiliencePage.CHOOSE_SIM, viewModel.uiState.value.resiliencePage) }
+        compose.onNodeWithText("SIM 2 - Airtel").performClick()
+        compose.onNodeWithTag("resilience_sheet").assertIsDisplayed()
+        compose.onNodeWithText("SIM 2 - Airtel").assertIsDisplayed()
+        compose.runOnIdle {
+            assertEquals(ResiliencePage.STATUS, viewModel.uiState.value.resiliencePage)
+            assertEquals(JourneyProductRoute.RESILIENCE, viewModel.uiState.value.productRoute)
+        }
+        compose.onNodeWithTag("resilience_close").performClick()
+        compose.runOnIdle { assertEquals(JourneyProductRoute.HOME, viewModel.uiState.value.productRoute) }
+    }
+
+    @Test fun resilienceFromCheckpointAndContactsReturnToStart() {
+        val contacts = FakeContacts().apply {
+            items += TrustedContactSummary("relationship-1", TrustedContactSubjectKind.RELATIONSHIP,
+                "Aisha", "aisha@example.com", TrustedContactStatus.ACCEPTED, null, null, 1)
+        }
+        val repository = FakeRepository()
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val coordinator = DegradedConnectivityCoordinator(FakeDegradationStore(),
+            LatestTelemetryReader { null }, policy = DegradedConnectivityPolicy(
+                DegradedConnectivityLabConfiguration.policyConfig()))
+        lateinit var viewModel: JourneyViewModel
+        setContent {
+            viewModel = remember { JourneyViewModel(repository, JourneyLifecycle(repository),
+                JourneyServiceController(context), contacts, coordinator) }
+            JourneyProductRoot(viewModel, LocationUiState(), unavailableSms, "test@example.com",
+                viewModel::startJourney, {}, {}, {}, {})
+        }
+        compose.waitUntil("Contacts did not load", 10_000) {
+            viewModel.uiState.value.trustedContactsAvailability == TrustedContactsAvailability.AVAILABLE
+        }
+        compose.onNodeWithText("Start Journey").performClick()
+        compose.runOnIdle {
+            viewModel.updateDestination("Ilorin")
+            viewModel.updateExpectedArrival(System.currentTimeMillis() + 7_200_000)
+        }
+        compose.onNodeWithTag("journey_primary_action").performClick()
+        compose.waitUntil("Checkpoint did not open", 10_000) {
+            viewModel.uiState.value.productRoute == JourneyProductRoute.CHECKPOINT
+        }
+        compose.onNodeWithText("Set up resilience").performClick()
+        compose.onNodeWithTag("resilience_sheet").assertIsDisplayed()
+        compose.runOnIdle { assertEquals(JourneyProductRoute.START, viewModel.uiState.value.utilityReturnRoute) }
+        compose.onNodeWithTag("resilience_close").performClick()
+        compose.runOnIdle { assertEquals(JourneyProductRoute.START, viewModel.uiState.value.productRoute) }
+
+        // A contact handoff from Resilience retains the checkpoint's Start return.
+        compose.onNodeWithTag("journey_primary_action").performClick()
+        compose.waitUntil("Checkpoint did not reopen", 10_000) {
+            viewModel.uiState.value.productRoute == JourneyProductRoute.CHECKPOINT
+        }
+        compose.onNodeWithText("Set up resilience").performClick()
+        compose.onNodeWithTag("resilience_sheet").assertIsDisplayed()
+        compose.runOnIdle { viewModel.openContacts() }
+        compose.onNodeWithTag("trusted_contacts_sheet").assertIsDisplayed()
+        compose.onNodeWithTag("trusted_contacts_close").performClick()
+        compose.runOnIdle { assertEquals(JourneyProductRoute.START, viewModel.uiState.value.productRoute) }
+    }
+
+    @Test fun resiliencePermissionResultsUpdateTheOpenSheetWithoutRefreshButton() {
+        val contacts = FakeContacts().apply {
+            items += TrustedContactSummary("relationship-1", TrustedContactSubjectKind.RELATIONSHIP,
+                "Aisha", "aisha@example.com", TrustedContactStatus.ACCEPTED, null, null, 1)
+        }
+        val repository = FakeRepository()
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val coordinator = DegradedConnectivityCoordinator(FakeDegradationStore(),
+            LatestTelemetryReader { null }, policy = DegradedConnectivityPolicy(
+                DegradedConnectivityLabConfiguration.policyConfig()))
+        val sim = listOf(SmsSubscriptionChoice(7, "SIM 1 - MTN"))
+        val status = mutableStateOf(evaluateSmsFallbackStatus(false, true, true, sim, 7, true))
+        lateinit var viewModel: JourneyViewModel
+        setContent {
+            viewModel = remember { JourneyViewModel(repository, JourneyLifecycle(repository),
+                JourneyServiceController(context), contacts, coordinator) }
+            JourneyProductRoot(viewModel, LocationUiState(), status.value, "test@example.com",
+                viewModel::startJourney, {}, {},
+                onRequestSmsPermissions = {
+                    status.value = evaluateSmsFallbackStatus(true, true, true, sim, 7, true)
+                }, onSelectSmsSubscription = {},
+                onRequestPhoneStatePermission = {
+                    status.value = evaluateSmsFallbackStatus(true, true, true, sim, 7, true)
+                })
+        }
+        compose.waitUntil("Contacts did not load", 10_000) {
+            viewModel.uiState.value.trustedContactsAvailability == TrustedContactsAvailability.AVAILABLE
+        }
+        compose.onNodeWithText("Resilience").performClick()
+        compose.onNodeWithText("Allow SMS").performClick()
+        compose.onNodeWithText("Your current setup supports Alabarin's resilience path.")
+            .assertIsDisplayed()
+        compose.onNodeWithText("Refresh").assertDoesNotExist()
+        compose.runOnIdle { status.value = evaluateSmsFallbackStatus(true, false, true, sim, 7, true) }
+        compose.onNodeWithText("Phone access needed").assertIsDisplayed()
+        compose.onNodeWithText("Allow access").performClick()
+        compose.onNodeWithText("Your current setup supports Alabarin's resilience path.")
+            .assertIsDisplayed()
+    }
+
+    @Test fun resilienceNoContactsActionUsesExistingContactsSheetAndReturnsHome() {
+        val contacts = FakeContacts()
+        val repository = FakeRepository()
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val coordinator = DegradedConnectivityCoordinator(FakeDegradationStore(),
+            LatestTelemetryReader { null }, policy = DegradedConnectivityPolicy(
+                DegradedConnectivityLabConfiguration.policyConfig()))
+        val status = evaluateSmsFallbackStatus(true, true, true,
+            listOf(SmsSubscriptionChoice(7, "SIM 1 - MTN")), 7, true)
+        lateinit var viewModel: JourneyViewModel
+        setContent {
+            viewModel = remember { JourneyViewModel(repository, JourneyLifecycle(repository),
+                JourneyServiceController(context), contacts, coordinator) }
+            JourneyProductRoot(viewModel, LocationUiState(), status, "test@example.com",
+                viewModel::startJourney, {}, {}, {}, {})
+        }
+        compose.waitUntil("Contacts did not load", 10_000) {
+            viewModel.uiState.value.trustedContactsAvailability == TrustedContactsAvailability.AVAILABLE
+        }
+        compose.onNodeWithText("Resilience").performClick()
+        compose.onNodeWithText("Add contact").performClick()
+        compose.onNodeWithTag("resilience_sheet").assertDoesNotExist()
+        compose.onNodeWithTag("trusted_contacts_sheet").assertIsDisplayed()
+        compose.onNodeWithTag("trusted_contacts_close").performClick()
+        compose.runOnIdle { assertEquals(JourneyProductRoute.HOME, viewModel.uiState.value.productRoute) }
+    }
 
     @Test fun homeFirstStartCheckpointOpenAndReturn() {
         val repository = FakeRepository()

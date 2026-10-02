@@ -65,7 +65,7 @@ class JourneyProductVisualTest {
     @Test fun homeUsesCorrectActionForPersistedJourneyAndStartNeedsExplicitArrival() {
         setContent {
             Box(Modifier.size(390.dp, 844.dp).testTag("journeyFrame")) {
-                JourneyHome(JourneyUiState(isRestoring = false), null, false,
+                JourneyHome(JourneyUiState(isRestoring = false), null, "Unavailable",
                     onPrimary = {}, onContacts = {}, onResilience = {}, onAccount = {})
             }
         }
@@ -101,7 +101,7 @@ class JourneyProductVisualTest {
         setContent {
             Box(Modifier.size(390.dp, 844.dp).testTag("journeyFrame")) {
                 JourneyHome(JourneyUiState(isRestoring = false, activeJourney = journey),
-                    "traveller@example.com", false, {}, {}, {}, {})
+                    "traveller@example.com", "Unavailable", {}, {}, {}, {})
             }
         }
         compose.onNodeWithText("Open Journey").assertIsDisplayed()

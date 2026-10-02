@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -24,9 +25,11 @@ class AndroidSmsFallbackConfiguration(
         val subscriptions = if (phoneGranted && supported) activeSubscriptions() else emptyList()
         val selected = preferences.takeIf { it.contains(KEY_SELECTED_SUBSCRIPTION) }
             ?.getInt(KEY_SELECTED_SUBSCRIPTION, SubscriptionManager.INVALID_SUBSCRIPTION_ID)
+        val lastKnownLabel = preferences.getString(KEY_SELECTED_SUBSCRIPTION_LABEL, null)
         val routeConfigured = routeProvider.currentRoute() != null
         return evaluateSmsFallbackStatus(
             sendGranted, phoneGranted, supported, subscriptions, selected, routeConfigured,
+            lastKnownLabel,
         )
     }
 
@@ -43,8 +46,7 @@ class AndroidSmsFallbackConfiguration(
     override fun selectSubscription(subscriptionId: Int): Boolean {
         val snapshot = status()
         if (!snapshot.phoneStatePermissionGranted || !snapshot.telephonyMessagingSupported) return false
-        if (snapshot.activeSubscriptions.none { it.subscriptionId == subscriptionId }) return false
-        return preferences.edit().putInt(KEY_SELECTED_SUBSCRIPTION, subscriptionId).commit()
+        return persistExplicitSmsSelection(preferences, snapshot.activeSubscriptions, subscriptionId)
     }
 
     private fun activeSubscriptions(): List<SmsSubscriptionChoice> = try {
@@ -69,8 +71,20 @@ class AndroidSmsFallbackConfiguration(
 
     private companion object {
         const val PREFERENCES_NAME = "journey-continuity-sms-fallback"
-        const val KEY_SELECTED_SUBSCRIPTION = "selected-subscription-id"
     }
+}
+
+internal const val KEY_SELECTED_SUBSCRIPTION = "selected-subscription-id"
+internal const val KEY_SELECTED_SUBSCRIPTION_LABEL = "selected-subscription-label"
+
+internal fun persistExplicitSmsSelection(
+    preferences: SharedPreferences,
+    activeChoices: List<SmsSubscriptionChoice>,
+    subscriptionId: Int,
+): Boolean {
+    val choice = activeChoices.firstOrNull { it.subscriptionId == subscriptionId } ?: return false
+    return preferences.edit().putInt(KEY_SELECTED_SUBSCRIPTION, subscriptionId)
+        .putString(KEY_SELECTED_SUBSCRIPTION_LABEL, choice.safeDisplayName).commit()
 }
 
 class AndroidSmsTelephonyGateway(private val context: Context) : SmsTelephonyGateway {
