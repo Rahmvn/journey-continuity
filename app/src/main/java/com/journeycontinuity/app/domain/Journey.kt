@@ -8,6 +8,7 @@ data class Journey(
     val status: JourneyStatus,
     val completedAt: Long?,
     val endedAt: Long? = null,
+    val structuredDestination: StructuredDestination? = null,
 )
 
 enum class JourneyStatus {

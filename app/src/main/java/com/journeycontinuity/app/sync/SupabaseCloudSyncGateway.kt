@@ -137,7 +137,7 @@ private data class RemoteJourneyRow(
 )
 
 @Serializable
-private data class CloudJourneyRow(
+internal data class CloudJourneyRow(
     val id: String,
     @SerialName("owner_id") val ownerId: String,
     val destination: String,
@@ -146,7 +146,22 @@ private data class CloudJourneyRow(
     val status: String,
     @SerialName("completed_at") val completedAt: String?,
     @SerialName("ended_at") val endedAt: String?,
-)
+    @SerialName("destination_country_code") val destinationCountryCode: String?,
+    @SerialName("destination_state_id") val destinationStateId: String?,
+    @SerialName("destination_state_name") val destinationStateName: String?,
+    @SerialName("destination_lga_id") val destinationLgaId: String?,
+    @SerialName("destination_lga_name") val destinationLgaName: String?,
+    @SerialName("destination_kind") val destinationKind: String?,
+    @SerialName("destination_latitude") val destinationLatitude: Double?,
+    @SerialName("destination_longitude") val destinationLongitude: Double?,
+    @SerialName("destination_selection_source") val destinationSelectionSource: String?,
+    @SerialName("destination_provider") val destinationProvider: String?,
+    @SerialName("destination_provider_place_id") val destinationProviderPlaceId: String?,
+    @SerialName("destination_admin_dataset_version") val destinationAdminDatasetVersion: String?,
+    @SerialName("destination_custom_place_name") val destinationCustomPlaceName: String?,
+) {
+    override fun toString(): String = "CloudJourneyRow(redacted)"
+}
 
 @Serializable
 private data class CloudTelemetryRow(
@@ -161,7 +176,7 @@ private data class CloudTelemetryRow(
     @SerialName("connectivity_state") val connectivityState: String,
 )
 
-private fun Journey.toCloudRow(ownerId: String) = CloudJourneyRow(
+internal fun Journey.toCloudRow(ownerId: String) = CloudJourneyRow(
     id = id,
     ownerId = ownerId,
     destination = destination,
@@ -170,6 +185,19 @@ private fun Journey.toCloudRow(ownerId: String) = CloudJourneyRow(
     status = status.name,
     completedAt = completedAt?.let { Instant.ofEpochMilli(it).toString() },
     endedAt = endedAt?.let { Instant.ofEpochMilli(it).toString() },
+    destinationCountryCode = structuredDestination?.countryCode,
+    destinationStateId = structuredDestination?.stateId,
+    destinationStateName = structuredDestination?.stateName,
+    destinationLgaId = structuredDestination?.lgaId,
+    destinationLgaName = structuredDestination?.lgaName,
+    destinationKind = structuredDestination?.kind?.name,
+    destinationLatitude = structuredDestination?.latitude,
+    destinationLongitude = structuredDestination?.longitude,
+    destinationSelectionSource = structuredDestination?.selectionSource?.name,
+    destinationProvider = structuredDestination?.provider,
+    destinationProviderPlaceId = structuredDestination?.providerPlaceId,
+    destinationAdminDatasetVersion = structuredDestination?.adminDatasetVersion,
+    destinationCustomPlaceName = structuredDestination?.customPlaceName,
 )
 
 private fun TelemetryObservation.toCloudRow() = CloudTelemetryRow(

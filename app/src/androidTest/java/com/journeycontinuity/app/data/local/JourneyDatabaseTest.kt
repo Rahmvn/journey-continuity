@@ -11,6 +11,9 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.journeycontinuity.app.domain.ConnectivityState
 import com.journeycontinuity.app.domain.Journey
 import com.journeycontinuity.app.domain.JourneyStatus
+import com.journeycontinuity.app.domain.DestinationKind
+import com.journeycontinuity.app.domain.DestinationSelectionSource
+import com.journeycontinuity.app.domain.StructuredDestination
 import com.journeycontinuity.app.domain.TelemetrySample
 import com.journeycontinuity.app.degraded.ConnectivityPhase
 import com.journeycontinuity.app.degraded.FallbackDisposition
@@ -50,6 +53,7 @@ class JourneyDatabaseTest {
             TEST_DATABASE_5_6,
             TEST_DATABASE_6_7,
             TEST_DATABASE_9_10,
+            TEST_DATABASE_10_11,
         ).forEach(context::deleteDatabase)
     }
 
@@ -416,6 +420,118 @@ class JourneyDatabaseTest {
     }
 
     @Test
+    @Throws(IOException::class)
+    fun migrationFrom10To11PreservesTextExactlyAndDoesNotInventStructure() {
+        migrationHelper.createDatabase(TEST_DATABASE_10_11, 10).use { db ->
+            db.execSQL("""INSERT INTO journeys
+                (id, destination, expectedArrivalAt, startedAt, status, completedAt, activeSlot, endedAt)
+                VALUES ('old-active', '  Ilorin  ', 5000, 1000, 'ACTIVE', NULL, 1, NULL)""")
+        }
+        migrationHelper.runMigrationsAndValidate(
+            TEST_DATABASE_10_11, 11, true, MIGRATION_10_11,
+        ).use { db ->
+            db.query("""SELECT destination, expectedArrivalAt, startedAt, status, activeSlot,
+                destinationCountryCode IS NULL AND destinationStateId IS NULL AND
+                destinationStateName IS NULL AND destinationLgaId IS NULL AND
+                destinationLgaName IS NULL AND destinationKind IS NULL AND
+                destinationLatitude IS NULL AND destinationLongitude IS NULL AND
+                destinationSelectionSource IS NULL AND destinationProvider IS NULL AND
+                destinationProviderPlaceId IS NULL AND destinationAdminDatasetVersion IS NULL AND
+                destinationCustomPlaceName IS NULL
+                FROM journeys WHERE id = 'old-active'""").use { row ->
+                assertEquals(true, row.moveToFirst())
+                assertEquals("  Ilorin  ", row.getString(0))
+                assertEquals(5_000L, row.getLong(1))
+                assertEquals(1_000L, row.getLong(2))
+                assertEquals("ACTIVE", row.getString(3))
+                assertEquals(1, row.getInt(4))
+                assertEquals(1, row.getInt(5))
+            }
+            db.execSQL("UPDATE journeys SET status = 'COMPLETED', completedAt = 4000, activeSlot = NULL WHERE id = 'old-active'")
+            db.query("SELECT status, completedAt, destination FROM journeys WHERE id = 'old-active'").use { row ->
+                assertEquals(true, row.moveToFirst())
+                assertEquals("COMPLETED", row.getString(0))
+                assertEquals(4_000L, row.getLong(1))
+                assertEquals("  Ilorin  ", row.getString(2))
+            }
+        }
+    }
+
+    @Test fun structuredPointAndLocalityRoundTripAndRemainImmutable() = runBlocking {
+        val db = createInMemoryDatabase()
+        val dao = db.journeyDao()
+        val point = StructuredDestination("NG", "NG-KW", "Kwara", "NG-KW-OFFA", "Offa",
+            DestinationKind.POINT, 8.49, 4.56, DestinationSelectionSource.MAP_PIN,
+            customPlaceName = "Grandma's house")
+        assertEquals(true, dao.insertIfNoActive(journey("point").copy(
+            destination = "Grandma's house", structuredDestination = point).toEntity()))
+        assertEquals(point, dao.getActive()?.toDomain()?.structuredDestination)
+        dao.getActive()?.let { current ->
+            db.openHelper.writableDatabase.execSQL(
+                "UPDATE journeys SET status = 'ACTIVE' WHERE id = '${current.id}'",
+            )
+        }
+        assertEquals(false, dao.insertIfNoActive(journey("blocked").toEntity()))
+        assertNotNull(dao.completeActive(2_000))
+        val locality = StructuredDestination("NG", "NG-KW", "Kwara", "NG-KW-OFFA", "Offa",
+            DestinationKind.LOCALITY, null, null, DestinationSelectionSource.LOCALITY_SELECTION)
+        assertEquals(true, dao.insertIfNoActive(journey("locality").copy(
+            destination = "Offa", structuredDestination = locality).toEntity()))
+        assertEquals(locality, dao.getActive()?.toDomain()?.structuredDestination)
+        assertNull(dao.getActive()?.destinationLatitude)
+        try {
+            db.openHelper.writableDatabase.execSQL(
+                "UPDATE journeys SET destinationLatitude = 8.50 WHERE id = 'point'",
+            )
+            fail("Stored destination point must be immutable")
+        } catch (_: android.database.sqlite.SQLiteException) { /* expected */ }
+    }
+
+    @Test fun rawRoomInsertRejectsHalfSelectedPoint() {
+        val db = createInMemoryDatabase()
+        try {
+            db.openHelper.writableDatabase.execSQL("""INSERT INTO journeys
+                (id, destination, expectedArrivalAt, startedAt, status, activeSlot,
+                 destinationCountryCode, destinationStateId, destinationStateName,
+                 destinationLgaId, destinationLgaName, destinationKind,
+                 destinationLatitude, destinationSelectionSource)
+                VALUES ('invalid', 'Bad point', 5000, 1000, 'ACTIVE', 1,
+                        'NG', 'NG-KW', 'Kwara', 'NG-KW-OFFA', 'Offa', 'POINT',
+                        8.49, 'MAP_PIN')""")
+            fail("A half-selected point must not be stored")
+        } catch (_: android.database.sqlite.SQLiteException) { /* expected */ }
+        assertNull(runBlocking { db.journeyDao().getActive() })
+    }
+
+    @Test fun rawRoomWritesRejectPartialFactsAndLocalityCoordinates() {
+        val db = createInMemoryDatabase()
+        val sql = listOf(
+            """INSERT INTO journeys (id, destination, expectedArrivalAt, startedAt, status,
+                destinationStateId) VALUES ('partial-state', 'Offa', 5000, 1000, 'COMPLETED', 'NG-KW')""",
+            """INSERT INTO journeys (id, destination, expectedArrivalAt, startedAt, status,
+                destinationLatitude, destinationLongitude)
+                VALUES ('partial-coordinates', 'Offa', 5000, 1000, 'COMPLETED', 8.49, 4.56)""",
+            """INSERT INTO journeys (id, destination, expectedArrivalAt, startedAt, status,
+                destinationCountryCode, destinationStateId, destinationStateName,
+                destinationLgaId, destinationLgaName, destinationKind,
+                destinationLatitude, destinationLongitude, destinationSelectionSource)
+                VALUES ('locality-point', 'Offa', 5000, 1000, 'COMPLETED',
+                    'NG', 'NG-KW', 'Kwara', 'NG-KW-OFFA', 'Offa', 'LOCALITY',
+                    8.49, 4.56, 'LOCALITY_SELECTION')""",
+        )
+        sql.forEach { statement ->
+            try {
+                db.openHelper.writableDatabase.execSQL(statement)
+                fail("Partial or imprecise destination facts must not persist")
+            } catch (_: android.database.sqlite.SQLiteException) { /* expected */ }
+        }
+        db.openHelper.readableDatabase.query("SELECT COUNT(*) FROM journeys").use { row ->
+            assertEquals(true, row.moveToFirst())
+            assertEquals(0L, row.getLong(0))
+        }
+    }
+
+    @Test
     fun monitoringStopIsDurableAndRejectsNewEvidence() = runBlocking {
         val db = createInMemoryDatabase()
         val dao = db.journeyDao()
@@ -524,5 +640,6 @@ class JourneyDatabaseTest {
         const val TEST_DATABASE_5_6 = "journey-migration-5-6-test"
         const val TEST_DATABASE_6_7 = "journey-migration-6-7-test"
         const val TEST_DATABASE_9_10 = "journey-migration-9-10-test"
+        const val TEST_DATABASE_10_11 = "journey-migration-10-11-test"
     }
 }

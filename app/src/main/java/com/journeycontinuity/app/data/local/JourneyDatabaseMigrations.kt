@@ -301,11 +301,72 @@ val MIGRATION_9_10 = object : Migration(9, 10) {
     }
 }
 
+/** Adds nullable creation-time facts; historical text-only Journeys remain unknown. */
+val MIGRATION_10_11 = object : Migration(10, 11) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        listOf(
+            "destinationCountryCode", "destinationStateId", "destinationStateName",
+            "destinationLgaId", "destinationLgaName", "destinationKind",
+            "destinationSelectionSource", "destinationProvider", "destinationProviderPlaceId",
+            "destinationAdminDatasetVersion", "destinationCustomPlaceName",
+        ).forEach { db.execSQL("ALTER TABLE `journeys` ADD COLUMN `$it` TEXT") }
+        db.execSQL("ALTER TABLE `journeys` ADD COLUMN `destinationLatitude` REAL")
+        db.execSQL("ALTER TABLE `journeys` ADD COLUMN `destinationLongitude` REAL")
+        createJourneyDestinationInvariantTriggers(db)
+    }
+}
+
 val FALLBACK_ATTEMPT_INVARIANT_CALLBACK = object : RoomDatabase.Callback() {
     override fun onOpen(db: SupportSQLiteDatabase) {
         super.onOpen(db)
         createFallbackAttemptInvariantTriggers(db)
+        createJourneyDestinationInvariantTriggers(db)
     }
+}
+
+private fun createJourneyDestinationInvariantTriggers(db: SupportSQLiteDatabase) {
+    val columns = listOf(
+        "destination", "destinationCountryCode", "destinationStateId", "destinationStateName",
+        "destinationLgaId", "destinationLgaName", "destinationKind", "destinationLatitude",
+        "destinationLongitude", "destinationSelectionSource", "destinationProvider",
+        "destinationProviderPlaceId", "destinationAdminDatasetVersion", "destinationCustomPlaceName",
+    )
+    db.execSQL("DROP TRIGGER IF EXISTS `journeys_destination_immutable`")
+    val facts = columns.drop(1)
+    val textFacts = listOf(
+        "destinationStateId", "destinationStateName", "destinationLgaId", "destinationLgaName",
+    )
+    val optionalText = listOf(
+        "destinationProvider", "destinationProviderPlaceId", "destinationAdminDatasetVersion",
+        "destinationCustomPlaceName",
+    )
+    val complete = listOf(
+        "NEW.destinationCountryCode = 'NG'",
+        *textFacts.map { "NEW.`$it` IS NOT NULL AND NEW.`$it` = trim(NEW.`$it`) AND length(NEW.`$it`) > 0" }.toTypedArray(),
+        "NEW.destinationKind IN ('POINT', 'LOCALITY')",
+        "NEW.destinationSelectionSource IN ('PLACE_SEARCH', 'MAP_PIN', 'LOCALITY_SELECTION')",
+        "((NEW.destinationLatitude IS NULL AND NEW.destinationLongitude IS NULL) OR " +
+            "(NEW.destinationLatitude BETWEEN -90 AND 90 AND NEW.destinationLongitude BETWEEN -180 AND 180))",
+        "((NEW.destinationKind = 'POINT' AND NEW.destinationLatitude IS NOT NULL " +
+            "AND NEW.destinationSelectionSource IN ('PLACE_SEARCH', 'MAP_PIN')) OR " +
+            "(NEW.destinationKind = 'LOCALITY' AND NEW.destinationLatitude IS NULL " +
+            "AND NEW.destinationLongitude IS NULL AND NEW.destinationSelectionSource = 'LOCALITY_SELECTION'))",
+        "(NEW.destinationProviderPlaceId IS NULL OR NEW.destinationProvider IS NOT NULL)",
+        "(NEW.destinationCustomPlaceName IS NULL OR NEW.destinationSelectionSource = 'MAP_PIN')",
+        *optionalText.map { "(NEW.`$it` IS NULL OR (NEW.`$it` = trim(NEW.`$it`) AND length(NEW.`$it`) > 0))" }.toTypedArray(),
+    ).joinToString(" AND ")
+    val valid = "(${facts.joinToString(" AND ") { "NEW.`$it` IS NULL" }}) OR coalesce(($complete), 0)"
+    listOf("INSERT", "UPDATE").forEach { event ->
+        val name = "journeys_destination_validate_${event.lowercase()}"
+        db.execSQL("DROP TRIGGER IF EXISTS `$name`")
+        db.execSQL("""CREATE TRIGGER `$name` BEFORE $event ON `journeys`
+            WHEN NOT ($valid)
+            BEGIN SELECT RAISE(ABORT, 'invalid structured Journey destination'); END""")
+    }
+    db.execSQL("""CREATE TRIGGER `journeys_destination_immutable`
+        BEFORE UPDATE OF ${columns.joinToString { "`$it`" }} ON `journeys`
+        WHEN ${columns.joinToString(" OR ") { "NEW.`$it` IS NOT OLD.`$it`" }}
+        BEGIN SELECT RAISE(ABORT, 'Journey destination is immutable'); END""")
 }
 
 private fun createFallbackAttemptInvariantTriggers(db: SupportSQLiteDatabase) {

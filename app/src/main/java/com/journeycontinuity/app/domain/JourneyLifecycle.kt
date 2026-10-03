@@ -47,7 +47,11 @@ class JourneyLifecycle(
         return JourneyInputValidation.Valid
     }
 
-    suspend fun start(destination: String, expectedArrivalAt: Long): StartJourneyResult {
+    suspend fun start(
+        destination: String,
+        expectedArrivalAt: Long,
+        structuredDestination: StructuredDestination? = null,
+    ): StartJourneyResult {
         val normalizedDestination = destination.trim()
         when (validate(normalizedDestination, expectedArrivalAt)) {
             JourneyInputValidation.BlankDestination -> return StartJourneyResult.BlankDestination
@@ -65,6 +69,7 @@ class JourneyLifecycle(
             startedAt = startedAt,
             status = JourneyStatus.ACTIVE,
             completedAt = null,
+            structuredDestination = structuredDestination,
         )
         return if (repository.createIfNoActive(journey)) {
             StartJourneyResult.Started(journey)
