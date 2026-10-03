@@ -1,5 +1,6 @@
 package com.journeycontinuity.app.ui
 
+import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.test.espresso.Espresso
@@ -19,6 +20,8 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import com.journeycontinuity.app.auth.TravellerAccountGateway
 import com.journeycontinuity.app.auth.TravellerAccountProfile
+import com.journeycontinuity.app.auth.NoActiveSignOutResult
+import com.journeycontinuity.app.auth.TravellerNoActiveSignOutGateway
 import com.journeycontinuity.app.data.repository.JourneyRepository
 import com.journeycontinuity.app.degraded.ConnectivityPhase
 import com.journeycontinuity.app.degraded.DegradedConnectivityCoordinator
@@ -55,6 +58,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Rule
 import org.junit.Test
+import java.io.File
 
 /** Exercises the real product root and JourneyLifecycle against isolated in-memory state. */
 class JourneyProductFlowTest {
@@ -103,7 +107,82 @@ class JourneyProductFlowTest {
         compose.runOnIdle { assertEquals(1, gateway.saves) }
     }
 
-    private fun showAccount(gateway: FakeAccountGateway, onSignOut: () -> Unit):
+    @Test fun noActiveSignOutConfirmationStaysOverAccountAndStaySignedInDismissesOnlyDialog() {
+        val signOut = FakeNoActiveSignOut()
+        val (_, account) = showAccount(FakeAccountGateway(), signOut) {}
+        compose.onNodeWithText("Account").performClick()
+        compose.waitUntil("Account profile did not load", 10_000) { account.state.value.profile != null }
+        compose.onNodeWithTag("account_sign_out").performClick()
+        compose.waitUntil("Sign out confirmation did not open", 10_000) {
+            account.state.value.signOutStatus == AccountSignOutStatus.CONFIRMING
+        }
+        compose.onNodeWithTag("account_sheet").assertExists()
+        compose.onNodeWithTag("account_sign_out_confirmation").assertIsDisplayed()
+        compose.onNodeWithText("Sign out?").assertIsDisplayed()
+        compose.onNodeWithText("You’ll need a new one-time code the next time you log in on this device.")
+            .assertIsDisplayed()
+        compose.onNodeWithTag("account_stay_signed_in").performClick()
+        compose.onNodeWithTag("account_sign_out_confirmation").assertDoesNotExist()
+        compose.onNodeWithTag("account_sheet").assertIsDisplayed()
+        compose.onNodeWithTag("account_sign_out").performClick()
+        compose.waitUntil("Sign out confirmation did not reopen", 10_000) {
+            account.state.value.signOutStatus == AccountSignOutStatus.CONFIRMING
+        }
+        Espresso.pressBack()
+        compose.onNodeWithTag("account_sign_out_confirmation").assertDoesNotExist()
+        compose.onNodeWithTag("account_sheet").assertIsDisplayed()
+        compose.runOnIdle { assertEquals(0, signOut.calls) }
+    }
+
+    @Test fun activeJourneyDiscoveredAtConfirmationKeepsAccountAndShowsTruthfulError() {
+        val signOut = FakeNoActiveSignOut()
+        val (_, account) = showAccount(FakeAccountGateway(), signOut) {}
+        compose.onNodeWithText("Account").performClick()
+        compose.waitUntil("Account profile did not load", 10_000) { account.state.value.profile != null }
+        compose.onNodeWithTag("account_sign_out").performClick()
+        compose.waitUntil("Sign out confirmation did not open", 10_000) {
+            account.state.value.signOutStatus == AccountSignOutStatus.CONFIRMING
+        }
+        signOut.result = NoActiveSignOutResult.ActiveJourney
+        compose.onNodeWithTag("account_confirm_sign_out").performClick()
+        compose.waitUntil("Failure was not shown", 10_000) {
+            account.state.value.signOutStatus == AccountSignOutStatus.FAILURE
+        }
+        compose.onNodeWithTag("account_sign_out_confirmation").assertDoesNotExist()
+        compose.onNodeWithTag("account_sign_out_error").assertIsDisplayed()
+        compose.runOnIdle { assertEquals(1, signOut.calls) }
+    }
+
+    @Test fun captureNoActiveSignOutFrames() {
+        val signOut = FakeNoActiveSignOut()
+        val (_, account) = showAccount(FakeAccountGateway(), signOut) {}
+        compose.onNodeWithText("Account").performClick()
+        compose.waitUntil("Account profile did not load", 10_000) { account.state.value.profile != null }
+        captureAccountFrame("account-before-sign-out.png")
+        compose.onNodeWithTag("account_sign_out").performClick()
+        compose.waitUntil("Sign out confirmation did not open", 10_000) {
+            account.state.value.signOutStatus == AccountSignOutStatus.CONFIRMING
+        }
+        captureAccountFrame("sign-out-no-active-confirmation.png")
+        compose.onNodeWithTag("account_stay_signed_in").performClick()
+        compose.onNodeWithTag("account_sign_out_confirmation").assertDoesNotExist()
+        captureAccountFrame("stay-signed-in-account.png")
+        compose.runOnIdle { assertEquals(0, signOut.calls) }
+    }
+
+    private fun captureAccountFrame(name: String) {
+        compose.waitForIdle()
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val output = File(context.getExternalFilesDir(null), "traveller-account-slice-b")
+        check(output.mkdirs() || output.isDirectory)
+        val bitmap = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
+        File(output, name).outputStream().use { stream ->
+            check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream))
+        }
+    }
+
+    private fun showAccount(gateway: FakeAccountGateway,
+        signOutGateway: FakeNoActiveSignOut? = null, onSignOut: () -> Unit):
         Pair<JourneyViewModel, TravellerAccountViewModel> {
         val repository = FakeRepository()
         val context = InstrumentationRegistry.getInstrumentation().targetContext
@@ -115,10 +194,15 @@ class JourneyProductFlowTest {
         setContent {
             journey = remember { JourneyViewModel(repository, JourneyLifecycle(repository),
                 JourneyServiceController(context), FakeContacts(), coordinator) }
-            account = remember { TravellerAccountViewModel(gateway) }
+            account = remember { TravellerAccountViewModel(gateway, signOutGateway) }
             JourneyProductRoot(journey, LocationUiState(), unavailableSms, "test@example.com",
                 journey::startJourney, {}, {}, {}, {}, accountViewModel = account,
-                onSignOutRequested = onSignOut)
+                onSignOutRequested = {
+                    if (signOutGateway == null) onSignOut()
+                    else account.requestNoActiveSignOut(!journey.uiState.value.isRestoring)
+                },
+                onConfirmSignOutRequested = { account.confirmNoActiveSignOut(true) {} },
+                onCancelSignOutRequested = account::cancelNoActiveSignOut)
         }
         compose.waitUntil("Home did not restore", 10_000) { !journey.uiState.value.isRestoring }
         return journey to account
@@ -132,6 +216,16 @@ class JourneyProductFlowTest {
         override suspend fun save(ownerId: String, fullName: String, handle: String): TravellerAccountProfile {
             saves++
             return profile.copy(fullName = fullName, handle = handle).also { profile = it }
+        }
+    }
+
+    private class FakeNoActiveSignOut : TravellerNoActiveSignOutGateway {
+        var calls = 0
+        var result: NoActiveSignOutResult = NoActiveSignOutResult.SignedOut
+        override suspend fun hasNoActiveJourney(): Boolean = true
+        override suspend fun signOut(expectedOwnerId: String): NoActiveSignOutResult {
+            calls++
+            return result
         }
     }
 

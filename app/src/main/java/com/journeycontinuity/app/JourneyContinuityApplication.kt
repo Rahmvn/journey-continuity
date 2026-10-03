@@ -22,6 +22,9 @@ import com.journeycontinuity.app.auth.SharedPreferencesInstallationIdentityStore
 import com.journeycontinuity.app.auth.SupabaseTravellerAuthBackend
 import com.journeycontinuity.app.auth.TravellerIdentityCoordinator
 import com.journeycontinuity.app.auth.OwnerAdmissionGate
+import com.journeycontinuity.app.auth.GuardedTravellerNoActiveSignOutGateway
+import com.journeycontinuity.app.auth.SupabaseAccountLocalSession
+import com.journeycontinuity.app.auth.TravellerNoActiveSignOutGateway
 import com.journeycontinuity.app.auth.AndroidOwnerAdoptionSnapshotReader
 import com.journeycontinuity.app.auth.FirstOwnerAdoptionBoundary
 import com.journeycontinuity.app.auth.ReturningTravellerLoginEngine
@@ -237,6 +240,9 @@ class JourneyContinuityApplication : Application() {
                     identityCoordinator = identityCoordinator,
                     account = com.journeycontinuity.app.auth.SupabaseTravellerAccountGateway(
                         client, identityCoordinator),
+                    noActiveSignOut = GuardedTravellerNoActiveSignOutGateway(
+                        journeyRepository, identityCoordinator, identityStore, authBackend,
+                        ownerAdmissionGate, SupabaseAccountLocalSession(client)),
                     sync = SupabaseCloudSyncGateway(client, identityCoordinator, logger),
                     heartbeat = SupabaseHeartbeatGateway(client, identityCoordinator, logger),
                     trustedContacts = SupabaseTrustedContactGateway(
@@ -318,6 +324,9 @@ class JourneyContinuityApplication : Application() {
     val travellerAccountGateway: com.journeycontinuity.app.auth.TravellerAccountGateway
         get() = cloudGateways.account
 
+    val travellerNoActiveSignOutGateway: TravellerNoActiveSignOutGateway?
+        get() = cloudGateways.noActiveSignOut
+
     val returningLoginEngine: ReturningTravellerLoginEngine?
         get() = cloudGateways.returningLogin
 
@@ -393,6 +402,7 @@ class JourneyContinuityApplication : Application() {
         val accountEmail: () -> String? = { null },
         val identityCoordinator: TravellerIdentityCoordinator?,
         val account: com.journeycontinuity.app.auth.TravellerAccountGateway,
+        val noActiveSignOut: TravellerNoActiveSignOutGateway? = null,
         val sync: CloudSyncGateway,
         val heartbeat: HeartbeatGateway,
         val trustedContacts: TrustedContactGateway,

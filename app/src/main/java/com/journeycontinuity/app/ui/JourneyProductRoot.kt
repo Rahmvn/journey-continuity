@@ -116,6 +116,8 @@ fun JourneyProductRoot(
     onRefreshSmsFallback: () -> Unit = {},
     accountViewModel: TravellerAccountViewModel? = null,
     onSignOutRequested: () -> Unit = {},
+    onConfirmSignOutRequested: () -> Unit = {},
+    onCancelSignOutRequested: () -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val accountState = accountViewModel?.state?.collectAsStateWithLifecycle()?.value
@@ -292,7 +294,10 @@ fun JourneyProductRoot(
             loadError = "Account profile is unavailable. Try again.",
         )
         ModalBottomSheet(
-            onDismissRequest = { if (!presentedState.saving) accountOpen = false },
+            onDismissRequest = { if (!presentedState.saving &&
+                presentedState.signOutStatus != AccountSignOutStatus.CHECKING &&
+                presentedState.signOutStatus != AccountSignOutStatus.CONFIRMING &&
+                presentedState.signOutStatus != AccountSignOutStatus.SIGNING_OUT) accountOpen = false },
             modifier = Modifier.testTag("account_sheet"),
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
             containerColor = Color(0xFFFEFEFC),
@@ -302,7 +307,9 @@ fun JourneyProductRoot(
         ) {
             TravellerAccountSheet(
                 state = presentedState,
-                onClose = { accountOpen = false },
+                onClose = { if (presentedState.signOutStatus != AccountSignOutStatus.CHECKING &&
+                    presentedState.signOutStatus != AccountSignOutStatus.CONFIRMING &&
+                    presentedState.signOutStatus != AccountSignOutStatus.SIGNING_OUT) accountOpen = false },
                 onEdit = { accountViewModel?.openEdit() },
                 onRetry = { accountViewModel?.load() },
                 onSignOutRequested = onSignOutRequested,
@@ -315,6 +322,14 @@ fun JourneyProductRoot(
                 onHandleChange = { accountViewModel?.updateHandle(it) },
                 onSave = { accountViewModel?.save() },
                 onCancel = { accountViewModel?.cancelEdit() },
+            )
+        }
+        if (presentedState.signOutStatus == AccountSignOutStatus.CONFIRMING ||
+            presentedState.signOutStatus == AccountSignOutStatus.SIGNING_OUT) {
+            TravellerNoActiveSignOutConfirmation(
+                signingOut = presentedState.signOutStatus == AccountSignOutStatus.SIGNING_OUT,
+                onConfirm = onConfirmSignOutRequested,
+                onStaySignedIn = onCancelSignOutRequested,
             )
         }
     }

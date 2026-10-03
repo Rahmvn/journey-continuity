@@ -56,6 +56,19 @@ class TravellerRootViewModelTest {
         assertEquals(0, auth.establishCalls)
     }
 
+    @Test fun reassessmentAfterBoundOwnerSignOutRoutesToSameOwnerRecovery() = rootTest {
+        val auth = FakeAuth().apply { resolved = authenticated(a) }
+        val root = newRoot(auth, FakeIntro(true))
+        advanceUntilIdle()
+        assertEquals(TravellerRootRoute.ADMITTED_EXISTING, root.state.value.route)
+        auth.resolved = TravellerAuthOutcome.TravellerIdentityRecoveryRequired
+        root.assessStartup()
+        advanceUntilIdle()
+        assertEquals(TravellerRootRoute.RECOVERY, root.state.value.route)
+        assertTrue(root.state.value.recoveryLoginAllowed)
+        assertEquals(0, auth.establishCalls)
+    }
+
     @Test fun openingCreateAndEditingHandleStayOwnerless() = rootTest {
         val auth = FakeAuth()
         val root = newRoot(auth, FakeIntro(true))

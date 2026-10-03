@@ -8,6 +8,8 @@ import com.journeycontinuity.app.auth.TravellerAccountOwnerException
 import com.journeycontinuity.app.auth.TravellerAccountProfile
 import com.journeycontinuity.app.auth.TravellerAccountUnavailableException
 import com.journeycontinuity.app.auth.TravellerHandleUnavailableException
+import com.journeycontinuity.app.auth.NoActiveSignOutResult
+import com.journeycontinuity.app.auth.TravellerNoActiveSignOutGateway
 import com.journeycontinuity.app.auth.TravellerProfileIdentityInput
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -18,6 +20,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 enum class AccountHandleStatus { IDLE, CHECKING, AVAILABLE, UNAVAILABLE, INVALID, UNKNOWN }
+enum class AccountSignOutStatus { IDLE, CHECKING, CONFIRMING, SIGNING_OUT, FAILURE, SIGNED_OUT }
 
 data class TravellerAccountState(
     val loading: Boolean = false,
@@ -30,13 +33,86 @@ data class TravellerAccountState(
     val saving: Boolean = false,
     val nameError: String? = null,
     val saveError: String? = null,
+    val signOutStatus: AccountSignOutStatus = AccountSignOutStatus.IDLE,
+    val signOutError: String? = null,
 )
 
-class TravellerAccountViewModel(private val gateway: TravellerAccountGateway) : ViewModel() {
+class TravellerAccountViewModel(
+    private val gateway: TravellerAccountGateway,
+    private val noActiveSignOut: TravellerNoActiveSignOutGateway? = null,
+) : ViewModel() {
     private val mutableState = MutableStateFlow(TravellerAccountState())
     val state: StateFlow<TravellerAccountState> = mutableState
     private var handleJob: Job? = null
     private var handleGeneration = 0L
+
+    fun requestNoActiveSignOut(ready: Boolean) {
+        val current = state.value
+        if (current.signOutStatus == AccountSignOutStatus.CHECKING ||
+            current.signOutStatus == AccountSignOutStatus.SIGNING_OUT ||
+            current.signOutStatus == AccountSignOutStatus.CONFIRMING || current.editOpen) return
+        if (!ready || current.profile == null || noActiveSignOut == null) {
+            signOutFailure("Sign out is unavailable until Journey and Account state are ready.")
+            return
+        }
+        mutableState.update { it.copy(signOutStatus = AccountSignOutStatus.CHECKING, signOutError = null) }
+        viewModelScope.launch {
+            try {
+                if (noActiveSignOut.hasNoActiveJourney()) {
+                    mutableState.update { it.copy(signOutStatus = AccountSignOutStatus.CONFIRMING) }
+                } else signOutFailure("A Journey is active. Keep monitoring; sign out is unavailable here.")
+            } catch (error: Throwable) {
+                if (error is CancellationException) throw error
+                signOutFailure("Could not verify Journey state. Try again.")
+            }
+        }
+    }
+
+    fun cancelNoActiveSignOut() {
+        if (state.value.signOutStatus != AccountSignOutStatus.CONFIRMING) return
+        mutableState.update { it.copy(signOutStatus = AccountSignOutStatus.IDLE, signOutError = null) }
+    }
+
+    fun confirmNoActiveSignOut(ready: Boolean, onSignedOut: () -> Unit) {
+        val current = state.value
+        if (current.signOutStatus != AccountSignOutStatus.CONFIRMING) return
+        if (!ready) {
+            signOutFailure("Journey state changed. Keep monitoring and try again later.")
+            return
+        }
+        val ownerId = current.profile?.ownerId ?: return signOutFailure(
+            "Verified Traveller identity is required to sign out.")
+        val signOut = noActiveSignOut ?: return signOutFailure("Sign out is unavailable. Try again.")
+        mutableState.update { it.copy(signOutStatus = AccountSignOutStatus.SIGNING_OUT, signOutError = null) }
+        viewModelScope.launch {
+            val result = try {
+                signOut.signOut(ownerId)
+            } catch (error: Throwable) {
+                if (error is CancellationException) throw error
+                NoActiveSignOutResult.Failed
+            }
+            when (result) {
+                NoActiveSignOutResult.SignedOut -> {
+                    mutableState.update { it.copy(signOutStatus = AccountSignOutStatus.SIGNED_OUT) }
+                    onSignedOut()
+                }
+                NoActiveSignOutResult.ActiveJourney -> signOutFailure(
+                    "A Journey is active. Keep monitoring; sign out is unavailable here.")
+                NoActiveSignOutResult.AuthenticationRequired -> signOutFailure(
+                    "The installation owner session could not be verified. Sign out was not attempted.")
+                NoActiveSignOutResult.AuthenticationReassessmentRequired -> {
+                    mutableState.update { it.copy(signOutStatus = AccountSignOutStatus.IDLE, signOutError = null) }
+                    onSignedOut()
+                }
+                NoActiveSignOutResult.Failed -> signOutFailure(
+                    "Sign out could not be confirmed. Check your connection and try again.")
+            }
+        }
+    }
+
+    private fun signOutFailure(message: String) {
+        mutableState.update { it.copy(signOutStatus = AccountSignOutStatus.FAILURE, signOutError = message) }
+    }
 
     fun load() {
         if (state.value.loading || state.value.saving) return
@@ -147,7 +223,11 @@ class TravellerAccountViewModel(private val gateway: TravellerAccountGateway) : 
     }
 }
 
-class TravellerAccountViewModelFactory(private val gateway: TravellerAccountGateway) : ViewModelProvider.Factory {
+class TravellerAccountViewModelFactory(
+    private val gateway: TravellerAccountGateway,
+    private val noActiveSignOut: TravellerNoActiveSignOutGateway? = null,
+) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
-    override fun <T : ViewModel> create(modelClass: Class<T>): T = TravellerAccountViewModel(gateway) as T
+    override fun <T : ViewModel> create(modelClass: Class<T>): T =
+        TravellerAccountViewModel(gateway, noActiveSignOut) as T
 }

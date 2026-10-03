@@ -5,6 +5,9 @@ import com.journeycontinuity.app.auth.TravellerAccountOwnerException
 import com.journeycontinuity.app.auth.TravellerAccountProfile
 import com.journeycontinuity.app.auth.TravellerAccountUnavailableException
 import com.journeycontinuity.app.auth.TravellerHandleUnavailableException
+import com.journeycontinuity.app.auth.NoActiveSignOutResult
+import com.journeycontinuity.app.auth.TravellerNoActiveSignOutGateway
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -169,6 +172,153 @@ class TravellerAccountViewModelTest {
         advanceUntilIdle()
         assertEquals(profile, account.state.value.profile)
         assertTrue(account.state.value.editOpen)
+    }
+
+    @Test fun noActiveSignOutOpensConfirmationAndStaySignedInDoesNothing() = accountTest {
+        val signOut = FakeSignOut()
+        val account = TravellerAccountViewModel(FakeGateway(profile), signOut)
+        account.load()
+        advanceUntilIdle()
+        account.requestNoActiveSignOut(ready = true)
+        advanceUntilIdle()
+        assertEquals(AccountSignOutStatus.CONFIRMING, account.state.value.signOutStatus)
+        assertEquals(1, signOut.checks)
+        account.cancelNoActiveSignOut()
+        assertEquals(AccountSignOutStatus.IDLE, account.state.value.signOutStatus)
+        assertEquals(0, signOut.calls)
+    }
+
+    @Test fun confirmationRechecksAndReassessesRootOnlyAfterSuccess() = accountTest {
+        val signOut = FakeSignOut()
+        val account = TravellerAccountViewModel(FakeGateway(profile), signOut)
+        account.load()
+        advanceUntilIdle()
+        account.requestNoActiveSignOut(true)
+        advanceUntilIdle()
+        var rootAssessments = 0
+        account.confirmNoActiveSignOut(true) { rootAssessments++ }
+        advanceUntilIdle()
+        assertEquals(owner, signOut.lastOwner)
+        assertEquals(1, signOut.calls)
+        assertEquals(1, rootAssessments)
+        assertEquals(AccountSignOutStatus.SIGNED_OUT, account.state.value.signOutStatus)
+    }
+
+    @Test fun pendingStartOrRestorationAtConfirmationFailsClosed() = accountTest {
+        val signOut = FakeSignOut()
+        val account = TravellerAccountViewModel(FakeGateway(profile), signOut)
+        account.load()
+        advanceUntilIdle()
+        account.requestNoActiveSignOut(true)
+        advanceUntilIdle()
+        account.confirmNoActiveSignOut(false) { error("Must not reassess") }
+        assertEquals(AccountSignOutStatus.FAILURE, account.state.value.signOutStatus)
+        assertEquals(0, signOut.calls)
+        assertNotNull(account.state.value.signOutError)
+    }
+
+    @Test fun activeJourneyAtOpenOrAtConfirmationNeverCallsLocalSignOut() = accountTest {
+        val signOut = FakeSignOut().apply { noActive = false }
+        val account = TravellerAccountViewModel(FakeGateway(profile), signOut)
+        account.load()
+        advanceUntilIdle()
+        account.requestNoActiveSignOut(true)
+        advanceUntilIdle()
+        assertEquals(AccountSignOutStatus.FAILURE, account.state.value.signOutStatus)
+        signOut.noActive = true
+        account.requestNoActiveSignOut(true)
+        advanceUntilIdle()
+        signOut.result = NoActiveSignOutResult.ActiveJourney
+        account.confirmNoActiveSignOut(true) { error("Must not reassess") }
+        advanceUntilIdle()
+        assertEquals(AccountSignOutStatus.FAILURE, account.state.value.signOutStatus)
+        assertEquals(1, signOut.calls)
+        assertTrue(account.state.value.signOutError!!.contains("Journey is active"))
+    }
+
+    @Test fun signOutFailureStaysInAccountAndDoesNotReassessRoot() = accountTest {
+        val signOut = FakeSignOut().apply { result = NoActiveSignOutResult.Failed }
+        val account = TravellerAccountViewModel(FakeGateway(profile), signOut)
+        account.load()
+        advanceUntilIdle()
+        account.requestNoActiveSignOut(true)
+        advanceUntilIdle()
+        account.confirmNoActiveSignOut(true) { error("Must not reassess") }
+        advanceUntilIdle()
+        assertEquals(AccountSignOutStatus.FAILURE, account.state.value.signOutStatus)
+        assertEquals(profile, account.state.value.profile)
+        assertNotNull(account.state.value.signOutError)
+        assertEquals(1, signOut.calls)
+    }
+
+    @Test fun locallySignedOutResultReassessesRootWithoutAnErrorOrSecondCall() = accountTest {
+        val signOut = FakeSignOut()
+        val account = TravellerAccountViewModel(FakeGateway(profile), signOut)
+        account.load()
+        advanceUntilIdle()
+        account.requestNoActiveSignOut(true)
+        advanceUntilIdle()
+        var rootAssessments = 0
+        account.confirmNoActiveSignOut(true) { rootAssessments++ }
+        advanceUntilIdle()
+        assertEquals(1, rootAssessments)
+        assertEquals(1, signOut.calls)
+        assertEquals(AccountSignOutStatus.SIGNED_OUT, account.state.value.signOutStatus)
+        assertNull(account.state.value.signOutError)
+    }
+
+    @Test fun uncertainSessionReassessesRootWithoutClaimingSignOutOrShowingError() = accountTest {
+        val signOut = FakeSignOut().apply {
+            result = NoActiveSignOutResult.AuthenticationReassessmentRequired
+        }
+        val account = TravellerAccountViewModel(FakeGateway(profile), signOut)
+        account.load()
+        advanceUntilIdle()
+        account.requestNoActiveSignOut(true)
+        advanceUntilIdle()
+        var rootAssessments = 0
+        account.confirmNoActiveSignOut(true) { rootAssessments++ }
+        advanceUntilIdle()
+        assertEquals(1, rootAssessments)
+        assertEquals(1, signOut.calls)
+        assertEquals(AccountSignOutStatus.IDLE, account.state.value.signOutStatus)
+        assertNull(account.state.value.signOutError)
+    }
+
+    @Test fun duplicateConfirmationCannotIssueSecondSignOut() = accountTest {
+        val signOut = FakeSignOut().apply { release = CompletableDeferred() }
+        val account = TravellerAccountViewModel(FakeGateway(profile), signOut)
+        account.load()
+        advanceUntilIdle()
+        account.requestNoActiveSignOut(true)
+        advanceUntilIdle()
+        account.confirmNoActiveSignOut(true) {}
+        account.confirmNoActiveSignOut(true) {}
+        advanceUntilIdle()
+        assertEquals(AccountSignOutStatus.SIGNING_OUT, account.state.value.signOutStatus)
+        assertEquals(1, signOut.calls)
+        signOut.release!!.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(1, signOut.calls)
+    }
+
+    private class FakeSignOut : TravellerNoActiveSignOutGateway {
+        var noActive = true
+        var checks = 0
+        var calls = 0
+        var lastOwner: String? = null
+        var result: NoActiveSignOutResult = NoActiveSignOutResult.SignedOut
+        var release: CompletableDeferred<Unit>? = null
+        override suspend fun hasNoActiveJourney(): Boolean {
+            checks++
+            return noActive
+        }
+        override suspend fun signOut(expectedOwnerId: String): NoActiveSignOutResult {
+            calls++
+            lastOwner = expectedOwnerId
+            release?.await()
+            return result
+        }
     }
 
     private class FakeGateway(var profile: TravellerAccountProfile) : TravellerAccountGateway {

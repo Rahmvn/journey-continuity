@@ -40,6 +40,7 @@ import androidx.compose.ui.window.DialogProperties
 
 private val AccountBrand = Color(0xFF1B3250)
 private val AccountHeading = Color(0xFF141A1F)
+private val AccountInk = Color(0xFF161B20)
 private val AccountBody = Color(0xFF636B73)
 private val AccountBorder = Color(0xFFDFE2E0)
 private val AccountError = Color(0xFF992E2E)
@@ -61,7 +62,7 @@ internal fun TravellerAccountSheet(
         Spacer(Modifier.height(14.dp))
         Row(Modifier.fillMaxWidth().height(40.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("Account", color = AccountHeading, style = accountStyle(22, 27, FontWeight.Bold))
+            Text("Account", color = AccountInk, style = accountStyle(22, 27, FontWeight.Bold))
             Box(Modifier.size(32.dp).clickable(role = Role.Button, onClick = onClose)
                 .testTag("account_close").semantics { contentDescription = "Close Account" },
                 contentAlignment = Alignment.Center) {
@@ -74,24 +75,24 @@ internal fun TravellerAccountSheet(
             Row(Modifier.fillMaxWidth().height(78.dp), verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween) {
                 Column(Modifier.weight(1f)) {
-                    Text("Full name", color = AccountBody, style = accountStyle(11, 14))
-                    Spacer(Modifier.height(4.dp))
+                    Text("Full name", color = AccountBody, style = accountStyle(13, 18))
+                    Spacer(Modifier.height(2.dp))
                     Text(profile.fullName, color = AccountHeading,
-                        style = accountStyle(15, 20, FontWeight.Medium), maxLines = 1)
-                    Spacer(Modifier.height(3.dp))
-                    Text("@${profile.handle}", color = AccountBody, style = accountStyle(12, 16),
+                        style = accountStyle(16, 22, FontWeight.Medium), maxLines = 1)
+                    Spacer(Modifier.height(2.dp))
+                    Text("@${profile.handle}", color = AccountBody, style = accountStyle(14, 20),
                         maxLines = 1)
                 }
                 Text("Edit", Modifier.clickable(role = Role.Button, onClick = onEdit)
                     .padding(start = 12.dp, top = 12.dp, bottom = 12.dp).testTag("account_edit"),
-                    color = AccountBrand, style = accountStyle(12, 15, FontWeight.Medium))
+                    color = AccountBrand, style = accountStyle(14, 20, FontWeight.Medium))
             }
             Column {
                 Text("Verified email", color = Color(0xFF676F74),
-                    style = accountStyle(13, 17, FontWeight.Medium))
+                    style = accountStyle(15, 21, FontWeight.Medium))
                 Spacer(Modifier.height(5.dp))
                 Text(profile.verifiedEmail, Modifier.testTag("account_verified_email"),
-                    color = AccountHeading, style = accountStyle(16, 21, FontWeight.Medium),
+                    color = AccountInk, style = accountStyle(16, 21, FontWeight.Medium),
                     maxLines = 1)
             }
         } else {
@@ -109,11 +110,17 @@ internal fun TravellerAccountSheet(
         Spacer(Modifier.height(18.dp))
         Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0xFFDFE3E2)))
         Spacer(Modifier.weight(1f))
+        if (state.signOutError != null) {
+            Text(state.signOutError, Modifier.fillMaxWidth().testTag("account_sign_out_error"),
+                color = AccountError, style = accountStyle(13, 18))
+        }
         Box(Modifier.fillMaxWidth().height(48.dp)
-            .clickable(role = Role.Button, onClick = onSignOutRequested)
+            .clickable(enabled = state.signOutStatus != AccountSignOutStatus.CHECKING &&
+                state.signOutStatus != AccountSignOutStatus.SIGNING_OUT,
+                role = Role.Button, onClick = onSignOutRequested)
             .testTag("account_sign_out"), contentAlignment = Alignment.Center) {
             Text("Sign out", color = AccountError,
-                style = accountStyle(15, 19, FontWeight.Medium))
+                style = accountStyle(16, 22, FontWeight.Medium))
         }
     }
 }
@@ -146,7 +153,7 @@ internal fun TravellerEditIdentityOverlay(
             }
             Spacer(Modifier.height(20.dp))
             Text("Full name", color = AccountHeading,
-                style = accountStyle(11, 15, FontWeight.Medium))
+                style = accountStyle(13, 18, FontWeight.Medium))
             Spacer(Modifier.height(7.dp))
             AccountInput(state.fullNameInput, onNameChange, "account_full_name_input",
                 !state.saving, KeyboardOptions(capitalization = KeyboardCapitalization.Words))
@@ -156,7 +163,7 @@ internal fun TravellerEditIdentityOverlay(
             }
             Spacer(Modifier.height(14.dp))
             Text("Alabarin handle", color = AccountHeading,
-                style = accountStyle(11, 15, FontWeight.Medium))
+                style = accountStyle(13, 18, FontWeight.Medium))
             Spacer(Modifier.height(7.dp))
             AccountInput(state.handleInput, onHandleChange, "account_handle_input", !state.saving)
             Spacer(Modifier.height(8.dp))
@@ -164,7 +171,7 @@ internal fun TravellerEditIdentityOverlay(
                 Modifier.fillMaxWidth().height(34.dp).testTag("account_handle_feedback"),
                 color = if (state.handleStatus == AccountHandleStatus.UNAVAILABLE ||
                     state.handleStatus == AccountHandleStatus.INVALID) AccountError else AccountBody,
-                style = accountStyle(11, 15))
+                style = accountStyle(13, 18))
             if (state.saveError != null) {
                 Text(state.saveError, Modifier.padding(top = 4.dp).testTag("account_save_error"),
                     color = AccountError, style = accountStyle(11, 15))
@@ -174,7 +181,7 @@ internal fun TravellerEditIdentityOverlay(
                 .background(AccountBrand).clickable(enabled = !state.saving, role = Role.Button,
                     onClick = onSave).testTag("account_save"), contentAlignment = Alignment.Center) {
                 Text(if (state.saving) "Saving…" else "Save changes", color = Color.White,
-                    style = accountStyle(13, 18, FontWeight.Medium))
+                    style = accountStyle(15, 21, FontWeight.Medium))
             }
             Spacer(Modifier.height(10.dp))
             Box(Modifier.fillMaxWidth().height(44.dp).clip(RoundedCornerShape(9.dp))
@@ -182,7 +189,7 @@ internal fun TravellerEditIdentityOverlay(
                 .clickable(enabled = !state.saving, role = Role.Button, onClick = onCancel)
                 .testTag("account_cancel"), contentAlignment = Alignment.Center) {
                 Text("Cancel", color = AccountBrand,
-                    style = accountStyle(12, 16, FontWeight.Medium))
+                    style = accountStyle(14, 20, FontWeight.Medium))
             }
         }
     }
@@ -193,7 +200,7 @@ private fun AccountInput(value: String, onChange: (String) -> Unit, tag: String,
     enabled: Boolean, keyboardOptions: KeyboardOptions = KeyboardOptions.Default) {
     BasicTextField(value = value, onValueChange = onChange, enabled = enabled, singleLine = true,
         keyboardOptions = keyboardOptions, cursorBrush = SolidColor(AccountBrand),
-        textStyle = accountStyle(13, 18).copy(color = AccountHeading),
+        textStyle = accountStyle(15, 21).copy(color = AccountHeading),
         modifier = Modifier.fillMaxWidth().height(54.dp).testTag(tag),
         decorationBox = { inner ->
             Box(Modifier.fillMaxWidth().height(54.dp).clip(RoundedCornerShape(9.dp))

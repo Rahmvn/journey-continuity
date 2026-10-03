@@ -31,6 +31,7 @@ import com.journeycontinuity.app.ui.TravellerRootViewModel
 import com.journeycontinuity.app.ui.TravellerRootViewModelFactory
 import com.journeycontinuity.app.ui.TravellerAccountViewModel
 import com.journeycontinuity.app.ui.TravellerAccountViewModelFactory
+import com.journeycontinuity.app.ui.AccountSignOutStatus
 import com.journeycontinuity.app.ui.LocationUiState
 import com.journeycontinuity.app.ui.theme.JourneyContinuityTheme
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -68,7 +69,8 @@ class MainActivity : ComponentActivity() {
         refreshSmsFallbackState()
     }
     private val accountViewModel by viewModels<TravellerAccountViewModel> {
-        TravellerAccountViewModelFactory(app.travellerAccountGateway)
+        TravellerAccountViewModelFactory(app.travellerAccountGateway,
+            app.travellerNoActiveSignOutGateway)
     }
 
     private val locationPermissionLauncher = registerForActivityResult(
@@ -145,6 +147,14 @@ class MainActivity : ComponentActivity() {
                         onSelectSmsSubscription = ::selectSmsFallbackSubscription,
                         onRefreshSmsFallback = ::refreshSmsFallbackState,
                         accountViewModel = accountViewModel,
+                        onSignOutRequested = {
+                            accountViewModel.requestNoActiveSignOut(noActiveSignOutReady())
+                        },
+                        onConfirmSignOutRequested = {
+                            accountViewModel.confirmNoActiveSignOut(noActiveSignOutReady(),
+                                rootViewModel::assessStartup)
+                        },
+                        onCancelSignOutRequested = accountViewModel::cancelNoActiveSignOut,
                     )
                 }
             }
@@ -167,12 +177,14 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun startAfterPrerequisites(destination: String, eta: Long) {
+        if (signOutBlocksJourneyStart()) return
         if (!journeyViewModel.validateStart(destination, eta)) return
         pendingStart = destination to eta
         continuePendingStart()
     }
 
     private fun continuePendingStart() {
+        if (signOutBlocksJourneyStart()) return
         if (pendingStart == null) return
         refreshPrerequisiteState()
         if (locationUiState.access == ForegroundLocationAccess.NONE) {
@@ -202,6 +214,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun beginPendingJourney() {
+        if (signOutBlocksJourneyStart()) return
         val (destination, eta) = pendingStart ?: return
         pendingStart = null
         journeyViewModel.startJourney(destination, eta)
@@ -287,4 +300,11 @@ class MainActivity : ComponentActivity() {
     private fun isAdmitted(): Boolean = rootViewModel.state.value.route ==
         TravellerRootRoute.ADMITTED_EXISTING || rootViewModel.state.value.route ==
         TravellerRootRoute.ADMITTED_NEW
+
+    private fun noActiveSignOutReady(): Boolean = isAdmitted() && pendingStart == null &&
+        !journeyViewModel.uiState.value.isRestoring &&
+        !journeyViewModel.uiState.value.isActionInProgress
+
+    private fun signOutBlocksJourneyStart(): Boolean = !isAdmitted() ||
+        accountViewModel.state.value.signOutStatus == AccountSignOutStatus.SIGNING_OUT
 }
