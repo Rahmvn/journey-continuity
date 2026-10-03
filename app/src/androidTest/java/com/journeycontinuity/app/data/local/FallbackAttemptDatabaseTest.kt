@@ -239,6 +239,7 @@ class FallbackAttemptDatabaseTest {
         assertEquals(FallbackTransportState.SUPERSEDED,
             database.fallbackAttemptDao().getByLocalAttemptId(attempt.localAttemptId)!!.transportState)
         assertEquals(0, database.fallbackAttemptDao().claimForHandoff(attempt.localAttemptId, 2_001))
+        assertEquals(0, database.fallbackAttemptDao().countUnsentForJourney(JOURNEY_ID))
         assertNull(database.fallbackAttemptDao().getNextReadyAttempt(JOURNEY_ID, 2_001))
         assertFalse(database.degradedConnectivityDao().get(JOURNEY_ID)!!.journeyActive)
         assertEquals(FallbackDisposition.INACTIVE,

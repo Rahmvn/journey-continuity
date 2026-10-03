@@ -7,6 +7,10 @@ import com.journeycontinuity.app.auth.TravellerAccountUnavailableException
 import com.journeycontinuity.app.auth.TravellerHandleUnavailableException
 import com.journeycontinuity.app.auth.NoActiveSignOutResult
 import com.journeycontinuity.app.auth.TravellerNoActiveSignOutGateway
+import com.journeycontinuity.app.auth.ActiveJourneySignOutResult
+import com.journeycontinuity.app.auth.TravellerActiveJourneySignOutGateway
+import com.journeycontinuity.app.domain.Journey
+import com.journeycontinuity.app.domain.JourneyStatus
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -27,6 +31,9 @@ import org.junit.Test
 class TravellerAccountViewModelTest {
     private val owner = "11111111-1111-4111-8111-111111111111"
     private val profile = TravellerAccountProfile(owner, "Ada Owner", "ada_owner", "ada@example.com")
+    private val activeJourney = Journey("journey-a", "Ilorin", 8_000L, 1_000L,
+        JourneyStatus.ACTIVE, null)
+    private val stoppedJourney = activeJourney.copy(status = JourneyStatus.CANCELLED, endedAt = 5_000L)
 
     private fun accountTest(block: suspend TestScope.() -> Unit) = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
@@ -300,6 +307,135 @@ class TravellerAccountViewModelTest {
         signOut.release!!.complete(Unit)
         advanceUntilIdle()
         assertEquals(1, signOut.calls)
+    }
+
+    @Test fun activeAccountSignOutOpensActiveConfirmationAndKeepMonitoringDoesNothing() = accountTest {
+        val noActive = FakeSignOut()
+        val active = FakeActiveSignOut()
+        val account = TravellerAccountViewModel(FakeGateway(profile), noActive, active)
+        account.load()
+        advanceUntilIdle()
+        account.requestSignOut(true, activeJourney.id)
+        assertEquals(AccountSignOutStatus.CONFIRMING_ACTIVE, account.state.value.signOutStatus)
+        assertEquals(activeJourney.id, account.state.value.activeSignOutJourneyId)
+        assertEquals(0, noActive.checks)
+        account.cancelActiveSignOut()
+        assertEquals(AccountSignOutStatus.IDLE, account.state.value.signOutStatus)
+        assertEquals(0, active.stopCalls)
+        assertEquals(0, active.retryCalls)
+    }
+
+    @Test fun activeConfirmationRequiresReadinessAndGuardsDoubleTap() = accountTest {
+        val active = FakeActiveSignOut().apply { release = CompletableDeferred() }
+        val account = TravellerAccountViewModel(FakeGateway(profile), null, active)
+        account.load()
+        advanceUntilIdle()
+        account.requestSignOut(true, activeJourney.id)
+        account.confirmActiveSignOut(false)
+        assertEquals(AccountSignOutStatus.FAILURE, account.state.value.signOutStatus)
+        assertEquals(0, active.stopCalls)
+        account.requestSignOut(true, activeJourney.id)
+        account.confirmActiveSignOut(true)
+        account.confirmActiveSignOut(true)
+        advanceUntilIdle()
+        assertEquals(1, active.stopCalls)
+        assertEquals(AccountSignOutStatus.STOPPING_ACTIVE, account.state.value.signOutStatus)
+        active.release!!.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(1, active.stopCalls)
+    }
+
+    @Test fun activeResultUsesDurableJourneyAndDoneThenReassessesRoot() = accountTest {
+        val active = FakeActiveSignOut()
+        val account = TravellerAccountViewModel(FakeGateway(profile), null, active)
+        account.load()
+        advanceUntilIdle()
+        account.requestSignOut(true, activeJourney.id)
+        account.confirmActiveSignOut(true)
+        advanceUntilIdle()
+        assertEquals(stoppedJourney, account.state.value.monitoringStoppedJourney)
+        assertTrue(account.state.value.monitoringStoppedSignedOut)
+        assertEquals(AccountSignOutStatus.MONITORING_STOPPED_RESULT,
+            account.state.value.signOutStatus)
+        var reassessments = 0
+        account.doneWithMonitoringStopped { reassessments++ }
+        advanceUntilIdle()
+        assertEquals(1, active.completeCalls)
+        assertEquals(1, reassessments)
+        assertNull(account.state.value.monitoringStoppedJourney)
+    }
+
+    @Test fun terminalAuthFailureRetriesOnlySignOutAndResultSurvivesViewModelRecreation() = accountTest {
+        val active = FakeActiveSignOut().apply {
+            stopResult = ActiveJourneySignOutResult.SignOutRetryRequired(stoppedJourney)
+            retryResult = ActiveJourneySignOutResult.SignedOut(stoppedJourney)
+        }
+        val account = TravellerAccountViewModel(FakeGateway(profile), null, active)
+        account.load()
+        advanceUntilIdle()
+        account.requestSignOut(true, activeJourney.id)
+        account.confirmActiveSignOut(true)
+        advanceUntilIdle()
+        assertEquals(stoppedJourney, account.state.value.monitoringStoppedJourney)
+        assertFalse(account.state.value.monitoringStoppedSignedOut)
+        active.restoreResult = ActiveJourneySignOutResult.SignOutRetryRequired(stoppedJourney)
+        val recreated = TravellerAccountViewModel(FakeGateway(profile), null, active)
+        advanceUntilIdle()
+        assertEquals(stoppedJourney, recreated.state.value.monitoringStoppedJourney)
+        recreated.retryTerminalSignOut()
+        advanceUntilIdle()
+        assertTrue(recreated.state.value.monitoringStoppedSignedOut)
+        assertEquals(1, active.stopCalls)
+        assertEquals(1, active.retryCalls)
+    }
+
+    @Test fun reconciledTerminalRowCanSurfaceResultWithoutRepeatingStop() = accountTest {
+        val active = FakeActiveSignOut().apply {
+            stopResult = ActiveJourneySignOutResult.LocalPersistenceFailed
+        }
+        val account = TravellerAccountViewModel(FakeGateway(profile), null, active)
+        account.load()
+        advanceUntilIdle()
+        account.requestSignOut(true, activeJourney.id)
+        account.confirmActiveSignOut(true)
+        advanceUntilIdle()
+        assertEquals(AccountSignOutStatus.FAILURE, account.state.value.signOutStatus)
+        active.restoreResult = ActiveJourneySignOutResult.SignedOut(stoppedJourney)
+        account.refreshMonitoringStoppedResult()
+        advanceUntilIdle()
+        assertEquals(stoppedJourney, account.state.value.monitoringStoppedJourney)
+        assertTrue(account.state.value.monitoringStoppedSignedOut)
+        assertEquals(1, active.stopCalls)
+        assertEquals(0, active.retryCalls)
+    }
+
+    private inner class FakeActiveSignOut : TravellerActiveJourneySignOutGateway {
+        var stopCalls = 0
+        var retryCalls = 0
+        var completeCalls = 0
+        var release: CompletableDeferred<Unit>? = null
+        var stopResult: ActiveJourneySignOutResult = ActiveJourneySignOutResult.SignedOut(stoppedJourney)
+        var retryResult: ActiveJourneySignOutResult = ActiveJourneySignOutResult.SignedOut(stoppedJourney)
+        var restoreResult: ActiveJourneySignOutResult? = null
+        override suspend fun confirmAndSignOut(journeyId: String,
+            expectedOwnerId: String): ActiveJourneySignOutResult {
+            stopCalls++
+            assertEquals(activeJourney.id, journeyId)
+            assertEquals(owner, expectedOwnerId)
+            release?.await()
+            return stopResult
+        }
+        override suspend fun restorePendingResult(): ActiveJourneySignOutResult? = restoreResult
+        override suspend fun retryTerminalSignOut(journeyId: String): ActiveJourneySignOutResult {
+            retryCalls++
+            assertEquals(stoppedJourney.id, journeyId)
+            return retryResult
+        }
+        override suspend fun completeResult(journeyId: String): Boolean {
+            completeCalls++
+            assertEquals(stoppedJourney.id, journeyId)
+            return true
+        }
     }
 
     private class FakeSignOut : TravellerNoActiveSignOutGateway {

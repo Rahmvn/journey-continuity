@@ -10,6 +10,10 @@ import com.journeycontinuity.app.degraded.FallbackTransportOutcome
 
 @Dao
 interface FallbackAttemptDao {
+    @Query("""SELECT COUNT(*) FROM fallback_attempts WHERE journeyId = :journeyId
+        AND transportState IN ('ALLOCATED', 'RETRY_PENDING')""")
+    suspend fun countUnsentForJourney(journeyId: String): Int
+
     @Query("SELECT * FROM fallback_attempts WHERE localAttemptId = :localAttemptId LIMIT 1")
     suspend fun getByLocalAttemptId(localAttemptId: Long): FallbackAttemptEntity?
 

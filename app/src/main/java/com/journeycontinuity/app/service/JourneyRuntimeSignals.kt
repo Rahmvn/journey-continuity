@@ -14,9 +14,13 @@ internal class JourneyRuntimeSignals {
     private var generation = 0L
     private var currentJourneyId: String? = null
     private val _monitoringJourneyId = MutableStateFlow<String?>(null)
+    private val _activeRuntimeJourneyId = MutableStateFlow<String?>(null)
+    private val _serviceRunning = MutableStateFlow(false)
     private val _currentConnectivity = MutableStateFlow<CurrentJourneyConnectivity?>(null)
 
     val monitoringJourneyId: StateFlow<String?> = _monitoringJourneyId.asStateFlow()
+    val activeRuntimeJourneyId: StateFlow<String?> = _activeRuntimeJourneyId.asStateFlow()
+    val serviceRunning: StateFlow<Boolean> = _serviceRunning.asStateFlow()
     val currentConnectivity: StateFlow<CurrentJourneyConnectivity?> =
         _currentConnectivity.asStateFlow()
 
@@ -24,6 +28,7 @@ internal class JourneyRuntimeSignals {
     fun begin(journeyId: String): Long {
         generation++
         currentJourneyId = journeyId
+        _activeRuntimeJourneyId.value = journeyId
         _monitoringJourneyId.value = null
         _currentConnectivity.value = null
         return generation
@@ -67,7 +72,14 @@ internal class JourneyRuntimeSignals {
         currentJourneyId = null
         _monitoringJourneyId.value = null
         _currentConnectivity.value = null
+        _activeRuntimeJourneyId.value = null
     }
+
+    @Synchronized
+    fun serviceStarted() { _serviceRunning.value = true }
+
+    @Synchronized
+    fun serviceStopped() { _serviceRunning.value = false }
 
     private fun isCurrent(forGeneration: Long, journeyId: String): Boolean =
         generation == forGeneration && currentJourneyId == journeyId

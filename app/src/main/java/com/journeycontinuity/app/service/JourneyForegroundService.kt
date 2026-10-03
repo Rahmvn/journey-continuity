@@ -82,6 +82,7 @@ class JourneyForegroundService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        runtimeSignals.serviceStarted()
         locationSource = FusedJourneyLocationSource(this)
         deviceContextReader = DeviceContextReader(this)
         createNotificationChannel()
@@ -281,7 +282,6 @@ class JourneyForegroundService : Service() {
     }
 
     private fun stopCollecting() {
-        runtimeSignals.stop()
         locationSource.stop()
         locationChannel?.close()
         locationChannel = null
@@ -299,6 +299,8 @@ class JourneyForegroundService : Service() {
             }
         }
         networkCallback = null
+        // Publish teardown only after location, heartbeat and network work has been stopped.
+        runtimeSignals.stop()
     }
 
     private fun showRecordingNotification(destination: String) {
@@ -328,6 +330,7 @@ class JourneyForegroundService : Service() {
         serviceScope.cancel()
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         super.onDestroy()
+        runtimeSignals.serviceStopped()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -376,6 +379,8 @@ class JourneyForegroundService : Service() {
         /** Process-local evidence that the location foreground service started for this Journey. */
         private val runtimeSignals = JourneyRuntimeSignals()
         val monitoringJourneyId: StateFlow<String?> = runtimeSignals.monitoringJourneyId
+        val activeRuntimeJourneyId: StateFlow<String?> = runtimeSignals.activeRuntimeJourneyId
+        val serviceRunning: StateFlow<Boolean> = runtimeSignals.serviceRunning
         val currentConnectivity: StateFlow<CurrentJourneyConnectivity?> =
             runtimeSignals.currentConnectivity
         val isMonitoringInThisProcess: Boolean

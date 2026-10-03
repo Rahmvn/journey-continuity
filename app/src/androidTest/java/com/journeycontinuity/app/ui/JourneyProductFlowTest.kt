@@ -22,6 +22,8 @@ import com.journeycontinuity.app.auth.TravellerAccountGateway
 import com.journeycontinuity.app.auth.TravellerAccountProfile
 import com.journeycontinuity.app.auth.NoActiveSignOutResult
 import com.journeycontinuity.app.auth.TravellerNoActiveSignOutGateway
+import com.journeycontinuity.app.auth.ActiveJourneySignOutResult
+import com.journeycontinuity.app.auth.TravellerActiveJourneySignOutGateway
 import com.journeycontinuity.app.data.repository.JourneyRepository
 import com.journeycontinuity.app.degraded.ConnectivityPhase
 import com.journeycontinuity.app.degraded.DegradedConnectivityCoordinator
@@ -153,6 +155,75 @@ class JourneyProductFlowTest {
         compose.runOnIdle { assertEquals(1, signOut.calls) }
     }
 
+    @Test fun activeJourneyAccountUsesActiveConfirmationAndKeepOrBackDoesNotStop() {
+        val activeJourney = Journey("active-account-journey", "Ilorin",
+            System.currentTimeMillis() + 3_600_000L, System.currentTimeMillis(),
+            JourneyStatus.ACTIVE, null)
+        val repository = FakeRepository().apply { active.value = activeJourney }
+        val activeSignOut = FakeActiveSignOut(activeJourney)
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val coordinator = DegradedConnectivityCoordinator(FakeDegradationStore(),
+            LatestTelemetryReader { null }, policy = DegradedConnectivityPolicy(
+                DegradedConnectivityLabConfiguration.policyConfig()))
+        lateinit var journey: JourneyViewModel
+        lateinit var account: TravellerAccountViewModel
+        setContent {
+            journey = remember { JourneyViewModel(repository, JourneyLifecycle(repository),
+                JourneyServiceController(context), FakeContacts(), coordinator) }
+            account = remember { TravellerAccountViewModel(FakeAccountGateway(), null, activeSignOut) }
+            JourneyProductRoot(journey, LocationUiState(), unavailableSms, "test@example.com",
+                journey::startJourney, {}, {}, {}, {}, accountViewModel = account,
+                onSignOutRequested = {
+                    account.requestSignOut(!journey.uiState.value.isRestoring,
+                        journey.uiState.value.activeJourney?.id)
+                },
+                onConfirmActiveSignOutRequested = { account.confirmActiveSignOut(true) },
+                onCancelActiveSignOutRequested = account::cancelActiveSignOut)
+        }
+        compose.waitUntil("Active Journey did not restore", 10_000) {
+            journey.uiState.value.activeJourney?.id == activeJourney.id
+        }
+        compose.onNodeWithText("Account").performClick()
+        compose.waitUntil("Account did not load", 10_000) { account.state.value.profile != null }
+        captureSliceCFrame("active-account.png")
+        compose.onNodeWithTag("account_sign_out").performClick()
+        compose.onNodeWithTag("active_sign_out_confirmation").assertIsDisplayed()
+        compose.onNodeWithTag("account_sign_out_confirmation").assertDoesNotExist()
+        captureSliceCFrame("active-confirmation.png")
+        compose.onNodeWithTag("active_keep_monitoring").performClick()
+        compose.onNodeWithTag("active_sign_out_confirmation").assertDoesNotExist()
+        compose.onNodeWithTag("account_sheet").assertIsDisplayed()
+        captureSliceCFrame("keep-monitoring-account.png")
+        compose.onNodeWithTag("account_sign_out").performClick()
+        compose.onNodeWithTag("active_sign_out_confirmation").assertIsDisplayed()
+        Espresso.pressBack()
+        compose.onNodeWithTag("active_sign_out_confirmation").assertDoesNotExist()
+        compose.onNodeWithTag("account_sheet").assertIsDisplayed()
+        compose.runOnIdle {
+            assertEquals(activeJourney, repository.active.value)
+            assertEquals(0, activeSignOut.stopCalls)
+            assertEquals(0, activeSignOut.retryCalls)
+        }
+    }
+
+    @Test fun stoppedResultShowsExactJourneyAndDoneAction() {
+        val stopped = Journey("durable-stopped-id", "Ilorin",
+            System.currentTimeMillis() + 3_600_000L, System.currentTimeMillis(),
+            JourneyStatus.CANCELLED, null, 9_123L)
+        var done = 0
+        setContent {
+            TravellerMonitoringStoppedResult(stopped, signedOut = true, error = null,
+                inProgress = false, onRetry = { error("Must not retry") }, onDone = { done++ })
+        }
+        compose.onNodeWithTag("monitoring_stopped_result").assertIsDisplayed()
+        compose.onNodeWithText("Monitoring stopped").assertIsDisplayed()
+        compose.onNodeWithTag("stopped_destination").assertIsDisplayed()
+        compose.onNodeWithText("Ilorin").assertIsDisplayed()
+        captureSliceCFrame("monitoring-stopped-result.png")
+        compose.onNodeWithTag("monitoring_stopped_done").performClick()
+        compose.runOnIdle { assertEquals(1, done) }
+    }
+
     @Test fun captureNoActiveSignOutFrames() {
         val signOut = FakeNoActiveSignOut()
         val (_, account) = showAccount(FakeAccountGateway(), signOut) {}
@@ -174,6 +245,17 @@ class JourneyProductFlowTest {
         compose.waitForIdle()
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val output = File(context.getExternalFilesDir(null), "traveller-account-slice-b")
+        check(output.mkdirs() || output.isDirectory)
+        val bitmap = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
+        File(output, name).outputStream().use { stream ->
+            check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream))
+        }
+    }
+
+    private fun captureSliceCFrame(name: String) {
+        compose.waitForIdle()
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val output = File(context.getExternalFilesDir(null), "traveller-account-slice-c")
         check(output.mkdirs() || output.isDirectory)
         val bitmap = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
         File(output, name).outputStream().use { stream ->
@@ -227,6 +309,22 @@ class JourneyProductFlowTest {
             calls++
             return result
         }
+    }
+
+    private class FakeActiveSignOut(private val journey: Journey) : TravellerActiveJourneySignOutGateway {
+        var stopCalls = 0
+        var retryCalls = 0
+        override suspend fun confirmAndSignOut(journeyId: String,
+            expectedOwnerId: String): ActiveJourneySignOutResult {
+            stopCalls++
+            error("The safe-dismiss test must not reach remote stop")
+        }
+        override suspend fun restorePendingResult(): ActiveJourneySignOutResult? = null
+        override suspend fun retryTerminalSignOut(journeyId: String): ActiveJourneySignOutResult {
+            retryCalls++
+            error("The safe-dismiss test must not retry")
+        }
+        override suspend fun completeResult(journeyId: String): Boolean = false
     }
 
     @Test fun resilienceIsOneSheetOverHomeAndCloseDoesNotChangeJourney() {

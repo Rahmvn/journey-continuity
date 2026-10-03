@@ -1,10 +1,25 @@
 package com.journeycontinuity.app.service
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class JourneyRuntimeSignalsTest {
+    @Test fun collectionStopDoesNotClaimForegroundServiceDestroyed() {
+        val signals = JourneyRuntimeSignals()
+        signals.serviceStarted()
+        signals.begin("journey-a")
+        assertTrue(signals.serviceRunning.value)
+        assertEquals("journey-a", signals.activeRuntimeJourneyId.value)
+        signals.stop()
+        assertNull(signals.activeRuntimeJourneyId.value)
+        assertTrue(signals.serviceRunning.value)
+        signals.serviceStopped()
+        assertFalse(signals.serviceRunning.value)
+    }
+
     @Test fun listenerSuccessPublishesReadinessAndStopClearsIt() {
         val signals = JourneyRuntimeSignals()
         val registration = signals.begin("journey-a")

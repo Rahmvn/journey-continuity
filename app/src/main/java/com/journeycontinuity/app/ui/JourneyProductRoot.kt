@@ -118,6 +118,8 @@ fun JourneyProductRoot(
     onSignOutRequested: () -> Unit = {},
     onConfirmSignOutRequested: () -> Unit = {},
     onCancelSignOutRequested: () -> Unit = {},
+    onConfirmActiveSignOutRequested: () -> Unit = {},
+    onCancelActiveSignOutRequested: () -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val accountState = accountViewModel?.state?.collectAsStateWithLifecycle()?.value
@@ -297,7 +299,9 @@ fun JourneyProductRoot(
             onDismissRequest = { if (!presentedState.saving &&
                 presentedState.signOutStatus != AccountSignOutStatus.CHECKING &&
                 presentedState.signOutStatus != AccountSignOutStatus.CONFIRMING &&
-                presentedState.signOutStatus != AccountSignOutStatus.SIGNING_OUT) accountOpen = false },
+                presentedState.signOutStatus != AccountSignOutStatus.SIGNING_OUT &&
+                presentedState.signOutStatus != AccountSignOutStatus.CONFIRMING_ACTIVE &&
+                presentedState.signOutStatus != AccountSignOutStatus.STOPPING_ACTIVE) accountOpen = false },
             modifier = Modifier.testTag("account_sheet"),
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
             containerColor = Color(0xFFFEFEFC),
@@ -309,7 +313,9 @@ fun JourneyProductRoot(
                 state = presentedState,
                 onClose = { if (presentedState.signOutStatus != AccountSignOutStatus.CHECKING &&
                     presentedState.signOutStatus != AccountSignOutStatus.CONFIRMING &&
-                    presentedState.signOutStatus != AccountSignOutStatus.SIGNING_OUT) accountOpen = false },
+                    presentedState.signOutStatus != AccountSignOutStatus.SIGNING_OUT &&
+                    presentedState.signOutStatus != AccountSignOutStatus.CONFIRMING_ACTIVE &&
+                    presentedState.signOutStatus != AccountSignOutStatus.STOPPING_ACTIVE) accountOpen = false },
                 onEdit = { accountViewModel?.openEdit() },
                 onRetry = { accountViewModel?.load() },
                 onSignOutRequested = onSignOutRequested,
@@ -330,6 +336,14 @@ fun JourneyProductRoot(
                 signingOut = presentedState.signOutStatus == AccountSignOutStatus.SIGNING_OUT,
                 onConfirm = onConfirmSignOutRequested,
                 onStaySignedIn = onCancelSignOutRequested,
+            )
+        }
+        if (presentedState.signOutStatus == AccountSignOutStatus.CONFIRMING_ACTIVE ||
+            presentedState.signOutStatus == AccountSignOutStatus.STOPPING_ACTIVE) {
+            TravellerActiveSignOutConfirmation(
+                stopping = presentedState.signOutStatus == AccountSignOutStatus.STOPPING_ACTIVE,
+                onConfirm = onConfirmActiveSignOutRequested,
+                onKeepMonitoring = onCancelActiveSignOutRequested,
             )
         }
     }

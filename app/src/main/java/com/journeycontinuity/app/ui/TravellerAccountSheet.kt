@@ -116,7 +116,9 @@ internal fun TravellerAccountSheet(
         }
         Box(Modifier.fillMaxWidth().height(48.dp)
             .clickable(enabled = state.signOutStatus != AccountSignOutStatus.CHECKING &&
-                state.signOutStatus != AccountSignOutStatus.SIGNING_OUT,
+                state.signOutStatus != AccountSignOutStatus.SIGNING_OUT &&
+                state.signOutStatus != AccountSignOutStatus.CONFIRMING_ACTIVE &&
+                state.signOutStatus != AccountSignOutStatus.STOPPING_ACTIVE,
                 role = Role.Button, onClick = onSignOutRequested)
             .testTag("account_sign_out"), contentAlignment = Alignment.Center) {
             Text("Sign out", color = AccountError,

@@ -14,6 +14,13 @@ import androidx.activity.viewModels
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
@@ -32,6 +39,7 @@ import com.journeycontinuity.app.ui.TravellerRootViewModelFactory
 import com.journeycontinuity.app.ui.TravellerAccountViewModel
 import com.journeycontinuity.app.ui.TravellerAccountViewModelFactory
 import com.journeycontinuity.app.ui.AccountSignOutStatus
+import com.journeycontinuity.app.ui.TravellerMonitoringStoppedResult
 import com.journeycontinuity.app.ui.LocationUiState
 import com.journeycontinuity.app.ui.theme.JourneyContinuityTheme
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -39,6 +47,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 class MainActivity : ComponentActivity() {
     private val app by lazy { application as JourneyContinuityApplication }
@@ -70,7 +79,7 @@ class MainActivity : ComponentActivity() {
     }
     private val accountViewModel by viewModels<TravellerAccountViewModel> {
         TravellerAccountViewModelFactory(app.travellerAccountGateway,
-            app.travellerNoActiveSignOutGateway)
+            app.travellerNoActiveSignOutGateway, app.travellerActiveJourneySignOutGateway)
     }
 
     private val locationPermissionLauncher = registerForActivityResult(
@@ -127,13 +136,31 @@ class MainActivity : ComponentActivity() {
                     .distinctUntilChanged()
                     .collect { activeJourneyId ->
                         if (activeJourneyId != null) startServiceForActiveJourneyIfReady()
+                        else accountViewModel.refreshMonitoringStoppedResult()
                     }
                 }
             }
         }
         setContent {
             JourneyContinuityTheme {
-                TravellerRootHost(rootViewModel) {
+                val accountState by accountViewModel.state.collectAsStateWithLifecycle()
+                val stopped = accountState.monitoringStoppedJourney
+                if (accountState.restoringMonitoringStoppedResult) {
+                    Box(Modifier.fillMaxSize().background(Color(0xFFFBFBF8)),
+                        contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = Color(0xFF1B3250))
+                    }
+                } else if (stopped != null) {
+                    TravellerMonitoringStoppedResult(
+                        journey = stopped,
+                        signedOut = accountState.monitoringStoppedSignedOut,
+                        error = accountState.monitoringStoppedError,
+                        inProgress = accountState.signOutStatus == AccountSignOutStatus.STOPPING_ACTIVE,
+                        onRetry = accountViewModel::retryTerminalSignOut,
+                        onDone = { accountViewModel.doneWithMonitoringStopped(
+                            rootViewModel::assessStartup) },
+                    )
+                } else TravellerRootHost(rootViewModel) {
                     JourneyProductRoot(
                         viewModel = journeyViewModel,
                         locationUiState = locationUiState,
@@ -148,13 +175,18 @@ class MainActivity : ComponentActivity() {
                         onRefreshSmsFallback = ::refreshSmsFallbackState,
                         accountViewModel = accountViewModel,
                         onSignOutRequested = {
-                            accountViewModel.requestNoActiveSignOut(noActiveSignOutReady())
+                            accountViewModel.requestSignOut(accountSignOutReady(),
+                                journeyViewModel.uiState.value.activeJourney?.id)
                         },
                         onConfirmSignOutRequested = {
-                            accountViewModel.confirmNoActiveSignOut(noActiveSignOutReady(),
+                            accountViewModel.confirmNoActiveSignOut(accountSignOutReady(),
                                 rootViewModel::assessStartup)
                         },
                         onCancelSignOutRequested = accountViewModel::cancelNoActiveSignOut,
+                        onConfirmActiveSignOutRequested = {
+                            accountViewModel.confirmActiveSignOut(accountSignOutReady())
+                        },
+                        onCancelActiveSignOutRequested = accountViewModel::cancelActiveSignOut,
                     )
                 }
             }
@@ -238,6 +270,8 @@ class MainActivity : ComponentActivity() {
 
     private fun startServiceForActiveJourneyIfReady() {
         if (!isAdmitted()) return
+        if (accountViewModel.state.value.signOutStatus == AccountSignOutStatus.STOPPING_ACTIVE ||
+            accountViewModel.state.value.monitoringStoppedJourney != null) return
         refreshPrerequisiteState()
         if (
             journeyViewModel.uiState.value.activeJourney != null &&
@@ -301,10 +335,13 @@ class MainActivity : ComponentActivity() {
         TravellerRootRoute.ADMITTED_EXISTING || rootViewModel.state.value.route ==
         TravellerRootRoute.ADMITTED_NEW
 
-    private fun noActiveSignOutReady(): Boolean = isAdmitted() && pendingStart == null &&
+    private fun accountSignOutReady(): Boolean = isAdmitted() && pendingStart == null &&
         !journeyViewModel.uiState.value.isRestoring &&
         !journeyViewModel.uiState.value.isActionInProgress
 
     private fun signOutBlocksJourneyStart(): Boolean = !isAdmitted() ||
-        accountViewModel.state.value.signOutStatus == AccountSignOutStatus.SIGNING_OUT
+        accountViewModel.state.value.signOutStatus in setOf(
+            AccountSignOutStatus.SIGNING_OUT, AccountSignOutStatus.CONFIRMING_ACTIVE,
+            AccountSignOutStatus.STOPPING_ACTIVE, AccountSignOutStatus.MONITORING_STOPPED_RESULT,
+        ) || accountViewModel.state.value.monitoringStoppedJourney != null
 }

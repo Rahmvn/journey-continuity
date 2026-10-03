@@ -25,6 +25,13 @@ import com.journeycontinuity.app.auth.OwnerAdmissionGate
 import com.journeycontinuity.app.auth.GuardedTravellerNoActiveSignOutGateway
 import com.journeycontinuity.app.auth.SupabaseAccountLocalSession
 import com.journeycontinuity.app.auth.TravellerNoActiveSignOutGateway
+import com.journeycontinuity.app.auth.TravellerActiveJourneySignOutGateway
+import com.journeycontinuity.app.auth.GuardedTravellerActiveJourneySignOutGateway
+import com.journeycontinuity.app.auth.RoomActiveJourneyStopLocal
+import com.journeycontinuity.app.auth.SupabaseActiveJourneyStopRemote
+import com.journeycontinuity.app.auth.AndroidActiveJourneyRuntimeStop
+import com.journeycontinuity.app.auth.SharedPreferencesMonitoringStoppedResultStore
+import com.journeycontinuity.app.auth.LocalOnlyMonitoringStoppedResultGateway
 import com.journeycontinuity.app.auth.AndroidOwnerAdoptionSnapshotReader
 import com.journeycontinuity.app.auth.FirstOwnerAdoptionBoundary
 import com.journeycontinuity.app.auth.ReturningTravellerLoginEngine
@@ -180,6 +187,10 @@ class JourneyContinuityApplication : Application() {
         JourneyLifecycle(journeyRepository)
     }
 
+    private val monitoringStoppedResultStore by lazy {
+        SharedPreferencesMonitoringStoppedResultStore(applicationContext)
+    }
+
     val journeyServiceController: JourneyServiceController by lazy {
         JourneyServiceController(applicationContext)
     }
@@ -243,6 +254,21 @@ class JourneyContinuityApplication : Application() {
                     noActiveSignOut = GuardedTravellerNoActiveSignOutGateway(
                         journeyRepository, identityCoordinator, identityStore, authBackend,
                         ownerAdmissionGate, SupabaseAccountLocalSession(client)),
+                    activeSignOut = GuardedTravellerActiveJourneySignOutGateway(
+                        local = RoomActiveJourneyStopLocal(database.journeyDao(), journeyRepository,
+                            database.degradedConnectivityDao(), database.fallbackAttemptDao()),
+                        remote = SupabaseActiveJourneyStopRemote(client, authBackend),
+                        identityCoordinator = identityCoordinator,
+                        identityStore = identityStore,
+                        authBackend = authBackend,
+                        localSession = SupabaseAccountLocalSession(client),
+                        runtime = AndroidActiveJourneyRuntimeStop(journeyServiceController),
+                        resultStore = monitoringStoppedResultStore,
+                        admissionGate = ownerAdmissionGate,
+                        reconciliationRequested = {
+                            syncScheduler.schedule(SyncRequestUrgency.URGENT)
+                        },
+                    ),
                     sync = SupabaseCloudSyncGateway(client, identityCoordinator, logger),
                     heartbeat = SupabaseHeartbeatGateway(client, identityCoordinator, logger),
                     trustedContacts = SupabaseTrustedContactGateway(
@@ -327,6 +353,9 @@ class JourneyContinuityApplication : Application() {
     val travellerNoActiveSignOutGateway: TravellerNoActiveSignOutGateway?
         get() = cloudGateways.noActiveSignOut
 
+    val travellerActiveJourneySignOutGateway: TravellerActiveJourneySignOutGateway?
+        get() = cloudGateways.activeSignOut
+
     val returningLoginEngine: ReturningTravellerLoginEngine?
         get() = cloudGateways.returningLogin
 
@@ -350,7 +379,7 @@ class JourneyContinuityApplication : Application() {
         runCatching { syncScheduler.schedule(SyncRequestUrgency.URGENT) }
     }
 
-    private class ConfigurationFailureCloudGateway(
+    private inner class ConfigurationFailureCloudGateway(
         private val safeError: String,
     ) : CloudSyncGateway, HeartbeatGateway {
         override suspend fun authenticatedOwnerId(): String = throw CloudSyncException(
@@ -378,6 +407,11 @@ class JourneyContinuityApplication : Application() {
         fun asGateways() = CloudGateways(
             identityCoordinator = null,
             account = com.journeycontinuity.app.auth.UnavailableTravellerAccountGateway(),
+            activeSignOut = LocalOnlyMonitoringStoppedResultGateway(
+                RoomActiveJourneyStopLocal(database.journeyDao(), journeyRepository,
+                    database.degradedConnectivityDao(), database.fallbackAttemptDao()),
+                monitoringStoppedResultStore,
+                AndroidActiveJourneyRuntimeStop(journeyServiceController)),
             sync = this,
             heartbeat = this,
             trustedContacts = UnavailableTrustedContactGateway(safeError),
@@ -403,6 +437,7 @@ class JourneyContinuityApplication : Application() {
         val identityCoordinator: TravellerIdentityCoordinator?,
         val account: com.journeycontinuity.app.auth.TravellerAccountGateway,
         val noActiveSignOut: TravellerNoActiveSignOutGateway? = null,
+        val activeSignOut: TravellerActiveJourneySignOutGateway? = null,
         val sync: CloudSyncGateway,
         val heartbeat: HeartbeatGateway,
         val trustedContacts: TrustedContactGateway,
