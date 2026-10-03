@@ -8,12 +8,17 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextReplacement
+import com.journeycontinuity.app.auth.TravellerAccountGateway
+import com.journeycontinuity.app.auth.TravellerAccountProfile
 import com.journeycontinuity.app.data.repository.JourneyRepository
 import com.journeycontinuity.app.degraded.ConnectivityPhase
 import com.journeycontinuity.app.degraded.DegradedConnectivityCoordinator
@@ -54,6 +59,81 @@ import org.junit.Test
 /** Exercises the real product root and JourneyLifecycle against isolated in-memory state. */
 class JourneyProductFlowTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+
+    @Test fun accountOpensAsSheetOverHomeAndSignOutIsCallbackOnly() {
+        val gateway = FakeAccountGateway()
+        var signOutRequests = 0
+        val (journey, account) = showAccount(gateway) { signOutRequests++ }
+        compose.onNodeWithText("Account").performClick()
+        compose.waitUntil("Account profile did not load", 10_000) { account.state.value.profile != null }
+        compose.onNodeWithTag("account_sheet").assertIsDisplayed()
+        compose.onNodeWithText("Ada Owner").assertIsDisplayed()
+        compose.onNodeWithText("@ada_owner").assertIsDisplayed()
+        compose.onNodeWithTag("account_verified_email").assertIsDisplayed()
+        compose.onNodeWithTag("account_sign_out").performClick()
+        compose.runOnIdle {
+            assertEquals(1, signOutRequests)
+            assertEquals(JourneyProductRoute.HOME, journey.uiState.value.productRoute)
+            assertEquals(0, gateway.saves)
+        }
+        compose.onNodeWithTag("account_sheet").assertIsDisplayed()
+        compose.onNodeWithTag("account_close").performClick()
+        compose.onNodeWithTag("account_sheet").assertDoesNotExist()
+    }
+
+    @Test fun accountEditOverlayPreservesEmailAndSavesIdentity() {
+        val gateway = FakeAccountGateway()
+        val (_, account) = showAccount(gateway) {}
+        compose.onNodeWithText("Account").performClick()
+        compose.waitUntil("Account profile did not load", 10_000) { account.state.value.profile != null }
+        compose.onNodeWithTag("account_edit").performClick()
+        compose.onNodeWithTag("account_edit_overlay").assertIsDisplayed()
+        compose.onNodeWithTag("account_full_name_input").performTextReplacement("Ada New")
+        compose.onNodeWithTag("account_handle_input").performTextReplacement("@new_handle")
+        compose.waitUntil("Handle was not checked", 10_000) {
+            account.state.value.handleStatus == AccountHandleStatus.AVAILABLE
+        }
+        compose.onAllNodes(hasSetTextAction()).assertCountEquals(2)
+        compose.onNodeWithTag("account_save").performClick()
+        compose.waitUntil("Account save did not finish", 10_000) { !account.state.value.editOpen }
+        compose.onNodeWithTag("account_edit_overlay").assertDoesNotExist()
+        compose.onNodeWithText("Ada New").assertIsDisplayed()
+        compose.onNodeWithText("@new_handle").assertIsDisplayed()
+        compose.onNodeWithTag("account_verified_email").assertIsDisplayed()
+        compose.runOnIdle { assertEquals(1, gateway.saves) }
+    }
+
+    private fun showAccount(gateway: FakeAccountGateway, onSignOut: () -> Unit):
+        Pair<JourneyViewModel, TravellerAccountViewModel> {
+        val repository = FakeRepository()
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val coordinator = DegradedConnectivityCoordinator(FakeDegradationStore(),
+            LatestTelemetryReader { null }, policy = DegradedConnectivityPolicy(
+                DegradedConnectivityLabConfiguration.policyConfig()))
+        lateinit var journey: JourneyViewModel
+        lateinit var account: TravellerAccountViewModel
+        setContent {
+            journey = remember { JourneyViewModel(repository, JourneyLifecycle(repository),
+                JourneyServiceController(context), FakeContacts(), coordinator) }
+            account = remember { TravellerAccountViewModel(gateway) }
+            JourneyProductRoot(journey, LocationUiState(), unavailableSms, "test@example.com",
+                journey::startJourney, {}, {}, {}, {}, accountViewModel = account,
+                onSignOutRequested = onSignOut)
+        }
+        compose.waitUntil("Home did not restore", 10_000) { !journey.uiState.value.isRestoring }
+        return journey to account
+    }
+
+    private class FakeAccountGateway : TravellerAccountGateway {
+        var saves = 0
+        private var profile = TravellerAccountProfile("owner-a", "Ada Owner", "ada_owner", "ada@example.com")
+        override suspend fun load(): TravellerAccountProfile = profile
+        override suspend fun checkHandleAvailability(ownerId: String, handle: String): Boolean = true
+        override suspend fun save(ownerId: String, fullName: String, handle: String): TravellerAccountProfile {
+            saves++
+            return profile.copy(fullName = fullName, handle = handle).also { profile = it }
+        }
+    }
 
     @Test fun resilienceIsOneSheetOverHomeAndCloseDoesNotChangeJourney() {
         val contacts = FakeContacts()

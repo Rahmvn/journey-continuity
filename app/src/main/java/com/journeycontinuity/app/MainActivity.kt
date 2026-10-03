@@ -29,6 +29,8 @@ import com.journeycontinuity.app.ui.TravellerRootHost
 import com.journeycontinuity.app.ui.TravellerRootRoute
 import com.journeycontinuity.app.ui.TravellerRootViewModel
 import com.journeycontinuity.app.ui.TravellerRootViewModelFactory
+import com.journeycontinuity.app.ui.TravellerAccountViewModel
+import com.journeycontinuity.app.ui.TravellerAccountViewModelFactory
 import com.journeycontinuity.app.ui.LocationUiState
 import com.journeycontinuity.app.ui.theme.JourneyContinuityTheme
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -64,6 +66,9 @@ class MainActivity : ComponentActivity() {
         ActivityResultContracts.RequestMultiplePermissions(),
     ) {
         refreshSmsFallbackState()
+    }
+    private val accountViewModel by viewModels<TravellerAccountViewModel> {
+        TravellerAccountViewModelFactory(app.travellerAccountGateway)
     }
 
     private val locationPermissionLauncher = registerForActivityResult(
@@ -139,6 +144,7 @@ class MainActivity : ComponentActivity() {
                         onRequestPhoneStatePermission = ::requestPhoneStatePermission,
                         onSelectSmsSubscription = ::selectSmsFallbackSubscription,
                         onRefreshSmsFallback = ::refreshSmsFallbackState,
+                        accountViewModel = accountViewModel,
                     )
                 }
             }

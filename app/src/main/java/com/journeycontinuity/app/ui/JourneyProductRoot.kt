@@ -114,8 +114,11 @@ fun JourneyProductRoot(
     onSelectSmsSubscription: (Int) -> Unit,
     onRequestPhoneStatePermission: () -> Unit = {},
     onRefreshSmsFallback: () -> Unit = {},
+    accountViewModel: TravellerAccountViewModel? = null,
+    onSignOutRequested: () -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val accountState = accountViewModel?.state?.collectAsStateWithLifecycle()?.value
     val lifecycleOwner = LocalLifecycleOwner.current
     val context = LocalContext.current
     val journeySheetHeight = LocalConfiguration.current.screenHeightDp.dp * 0.84f
@@ -165,14 +168,19 @@ fun JourneyProductRoot(
                     })
                 JourneyHome(
                     state = state,
-                    accountEmail = accountEmail,
+                    accountEmail = accountState?.profile?.let {
+                        "${it.fullName} · @${it.handle}"
+                    } ?: accountEmail,
                     resilienceSummary = resilience.homeSummary,
                     onPrimary = {
                         if (state.activeJourney == null) viewModel.openStart() else viewModel.openActive()
                     },
                     onContacts = viewModel::openContacts,
                     onResilience = viewModel::openResilience,
-                    onAccount = { accountOpen = true },
+                    onAccount = {
+                        accountOpen = true
+                        accountViewModel?.load()
+                    },
                 )
                 if (state.productRoute == JourneyProductRoute.ACTIVE) {
                     state.activeJourney?.let { journey ->
@@ -280,12 +288,35 @@ fun JourneyProductRoot(
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
     }
     if (accountOpen) {
-        AlertDialog(
-            onDismissRequest = { accountOpen = false },
-            title = { Text("Account") },
-            text = { Text(accountEmail ?: "Signed in to Alabarin") },
-            confirmButton = { TextButton(onClick = { accountOpen = false }) { Text("Close") } },
+        val presentedState = accountState ?: TravellerAccountState(
+            loadError = "Account profile is unavailable. Try again.",
         )
+        ModalBottomSheet(
+            onDismissRequest = { if (!presentedState.saving) accountOpen = false },
+            modifier = Modifier.testTag("account_sheet"),
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = Color(0xFFFEFEFC),
+            scrimColor = Color.Black.copy(alpha = 0.16f),
+            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+            dragHandle = null,
+        ) {
+            TravellerAccountSheet(
+                state = presentedState,
+                onClose = { accountOpen = false },
+                onEdit = { accountViewModel?.openEdit() },
+                onRetry = { accountViewModel?.load() },
+                onSignOutRequested = onSignOutRequested,
+            )
+        }
+        if (presentedState.editOpen) {
+            TravellerEditIdentityOverlay(
+                state = presentedState,
+                onNameChange = { accountViewModel?.updateFullName(it) },
+                onHandleChange = { accountViewModel?.updateHandle(it) },
+                onSave = { accountViewModel?.save() },
+                onCancel = { accountViewModel?.cancelEdit() },
+            )
+        }
     }
 }
 

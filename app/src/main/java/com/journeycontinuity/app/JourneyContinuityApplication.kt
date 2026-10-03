@@ -235,6 +235,8 @@ class JourneyContinuityApplication : Application() {
                             ?.session?.user?.email
                     },
                     identityCoordinator = identityCoordinator,
+                    account = com.journeycontinuity.app.auth.SupabaseTravellerAccountGateway(
+                        client, identityCoordinator),
                     sync = SupabaseCloudSyncGateway(client, identityCoordinator, logger),
                     heartbeat = SupabaseHeartbeatGateway(client, identityCoordinator, logger),
                     trustedContacts = SupabaseTrustedContactGateway(
@@ -313,6 +315,9 @@ class JourneyContinuityApplication : Application() {
     val currentAccountEmail: String?
         get() = cloudGateways.accountEmail()
 
+    val travellerAccountGateway: com.journeycontinuity.app.auth.TravellerAccountGateway
+        get() = cloudGateways.account
+
     val returningLoginEngine: ReturningTravellerLoginEngine?
         get() = cloudGateways.returningLogin
 
@@ -363,6 +368,7 @@ class JourneyContinuityApplication : Application() {
 
         fun asGateways() = CloudGateways(
             identityCoordinator = null,
+            account = com.journeycontinuity.app.auth.UnavailableTravellerAccountGateway(),
             sync = this,
             heartbeat = this,
             trustedContacts = UnavailableTrustedContactGateway(safeError),
@@ -386,6 +392,7 @@ class JourneyContinuityApplication : Application() {
     private data class CloudGateways(
         val accountEmail: () -> String? = { null },
         val identityCoordinator: TravellerIdentityCoordinator?,
+        val account: com.journeycontinuity.app.auth.TravellerAccountGateway,
         val sync: CloudSyncGateway,
         val heartbeat: HeartbeatGateway,
         val trustedContacts: TrustedContactGateway,
