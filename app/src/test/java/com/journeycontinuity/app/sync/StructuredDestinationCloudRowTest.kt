@@ -26,9 +26,12 @@ class StructuredDestinationCloudRowTest {
         assertEquals(8.49, row.destinationLatitude!!, 0.0)
         assertEquals("place-1", row.destinationProviderPlaceId)
         assertEquals("v1", row.destinationAdminDatasetVersion)
+        assertEquals(point.localUnitId, row.destinationLgaId)
+        assertEquals(point.localUnitName, row.destinationLgaName)
         val json = Json.encodeToString(row)
         assertTrue(json.contains("\"destination_latitude\":8.49"))
         assertTrue(json.contains("\"destination_state_id\":\"NG-KW\""))
+        assertTrue(json.contains("\"destination_lga_id\":\"NG-KW-OFFA\""))
     }
 
     @Test fun historicalTextOnlyAndTerminalRowsStillUpload() {

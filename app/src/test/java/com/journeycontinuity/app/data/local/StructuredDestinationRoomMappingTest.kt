@@ -1,6 +1,10 @@
 package com.journeycontinuity.app.data.local
 
 import com.journeycontinuity.app.domain.JourneyStatus
+import com.journeycontinuity.app.domain.DestinationKind
+import com.journeycontinuity.app.domain.DestinationSelectionSource
+import com.journeycontinuity.app.domain.StructuredDestination
+import org.junit.Assert.assertEquals
 import org.junit.Assert.fail
 import org.junit.Test
 
@@ -13,6 +17,16 @@ class StructuredDestinationRoomMappingTest {
 
     @Test fun historicalTextOnlyRowRestoresWithoutInventedFacts() {
         check(historical.toDomain().structuredDestination == null)
+    }
+
+    @Test fun neutralLocalUnitNamesStillUseCompatibilityRoomColumns() {
+        val facts = StructuredDestination("NG", "ng-fct", "Federal Capital Territory",
+            "ng-fct-abuja-municipal", "Abuja Municipal Area Council",
+            DestinationKind.LOCALITY, null, null, DestinationSelectionSource.LOCALITY_SELECTION)
+        val entity = historical.toDomain().copy(structuredDestination = facts).toEntity()
+        assertEquals(facts.localUnitId, entity.destinationLgaId)
+        assertEquals(facts.localUnitName, entity.destinationLgaName)
+        assertEquals(facts, entity.toDomain().structuredDestination)
     }
 
     @Test fun partialFactsCannotBecomeHistoricalTextOnlyJourney() {

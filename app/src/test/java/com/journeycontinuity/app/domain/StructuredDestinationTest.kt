@@ -13,7 +13,7 @@ class StructuredDestinationTest {
         source: DestinationSelectionSource = DestinationSelectionSource.MAP_PIN,
     ) = StructuredDestination(
         countryCode = "NG", stateId = "NG-KW", stateName = "Kwara",
-        lgaId = "NG-KW-OFFA", lgaName = "Offa", kind = kind,
+        localUnitId = "NG-KW-OFFA", localUnitName = "Offa", kind = kind,
         latitude = latitude, longitude = longitude, selectionSource = source,
         customPlaceName = if (source == DestinationSelectionSource.MAP_PIN) "Grandma's house" else null,
     )
@@ -62,11 +62,11 @@ class StructuredDestinationTest {
 
     @Test fun requiredNamesAndMetadataCannotBeMeaningless() {
         rejects { destination().copy(stateName = " ") }
-        rejects { destination().copy(lgaId = " NG-KW-OFFA ") }
+        rejects { destination().copy(localUnitId = " NG-KW-OFFA ") }
         rejects { destination().copy(providerPlaceId = "place-1") }
         rejects { destination().copy(countryCode = "GH") }
         rejects { destination().copy(stateId = " ") }
-        rejects { destination().copy(lgaName = " ") }
+        rejects { destination().copy(localUnitName = " ") }
         rejects { destination().copy(customPlaceName = " ") }
         rejects { destination(source = DestinationSelectionSource.PLACE_SEARCH)
             .copy(customPlaceName = "Grandma's house") }

@@ -9,8 +9,8 @@ data class StructuredDestination(
     val countryCode: String,
     val stateId: String,
     val stateName: String,
-    val lgaId: String,
-    val lgaName: String,
+    val localUnitId: String,
+    val localUnitName: String,
     val kind: DestinationKind,
     val latitude: Double?,
     val longitude: Double?,
@@ -22,8 +22,8 @@ data class StructuredDestination(
 ) {
     init {
         require(countryCode == "NG") { "Traveller v1 structured destinations must be in Nigeria." }
-        listOf(stateId, stateName, lgaId, lgaName).forEach {
-            require(it.isNotBlank() && it == it.trim()) { "State and LGA identity must be nonblank and trimmed." }
+        listOf(stateId, stateName, localUnitId, localUnitName).forEach {
+            require(it.isNotBlank() && it == it.trim()) { "Region and local unit identity must be nonblank and trimmed." }
         }
         listOfNotNull(provider, providerPlaceId, adminDatasetVersion, customPlaceName).forEach {
             require(it.isNotBlank() && it == it.trim()) { "Optional destination metadata must be nonblank and trimmed." }
