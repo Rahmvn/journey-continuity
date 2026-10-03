@@ -12,6 +12,7 @@ import com.journeycontinuity.app.auth.ReturningLoginFailure
 import com.journeycontinuity.app.auth.ReturningLoginRejection
 import com.journeycontinuity.app.auth.ReturningLoginState
 import com.journeycontinuity.app.auth.TravellerAuthOutcome
+import com.journeycontinuity.app.auth.TravellerSessionState
 import com.journeycontinuity.app.auth.TravellerProfileIdentityInput
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -21,7 +22,7 @@ import kotlinx.coroutines.launch
 
 enum class TravellerRootRoute {
     CHECKING, INTRO, IDENTITY_CHOICE, CREATE_DETAILS, CREATE_OTP, LOGIN_EMAIL, LOGIN_OTP,
-    ADMITTED_EXISTING, ADMITTED_NEW, RECOVERY,
+    ADMITTED_EXISTING, ADMITTED_NEW, ACTIVE_REAUTHENTICATION, ACTIVE_AUTH_PENDING, RECOVERY,
 }
 
 data class TravellerRootState(
@@ -39,6 +40,7 @@ data class TravellerRootState(
     val loginAttemptActive: Boolean = false,
     val profileRequired: Boolean = false,
     val recoveryLoginAllowed: Boolean = false,
+    val activeJourneyReauthentication: Boolean = false,
 )
 
 /** Activity-scoped. Application-scoped auth engines retain an OTP attempt across Activity recreation. */
@@ -57,10 +59,29 @@ class TravellerRootViewModel(
     private var operationGeneration = 0L
     private var handleJob: Job? = null
 
-    init { assessStartup() }
+    init {
+        assessStartup()
+        viewModelScope.launch {
+            auth.sessionStates.collect { session ->
+                val current = state.value
+                when {
+                    session == TravellerSessionState.NotAuthenticated &&
+                        current.route in setOf(TravellerRootRoute.ADMITTED_EXISTING,
+                            TravellerRootRoute.ADMITTED_NEW) -> launchAssessment(true)
+                    session is TravellerSessionState.Authenticated &&
+                        current.route in setOf(TravellerRootRoute.ACTIVE_REAUTHENTICATION,
+                            TravellerRootRoute.ACTIVE_AUTH_PENDING) -> launchAssessment(true)
+                    session == TravellerSessionState.NotAuthenticated &&
+                        current.route == TravellerRootRoute.ACTIVE_AUTH_PENDING -> launchAssessment(true)
+                }
+            }
+        }
+    }
 
-    fun assessStartup() = viewModelScope.launch {
-        mutableState.value = TravellerRootState()
+    fun assessStartup() = launchAssessment(false)
+
+    private fun launchAssessment(preserveShell: Boolean) = viewModelScope.launch {
+        if (!preserveShell) mutableState.value = TravellerRootState()
         recoveringExistingOwner = false
         try {
             when (val outcome = auth.resolve()) {
@@ -83,9 +104,18 @@ class TravellerRootViewModel(
                         else TravellerRootRoute.IDENTITY_CHOICE)
                 TravellerAuthOutcome.TravellerIdentityRecoveryRequired -> {
                     recoveringExistingOwner = true
-                    if (loginEntry.shouldReturnToEmailEntry()) route(TravellerRootRoute.LOGIN_EMAIL)
+                    if (auth.hasActiveJourneyForPersistedOwner()) {
+                        mutableState.value = state.value.copy(
+                            route = TravellerRootRoute.ACTIVE_REAUTHENTICATION,
+                            activeJourneyReauthentication = true)
+                    } else if (loginEntry.shouldReturnToEmailEntry()) route(TravellerRootRoute.LOGIN_EMAIL)
                     else recovery("Recover this Traveller with the same verified email account.",
                         allowSameOwnerLogin = true)
+                }
+                TravellerAuthOutcome.TemporaryAuthUnavailable -> {
+                    if (auth.hasActiveJourneyForPersistedOwner())
+                        route(TravellerRootRoute.ACTIVE_AUTH_PENDING)
+                    else recovery("Authentication is temporarily unavailable. Try again.")
                 }
                 else -> recovery("This Traveller identity needs a safe recovery before continuing.")
             }
@@ -144,6 +174,13 @@ class TravellerRootViewModel(
         if (state.value.route == TravellerRootRoute.RECOVERY && state.value.recoveryLoginAllowed) {
             if (loginEntry.markEmailEntry()) route(TravellerRootRoute.LOGIN_EMAIL)
         }
+    }
+
+    fun reauthenticateActiveJourney() {
+        if (state.value.route != TravellerRootRoute.ACTIVE_REAUTHENTICATION || state.value.busy) return
+        recoveringExistingOwner = true
+        if (loginEntry.markEmailEntry()) route(TravellerRootRoute.LOGIN_EMAIL)
+        else notice("Could not open same-owner log in safely. Try again.")
     }
 
     private fun toCreateDetails() {
@@ -361,8 +398,9 @@ class TravellerRootViewModel(
                         if (operation != operationGeneration) return@launch
                         if (auth.resolve() is TravellerAuthOutcome.Authenticated) {
                             loginEntry.clear()
-                            route(TravellerRootRoute.ADMITTED_NEW)
-                        } else recovery("This Traveller could not be safely admitted. Retry log in.")
+                            route(if (state.value.activeJourneyReauthentication)
+                                TravellerRootRoute.ADMITTED_EXISTING else TravellerRootRoute.ADMITTED_NEW)
+                        } else loginFailure("This Traveller could not be safely admitted. Retry log in.")
                     }
                     is ReturningLoginState.Failed -> {
                         if (operation != operationGeneration) return@launch
@@ -370,24 +408,25 @@ class TravellerRootViewModel(
                             result.reason == ReturningLoginFailure.VERIFICATION_FAILED) {
                             mutableState.value = state.value.copy(busy = false, loginAttemptActive = false,
                                 loginFeedback = ReturningLoginOtpFeedback.INVALID_OR_EXPIRED)
-                        } else recovery("Log in could not be completed safely. Retry or recover this Traveller.")
+                        } else loginFailure("Log in could not be completed safely. Retry or recover this Traveller.")
                     }
                     is ReturningLoginState.Rejected -> if (operation == operationGeneration) {
-                        recovery(when (result.reason) {
+                        val message = when (result.reason) {
                             ReturningLoginRejection.DIFFERENT_OWNER ->
                                 "This verified account does not match the Traveller bound to this device. Recover the same owner."
                             ReturningLoginRejection.TRAVELLER_PROFILE_REQUIRED ->
                                 "This verified account does not have a Traveller profile. Account recovery is required."
                             ReturningLoginRejection.RECOVERY_REQUIRED ->
                                 "This installation needs same-owner recovery before log in can continue."
-                        })
+                        }
+                        loginFailure(message)
                     }
                     else -> if (operation == operationGeneration)
-                        recovery("Log in could not be completed safely. Recover the same Traveller.")
+                        loginFailure("Log in could not be completed safely. Recover the same Traveller.")
                 }
             } catch (error: Throwable) {
                 if (error is CancellationException) throw error
-                recovery("Log in could not be completed safely. Retry or recover this Traveller.")
+                loginFailure("Log in could not be completed safely. Retry or recover this Traveller.")
             }
         }
     }
@@ -449,7 +488,9 @@ class TravellerRootViewModel(
             TravellerRootRoute.LOGIN_EMAIL -> {
                 viewModelScope.launch { auth.returningLogin?.cancel() }
                 loginEntry.clear()
-                if (recoveringExistingOwner) recovery(
+                if (state.value.activeJourneyReauthentication)
+                    route(TravellerRootRoute.ACTIVE_REAUTHENTICATION)
+                else if (recoveringExistingOwner) recovery(
                     "Recover this Traveller with the same verified email account.", allowSameOwnerLogin = true)
                 else route(TravellerRootRoute.IDENTITY_CHOICE)
             }
@@ -481,6 +522,13 @@ class TravellerRootViewModel(
     private fun recovery(value: String, allowSameOwnerLogin: Boolean = false) {
         mutableState.value = state.value.copy(route = TravellerRootRoute.RECOVERY, busy = false,
             notice = value, recoveryLoginAllowed = allowSameOwnerLogin)
+    }
+
+    private fun loginFailure(message: String) {
+        if (state.value.activeJourneyReauthentication)
+            mutableState.value = state.value.copy(route = TravellerRootRoute.LOGIN_EMAIL,
+                busy = false, code = "", loginAttemptActive = false, notice = message)
+        else recovery(message)
     }
 }
 

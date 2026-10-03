@@ -52,8 +52,10 @@ internal fun TravellerAccountSheet(
     onEdit: () -> Unit,
     onRetry: () -> Unit,
     onSignOutRequested: () -> Unit,
+    onReauthenticate: () -> Unit = {},
 ) {
-    Column(Modifier.fillMaxWidth().height(390.dp).background(Color(0xFFFEFEFC))
+    Column(Modifier.fillMaxWidth().height(if (state.reauthenticationNeeded) 500.dp else 390.dp)
+        .background(Color(0xFFFEFEFC))
         .padding(start = 24.dp, end = 24.dp, top = 10.dp, bottom = 24.dp)) {
         Box(Modifier.fillMaxWidth().height(8.dp), contentAlignment = Alignment.Center) {
             Box(Modifier.size(32.dp, 4.dp).clip(RoundedCornerShape(2.dp))
@@ -83,12 +85,14 @@ internal fun TravellerAccountSheet(
                     Text("@${profile.handle}", color = AccountBody, style = accountStyle(14, 20),
                         maxLines = 1)
                 }
-                Text("Edit", Modifier.clickable(role = Role.Button, onClick = onEdit)
-                    .padding(start = 12.dp, top = 12.dp, bottom = 12.dp).testTag("account_edit"),
+                if (!state.reauthenticationNeeded) Text("Edit",
+                    Modifier.clickable(role = Role.Button, onClick = onEdit)
+                        .padding(start = 12.dp, top = 12.dp, bottom = 12.dp).testTag("account_edit"),
                     color = AccountBrand, style = accountStyle(14, 20, FontWeight.Medium))
             }
             Column {
-                Text("Verified email", color = Color(0xFF676F74),
+                Text(if (state.reauthenticationNeeded) "Previously verified email" else "Verified email",
+                    color = Color(0xFF676F74),
                     style = accountStyle(15, 21, FontWeight.Medium))
                 Spacer(Modifier.height(5.dp))
                 Text(profile.verifiedEmail, Modifier.testTag("account_verified_email"),
@@ -98,7 +102,9 @@ internal fun TravellerAccountSheet(
         } else {
             Column(Modifier.fillMaxWidth().height(121.dp),
                 verticalArrangement = Arrangement.Center) {
-                Text(state.loadError ?: "Loading Account…", color = AccountBody,
+                Text(if (state.reauthenticationNeeded)
+                    "This device remains bound to its Traveller account. Reauthenticate to view identity details."
+                    else state.loadError ?: "Loading Account…", color = AccountBody,
                     style = accountStyle(14, 20))
                 if (state.loadError != null) {
                     Text("Try again", Modifier.clickable(role = Role.Button, onClick = onRetry)
@@ -109,10 +115,30 @@ internal fun TravellerAccountSheet(
         }
         Spacer(Modifier.height(18.dp))
         Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0xFFDFE3E2)))
+        if (state.reauthenticationNeeded) {
+            Spacer(Modifier.height(20.dp))
+            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
+                .background(Color(0xFFFBF6E9)).padding(horizontal = 14.dp, vertical = 12.dp)
+                .testTag("account_reauthentication_attention")) {
+                Text("Account connection needs attention", color = Color(0xFFA3741F),
+                    style = accountStyle(15, 21, FontWeight.Bold))
+                Spacer(Modifier.height(5.dp))
+                Text("Local Journey monitoring continues on this device. Reauthenticate only to restore owner-scoped cloud communication.",
+                    color = Color(0xFF676F74), style = accountStyle(14, 20))
+            }
+        }
         Spacer(Modifier.weight(1f))
         if (state.signOutError != null) {
             Text(state.signOutError, Modifier.fillMaxWidth().testTag("account_sign_out_error"),
                 color = AccountError, style = accountStyle(13, 18))
+        }
+        if (state.reauthenticationNeeded) {
+            Box(Modifier.fillMaxWidth().height(48.dp)
+                .clickable(role = Role.Button, onClick = onReauthenticate)
+                .testTag("account_reauthenticate"), contentAlignment = Alignment.Center) {
+                Text("Reauthenticate", color = AccountBrand,
+                    style = accountStyle(16, 22, FontWeight.Medium))
+            }
         }
         Box(Modifier.fillMaxWidth().height(48.dp)
             .clickable(enabled = state.signOutStatus != AccountSignOutStatus.CHECKING &&

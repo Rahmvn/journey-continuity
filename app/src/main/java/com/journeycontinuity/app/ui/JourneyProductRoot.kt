@@ -120,6 +120,7 @@ fun JourneyProductRoot(
     onCancelSignOutRequested: () -> Unit = {},
     onConfirmActiveSignOutRequested: () -> Unit = {},
     onCancelActiveSignOutRequested: () -> Unit = {},
+    onReauthenticateRequested: () -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val accountState = accountViewModel?.state?.collectAsStateWithLifecycle()?.value
@@ -172,7 +173,9 @@ fun JourneyProductRoot(
                     })
                 JourneyHome(
                     state = state,
-                    accountEmail = accountState?.profile?.let {
+                    accountEmail = if (accountState?.reauthenticationNeeded == true)
+                        "Account connection needs attention"
+                    else accountState?.profile?.let {
                         "${it.fullName} · @${it.handle}"
                     } ?: accountEmail,
                     resilienceSummary = resilience.homeSummary,
@@ -319,6 +322,7 @@ fun JourneyProductRoot(
                 onEdit = { accountViewModel?.openEdit() },
                 onRetry = { accountViewModel?.load() },
                 onSignOutRequested = onSignOutRequested,
+                onReauthenticate = onReauthenticateRequested,
             )
         }
         if (presentedState.editOpen) {

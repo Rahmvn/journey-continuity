@@ -130,7 +130,7 @@ class JourneyProductFlowTest {
         compose.waitUntil("Sign out confirmation did not reopen", 10_000) {
             account.state.value.signOutStatus == AccountSignOutStatus.CONFIRMING
         }
-        Espresso.pressBack()
+        compose.onNodeWithContentDescription("Back").performClick()
         compose.onNodeWithTag("account_sign_out_confirmation").assertDoesNotExist()
         compose.onNodeWithTag("account_sheet").assertIsDisplayed()
         compose.runOnIdle { assertEquals(0, signOut.calls) }
@@ -224,6 +224,65 @@ class JourneyProductFlowTest {
         compose.runOnIdle { assertEquals(1, done) }
     }
 
+    @Test fun activeAuthLossShowsReauthenticationAndBackKeepsJourneyActive() {
+        val activeJourney = Journey("slice-d-active", "Ilorin",
+            System.currentTimeMillis() + 3_600_000L, System.currentTimeMillis(),
+            JourneyStatus.ACTIVE, null)
+        val repository = FakeRepository().apply { active.value = activeJourney }
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val coordinator = DegradedConnectivityCoordinator(FakeDegradationStore(),
+            LatestTelemetryReader { null }, policy = DegradedConnectivityPolicy(
+                DegradedConnectivityLabConfiguration.policyConfig()))
+        lateinit var journey: JourneyViewModel
+        lateinit var account: TravellerAccountViewModel
+        val showingLogin = mutableStateOf(false)
+        var reauthenticateRequests = 0
+        setContent {
+            journey = remember { JourneyViewModel(repository, JourneyLifecycle(repository),
+                JourneyServiceController(context), FakeContacts(), coordinator) }
+            account = remember { TravellerAccountViewModel(FakeAccountGateway()) }
+            if (showingLogin.value) ReturningLoginEmailScreen(
+                email = "", submissionEnabled = false, onEmailChange = {}, onContinue = {},
+                onCreateAccount = {}, onBack = { showingLogin.value = false },
+                showCreateAccount = false,
+            ) else JourneyProductRoot(journey, LocationUiState(), unavailableSms, null,
+                journey::startJourney, {}, {}, {}, {}, accountViewModel = account,
+                onSignOutRequested = {
+                    account.requestSignOut(true, journey.uiState.value.activeJourney?.id)
+                }, onReauthenticateRequested = {
+                    reauthenticateRequests++
+                    showingLogin.value = true
+                })
+        }
+        compose.waitUntil("Active Journey did not restore", 10_000) {
+            journey.uiState.value.activeJourney?.id == activeJourney.id
+        }
+        compose.onNodeWithText("Account").performClick()
+        compose.waitUntil("Account did not load", 10_000) { account.state.value.profile != null }
+        captureSliceDFrame("active-account-normal.png")
+        compose.runOnIdle { account.setReauthenticationNeeded(true) }
+        compose.onNodeWithTag("account_reauthentication_attention").assertIsDisplayed()
+        compose.onNodeWithTag("account_close").performClick()
+        compose.onNodeWithText("Account connection needs attention").assertIsDisplayed()
+        compose.onNodeWithText("Account").performClick()
+        captureSliceDFrame("active-account-reauthentication-needed.png")
+        compose.onNodeWithTag("account_sign_out").performClick()
+        compose.onNodeWithText("Reauthenticate before you can stop monitoring and sign out.")
+            .assertIsDisplayed()
+        compose.runOnIdle { assertEquals(activeJourney, repository.active.value) }
+        compose.onNodeWithTag("account_reauthenticate").performClick()
+        compose.onNodeWithText("Log in").assertIsDisplayed()
+        captureSliceDFrame("reauthentication-login-email.png")
+        compose.onNodeWithContentDescription("Back").performClick()
+        compose.onNodeWithText("Account").performClick()
+        compose.onNodeWithTag("account_reauthentication_attention").assertIsDisplayed()
+        captureSliceDFrame("back-to-active-account.png")
+        compose.runOnIdle {
+            assertEquals(1, reauthenticateRequests)
+            assertEquals(activeJourney, repository.active.value)
+        }
+    }
+
     @Test fun captureNoActiveSignOutFrames() {
         val signOut = FakeNoActiveSignOut()
         val (_, account) = showAccount(FakeAccountGateway(), signOut) {}
@@ -256,6 +315,17 @@ class JourneyProductFlowTest {
         compose.waitForIdle()
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val output = File(context.getExternalFilesDir(null), "traveller-account-slice-c")
+        check(output.mkdirs() || output.isDirectory)
+        val bitmap = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
+        File(output, name).outputStream().use { stream ->
+            check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream))
+        }
+    }
+
+    private fun captureSliceDFrame(name: String) {
+        compose.waitForIdle()
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val output = File(context.getExternalFilesDir(null), "traveller-account-slice-d")
         check(output.mkdirs() || output.isDirectory)
         val bitmap = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
         File(output, name).outputStream().use { stream ->

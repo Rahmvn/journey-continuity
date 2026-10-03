@@ -28,7 +28,9 @@ fun TravellerRootHost(
 ) {
     val state by controller.state.collectAsStateWithLifecycle()
     val authSurface = state.route != TravellerRootRoute.ADMITTED_EXISTING &&
-        state.route != TravellerRootRoute.ADMITTED_NEW
+        state.route != TravellerRootRoute.ADMITTED_NEW &&
+        state.route != TravellerRootRoute.ACTIVE_REAUTHENTICATION &&
+        state.route != TravellerRootRoute.ACTIVE_AUTH_PENDING
 
     BackHandler(enabled = state.route in setOf(
         TravellerRootRoute.CREATE_DETAILS, TravellerRootRoute.CREATE_OTP,
@@ -80,6 +82,7 @@ fun TravellerRootHost(
                 onCreateAccount = controller::chooseCreateAccount, onBack = controller::back,
                 serviceNotice = state.notice,
                 requestInProgress = state.busy,
+                showCreateAccount = !state.activeJourneyReauthentication,
             )
             TravellerRootRoute.LOGIN_OTP -> ReturningLoginCheckEmailScreen(
                 code = state.code,
@@ -90,13 +93,16 @@ fun TravellerRootHost(
                 onCreateAccount = controller::chooseCreateAccount, onBack = controller::back,
                 serviceNotice = state.notice,
                 requestInProgress = state.busy,
+                showCreateAccount = !state.activeJourneyReauthentication,
             )
             TravellerRootRoute.RECOVERY -> SupportContent("Account recovery needed",
                 state.notice ?: "This Traveller cannot be safely opened right now.",
                 "Try again", controller::assessStartup,
                 if (state.recoveryLoginAllowed) "Recover with email" else null,
                 if (state.recoveryLoginAllowed) controller::recoverSameOwnerWithEmail else null)
-            TravellerRootRoute.ADMITTED_EXISTING, TravellerRootRoute.ADMITTED_NEW -> Unit
+            TravellerRootRoute.ADMITTED_EXISTING, TravellerRootRoute.ADMITTED_NEW,
+            TravellerRootRoute.ACTIVE_REAUTHENTICATION,
+            TravellerRootRoute.ACTIVE_AUTH_PENDING -> Unit
         }
     }
 }

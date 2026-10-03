@@ -9,6 +9,8 @@ import com.journeycontinuity.app.auth.ReturningLoginFailure
 import com.journeycontinuity.app.auth.ReturningLoginRejection
 import com.journeycontinuity.app.auth.ReturningLoginState
 import com.journeycontinuity.app.auth.TravellerAuthOutcome
+import com.journeycontinuity.app.auth.TravellerSessionState
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.CompletableDeferred
@@ -66,6 +68,171 @@ class TravellerRootViewModelTest {
         advanceUntilIdle()
         assertEquals(TravellerRootRoute.RECOVERY, root.state.value.route)
         assertTrue(root.state.value.recoveryLoginAllowed)
+        assertEquals(0, auth.establishCalls)
+    }
+
+    @Test fun observedAuthLossKeepsRestoredActiveJourneyInProductShell() = rootTest {
+        val auth = FakeAuth().apply { resolved = authenticated(a); hasActiveJourney = true }
+        val root = newRoot(auth, FakeIntro(true))
+        advanceUntilIdle()
+        assertEquals(TravellerRootRoute.ADMITTED_EXISTING, root.state.value.route)
+        auth.resolved = TravellerAuthOutcome.TravellerIdentityRecoveryRequired
+        auth.sessions.value = TravellerSessionState.NotAuthenticated
+        advanceUntilIdle()
+        assertEquals(TravellerRootRoute.ACTIVE_REAUTHENTICATION, root.state.value.route)
+        assertTrue(root.state.value.activeJourneyReauthentication)
+        assertEquals(0, auth.establishCalls)
+        val restarted = newRoot(auth, FakeIntro(true))
+        advanceUntilIdle()
+        assertEquals(TravellerRootRoute.ACTIVE_REAUTHENTICATION, restarted.state.value.route)
+    }
+
+    @Test fun refreshAndInitializationDoNotShowActiveReauthenticationWarning() = rootTest {
+        val auth = FakeAuth().apply { resolved = authenticated(a); hasActiveJourney = true }
+        val root = newRoot(auth, FakeIntro(true))
+        advanceUntilIdle()
+        auth.resolved = TravellerAuthOutcome.TemporaryAuthUnavailable
+        auth.sessions.value = TravellerSessionState.RefreshFailure
+        advanceUntilIdle()
+        assertEquals(TravellerRootRoute.ADMITTED_EXISTING, root.state.value.route)
+        val restarted = newRoot(auth, FakeIntro(true))
+        advanceUntilIdle()
+        assertEquals(TravellerRootRoute.ACTIVE_AUTH_PENDING, restarted.state.value.route)
+        assertFalse(restarted.state.value.activeJourneyReauthentication)
+        auth.sessions.value = TravellerSessionState.Initializing
+        advanceUntilIdle()
+        assertEquals(TravellerRootRoute.ACTIVE_AUTH_PENDING, restarted.state.value.route)
+    }
+
+    @Test fun networkFailureWithoutAuthLossLeavesActiveAuthenticatedRouteAlone() = rootTest {
+        val auth = FakeAuth().apply { resolved = authenticated(a); hasActiveJourney = true }
+        val root = newRoot(auth, FakeIntro(true))
+        advanceUntilIdle()
+        // Network failure does not emit a session transition.
+        auth.resolved = TravellerAuthOutcome.TemporaryAuthUnavailable
+        advanceUntilIdle()
+        assertEquals(TravellerRootRoute.ADMITTED_EXISTING, root.state.value.route)
+        assertFalse(root.state.value.activeJourneyReauthentication)
+    }
+
+    @Test fun reauthenticationReusesReturningLoginAndBackRestoresActiveShell() = rootTest {
+        val auth = FakeAuth().apply {
+            resolved = TravellerAuthOutcome.TravellerIdentityRecoveryRequired
+            hasActiveJourney = true
+            sessions.value = TravellerSessionState.NotAuthenticated
+        }
+        val root = newRoot(auth, FakeIntro(true))
+        advanceUntilIdle()
+        root.reauthenticateActiveJourney()
+        assertEquals(TravellerRootRoute.LOGIN_EMAIL, root.state.value.route)
+        root.onLoginEmailChange("owner@example.com")
+        root.requestLoginCode()
+        advanceUntilIdle()
+        assertEquals(TravellerRootRoute.LOGIN_OTP, root.state.value.route)
+        root.back()
+        advanceUntilIdle()
+        root.back()
+        advanceUntilIdle()
+        assertEquals(TravellerRootRoute.ACTIVE_REAUTHENTICATION, root.state.value.route)
+        assertEquals(0, auth.establishCalls)
+    }
+
+    @Test fun successfulSameOwnerReauthenticationReturnsToExistingJourneyRoute() = rootTest {
+        val auth = FakeAuth().apply {
+            resolved = TravellerAuthOutcome.TravellerIdentityRecoveryRequired
+            hasActiveJourney = true
+            sessions.value = TravellerSessionState.NotAuthenticated
+            login.admittedId = a
+        }
+        val root = newRoot(auth, FakeIntro(true))
+        advanceUntilIdle()
+        root.reauthenticateActiveJourney()
+        root.onLoginEmailChange("owner@example.com")
+        root.requestLoginCode()
+        advanceUntilIdle()
+        root.onCodeChange("123456")
+        root.verifyLoginCode()
+        advanceUntilIdle()
+        assertEquals(TravellerRootRoute.ADMITTED_EXISTING, root.state.value.route)
+        assertEquals(0, auth.establishCalls)
+    }
+
+    @Test fun reauthenticationNetworkFailureKeepsSameOwnerLoginRetryable() = rootTest {
+        val auth = FakeAuth().apply {
+            resolved = TravellerAuthOutcome.TravellerIdentityRecoveryRequired
+            hasActiveJourney = true
+            sessions.value = TravellerSessionState.NotAuthenticated
+            login.requestResponder = { ReturningLoginState.Failed(ReturningLoginFailure.VERIFICATION_FAILED) }
+        }
+        val root = newRoot(auth, FakeIntro(true))
+        advanceUntilIdle()
+        root.reauthenticateActiveJourney()
+        root.onLoginEmailChange("owner@example.com")
+        root.requestLoginCode()
+        advanceUntilIdle()
+        assertEquals(TravellerRootRoute.LOGIN_EMAIL, root.state.value.route)
+        assertTrue(root.state.value.activeJourneyReauthentication)
+        assertEquals(0, auth.establishCalls)
+        root.back()
+        advanceUntilIdle()
+        assertEquals(TravellerRootRoute.ACTIVE_REAUTHENTICATION, root.state.value.route)
+    }
+
+    @Test fun verificationServiceFailureKeepsActiveJourneyShellReachable() = rootTest {
+        val auth = FakeAuth().apply {
+            resolved = TravellerAuthOutcome.TravellerIdentityRecoveryRequired
+            hasActiveJourney = true
+            sessions.value = TravellerSessionState.NotAuthenticated
+            login.result = ReturningLoginState.Failed(ReturningLoginFailure.ADMISSION_RECOVERY_REQUIRED)
+        }
+        val root = newRoot(auth, FakeIntro(true))
+        advanceUntilIdle()
+        root.reauthenticateActiveJourney()
+        root.onLoginEmailChange("owner@example.com")
+        root.requestLoginCode()
+        advanceUntilIdle()
+        root.onCodeChange("123456")
+        root.verifyLoginCode()
+        advanceUntilIdle()
+        assertEquals(TravellerRootRoute.LOGIN_EMAIL, root.state.value.route)
+        assertTrue(root.state.value.notice!!.contains("could not be completed"))
+        root.back()
+        advanceUntilIdle()
+        assertEquals(TravellerRootRoute.ACTIVE_REAUTHENTICATION, root.state.value.route)
+    }
+
+    @Test fun differentOwnerAndOtpFailureKeepActiveJourneyRecoveryAvailable() = rootTest {
+        val auth = FakeAuth().apply {
+            resolved = TravellerAuthOutcome.TravellerIdentityRecoveryRequired
+            hasActiveJourney = true
+            sessions.value = TravellerSessionState.NotAuthenticated
+        }
+        val root = newRoot(auth, FakeIntro(true))
+        advanceUntilIdle()
+        root.reauthenticateActiveJourney()
+        root.onLoginEmailChange("owner@example.com")
+        root.requestLoginCode()
+        advanceUntilIdle()
+        auth.login.result = ReturningLoginState.Failed(ReturningLoginFailure.INVALID_CODE)
+        root.onCodeChange("123456")
+        root.verifyLoginCode()
+        advanceUntilIdle()
+        assertEquals(TravellerRootRoute.LOGIN_OTP, root.state.value.route)
+        auth.login.result = ReturningLoginState.Rejected(ReturningLoginRejection.DIFFERENT_OWNER)
+        root.onCodeChange("654321")
+        root.verifyLoginCode()
+        advanceUntilIdle()
+        assertEquals(TravellerRootRoute.LOGIN_OTP, root.state.value.route)
+        // An invalid attempt must be requested again before a new candidate is accepted.
+        root.back()
+        advanceUntilIdle()
+        root.requestLoginCode()
+        advanceUntilIdle()
+        root.onCodeChange("654321")
+        root.verifyLoginCode()
+        advanceUntilIdle()
+        assertEquals(TravellerRootRoute.LOGIN_EMAIL, root.state.value.route)
+        assertTrue(root.state.value.notice!!.contains("does not match"))
         assertEquals(0, auth.establishCalls)
     }
 
@@ -454,6 +621,10 @@ class TravellerRootViewModelTest {
     }
 
     private inner class FakeAuth : TravellerRootAuth {
+        val sessions = MutableStateFlow<TravellerSessionState>(TravellerSessionState.Initializing)
+        override val sessionStates = sessions
+        var hasActiveJourney = false
+        override suspend fun hasActiveJourneyForPersistedOwner() = hasActiveJourney
         var resolved: TravellerAuthOutcome = TravellerAuthOutcome.TravellerIdentityNotEstablished
         var establishResult: TravellerAuthOutcome = authenticated(a)
         var establishCalls = 0

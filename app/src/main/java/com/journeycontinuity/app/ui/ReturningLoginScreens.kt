@@ -69,6 +69,7 @@ fun ReturningLoginEmailScreen(
     modifier: Modifier = Modifier,
     serviceNotice: String? = null,
     requestInProgress: Boolean = false,
+    showCreateAccount: Boolean = true,
 ) {
     Column(
         modifier = modifier.fillMaxSize().background(LoginBackground)
@@ -114,13 +115,15 @@ fun ReturningLoginEmailScreen(
                 AuthInlineNotice(serviceNotice)
                 Spacer(Modifier.height(16.dp))
                 LoginPrimaryAction("Continue", submissionEnabled, onContinue)
-                LoginTextAction("Need an Alabarin account? Create one", LoginBrand, onCreateAccount)
+                if (showCreateAccount) LoginTextAction(
+                    "Need an Alabarin account? Create one", LoginBrand, onCreateAccount)
             }
         }
         if (serviceNotice == null) {
             LoginPrimaryAction(if (requestInProgress) "Sending code…" else "Continue",
                 submissionEnabled, onContinue)
-            LoginTextAction("Need an Alabarin account? Create one", LoginBrand, onCreateAccount)
+            if (showCreateAccount) LoginTextAction(
+                "Need an Alabarin account? Create one", LoginBrand, onCreateAccount)
         }
     }
 }
@@ -140,6 +143,7 @@ fun ReturningLoginCheckEmailScreen(
     modifier: Modifier = Modifier,
     serviceNotice: String? = null,
     requestInProgress: Boolean = false,
+    showCreateAccount: Boolean = true,
 ) {
     Column(
         modifier = modifier.fillMaxSize().background(LoginBackground)
@@ -174,7 +178,8 @@ fun ReturningLoginCheckEmailScreen(
                 LoginPrimaryAction("Verify and continue", submissionEnabled, onVerify)
             }
             LoginTextAction("Send a new code", LoginBrand, onSendNewCode)
-            LoginTextAction("No account yet? Create one", LoginBody, onCreateAccount)
+            if (showCreateAccount) LoginTextAction("No account yet? Create one", LoginBody,
+                onCreateAccount)
             LoginTextAction("Use a different email", LoginBody, onUseDifferentEmail)
         }
         if (serviceNotice == null) LoginPrimaryAction(

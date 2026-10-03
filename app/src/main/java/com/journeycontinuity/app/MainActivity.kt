@@ -125,8 +125,16 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 rootViewModel.state.map { it.route }.distinctUntilChanged().collectLatest { route ->
+                    if (route == TravellerRootRoute.ACTIVE_REAUTHENTICATION ||
+                        route == TravellerRootRoute.ACTIVE_AUTH_PENDING) {
+                        accountViewModel.setReauthenticationNeeded(
+                            route == TravellerRootRoute.ACTIVE_REAUTHENTICATION)
+                        resumeEstablishedLocalMonitoring()
+                        return@collectLatest
+                    }
                     if (route != TravellerRootRoute.ADMITTED_EXISTING &&
                         route != TravellerRootRoute.ADMITTED_NEW) return@collectLatest
+                    accountViewModel.setReauthenticationNeeded(false)
                     // A same-owner session may return after the startup worker could not
                     // authenticate; recheck remote terminal truth before relying on sync backlog.
                     runCatching {
@@ -143,6 +151,7 @@ class MainActivity : ComponentActivity() {
         }
         setContent {
             JourneyContinuityTheme {
+                val rootState by rootViewModel.state.collectAsStateWithLifecycle()
                 val accountState by accountViewModel.state.collectAsStateWithLifecycle()
                 val stopped = accountState.monitoringStoppedJourney
                 if (accountState.restoringMonitoringStoppedResult) {
@@ -164,7 +173,11 @@ class MainActivity : ComponentActivity() {
                     JourneyProductRoot(
                         viewModel = journeyViewModel,
                         locationUiState = locationUiState,
-                        accountEmail = app.currentAccountEmail,
+                        accountEmail = when (rootState.route) {
+                            TravellerRootRoute.ACTIVE_REAUTHENTICATION -> "Account connection needs attention"
+                            TravellerRootRoute.ACTIVE_AUTH_PENDING -> "Checking account connection"
+                            else -> app.currentAccountEmail
+                        },
                         onStartRequested = ::startAfterPrerequisites,
                         onRetryMonitoring = ::retryMonitoringPrerequisites,
                         onOpenLocationSettings = ::openLocationSettings,
@@ -187,6 +200,7 @@ class MainActivity : ComponentActivity() {
                             accountViewModel.confirmActiveSignOut(accountSignOutReady())
                         },
                         onCancelActiveSignOutRequested = accountViewModel::cancelActiveSignOut,
+                        onReauthenticateRequested = rootViewModel::reauthenticateActiveJourney,
                     )
                 }
             }
@@ -279,6 +293,8 @@ class MainActivity : ComponentActivity() {
             locationUiState.locationServicesEnabled &&
             lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
         ) {
+            if (com.journeycontinuity.app.service.JourneyForegroundService
+                    .activeRuntimeJourneyId.value == journeyViewModel.uiState.value.activeJourney?.id) return
             runCatching { app.journeyServiceController.start() }
                 .onFailure {
                     journeyViewModel.showMessage("Could not start location monitoring: ${it.message}")

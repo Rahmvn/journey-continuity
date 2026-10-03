@@ -29,6 +29,7 @@ enum class AccountSignOutStatus {
 }
 
 data class TravellerAccountState(
+    val reauthenticationNeeded: Boolean = false,
     val loading: Boolean = false,
     val profile: TravellerAccountProfile? = null,
     val loadError: String? = null,
@@ -60,6 +61,17 @@ class TravellerAccountViewModel(
     private var handleJob: Job? = null
     private var handleGeneration = 0L
     private var resultRefreshJob: Job? = null
+    private var profileLoadGeneration = 0L
+
+    fun setReauthenticationNeeded(needed: Boolean) {
+        if (state.value.reauthenticationNeeded == needed) return
+        profileLoadGeneration++
+        handleJob?.cancel()
+        mutableState.update { it.copy(reauthenticationNeeded = needed,
+            profile = if (needed) it.profile else null,
+            loading = false, loadError = null, editOpen = false,
+            signOutStatus = AccountSignOutStatus.IDLE, signOutError = null) }
+    }
 
     init {
         if (activeSignOut != null) viewModelScope.launch {
@@ -90,6 +102,10 @@ class TravellerAccountViewModel(
     }
 
     fun requestSignOut(ready: Boolean, activeJourneyId: String?) {
+        if (state.value.reauthenticationNeeded) {
+            signOutFailure("Reauthenticate before you can stop monitoring and sign out.")
+            return
+        }
         if (activeJourneyId == null) {
             requestNoActiveSignOut(ready)
             return
@@ -272,15 +288,17 @@ class TravellerAccountViewModel(
     }
 
     fun load() {
-        if (state.value.loading || state.value.saving) return
+        if (state.value.reauthenticationNeeded || state.value.loading || state.value.saving) return
+        val generation = ++profileLoadGeneration
         mutableState.update { it.copy(loading = true, profile = null, loadError = null) }
         viewModelScope.launch {
             try {
                 val profile = gateway.load()
-                mutableState.update { it.copy(loading = false, profile = profile, loadError = null) }
+                if (generation == profileLoadGeneration) mutableState.update {
+                    it.copy(loading = false, profile = profile, loadError = null) }
             } catch (error: Throwable) {
                 if (error is CancellationException) throw error
-                mutableState.update { it.copy(loading = false, profile = null,
+                if (generation == profileLoadGeneration) mutableState.update { it.copy(loading = false, profile = null,
                     loadError = when (error) {
                         is TravellerAccountOwnerException -> "Verified Traveller identity is required to view Account."
                         is TravellerAccountUnavailableException -> "Account profile is unavailable. Try again."
@@ -291,6 +309,7 @@ class TravellerAccountViewModel(
     }
 
     fun openEdit() {
+        if (state.value.reauthenticationNeeded) return
         val profile = state.value.profile ?: return
         handleJob?.cancel()
         mutableState.update { it.copy(editOpen = true, fullNameInput = profile.fullName,

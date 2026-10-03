@@ -8,6 +8,10 @@ import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.auth.status.SessionStatus
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.emptyFlow
 import kotlin.time.Clock
 
 sealed interface TravellerSessionState {
@@ -24,6 +28,7 @@ interface TravellerAuthBackend {
     suspend fun awaitInitialization()
     fun sessionState(): TravellerSessionState
     suspend fun signInAnonymously()
+    fun observeSessionStates(): Flow<TravellerSessionState> = emptyFlow()
 }
 
 interface TravellerIdentityStore {
@@ -204,7 +209,12 @@ class SupabaseTravellerAuthBackend(
 ) : TravellerAuthBackend {
     override suspend fun awaitInitialization() = client.auth.awaitInitialization()
 
-    override fun sessionState(): TravellerSessionState = when (val status = client.auth.sessionStatus.value) {
+    override fun observeSessionStates(): Flow<TravellerSessionState> =
+        client.auth.sessionStatus.map(::mapStatus).distinctUntilChanged()
+
+    override fun sessionState(): TravellerSessionState = mapStatus(client.auth.sessionStatus.value)
+
+    private fun mapStatus(status: SessionStatus): TravellerSessionState = when (status) {
         SessionStatus.Initializing -> TravellerSessionState.Initializing
         is SessionStatus.NotAuthenticated -> TravellerSessionState.NotAuthenticated
         is SessionStatus.RefreshFailure -> TravellerSessionState.RefreshFailure

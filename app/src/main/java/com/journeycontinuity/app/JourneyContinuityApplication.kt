@@ -244,6 +244,8 @@ class JourneyContinuityApplication : Application() {
                     canEstablishAnonymousOwner = firstOwnerBoundary::canEstablishAnonymousOwner,
                 )
                 CloudGateways(
+                    authBackend = authBackend,
+                    ownerStore = identityStore,
                     accountEmail = {
                         (client.auth.sessionStatus.value as? SessionStatus.Authenticated)
                             ?.session?.user?.email
@@ -369,7 +371,8 @@ class JourneyContinuityApplication : Application() {
 
     val travellerRootAuth by lazy {
         ProductionTravellerRootAuth(cloudGateways.identityCoordinator,
-            cloudGateways.createAccount, cloudGateways.returningLogin)
+            cloudGateways.createAccount, cloudGateways.returningLogin,
+            cloudGateways.authBackend, cloudGateways.ownerStore, journeyRepository)
     }
 
     override fun onCreate() {
@@ -433,6 +436,8 @@ class JourneyContinuityApplication : Application() {
     }
 
     private data class CloudGateways(
+        val authBackend: com.journeycontinuity.app.auth.TravellerAuthBackend? = null,
+        val ownerStore: com.journeycontinuity.app.auth.TravellerIdentityStore? = null,
         val accountEmail: () -> String? = { null },
         val identityCoordinator: TravellerIdentityCoordinator?,
         val account: com.journeycontinuity.app.auth.TravellerAccountGateway,

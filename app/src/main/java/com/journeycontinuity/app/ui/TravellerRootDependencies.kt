@@ -9,6 +9,7 @@ import com.journeycontinuity.app.auth.TravellerAuthOutcome
 import com.journeycontinuity.app.auth.TravellerCreateAccountEngine
 import com.journeycontinuity.app.auth.TravellerIdentityCoordinator
 import com.journeycontinuity.app.auth.ReturningTravellerLoginEngine
+import kotlinx.coroutines.flow.first
 
 interface IntroCompletionPreference {
     fun isCompleted(): Boolean
@@ -106,13 +107,24 @@ interface TravellerRootAuth {
     suspend fun establishAnonymousOwner(): TravellerAuthOutcome
     val createAccount: CreateAccountActions?
     val returningLogin: ReturningLoginActions?
+    val sessionStates: kotlinx.coroutines.flow.Flow<com.journeycontinuity.app.auth.TravellerSessionState>
+        get() = kotlinx.coroutines.flow.emptyFlow()
+    suspend fun hasActiveJourneyForPersistedOwner(): Boolean = false
 }
 
 class ProductionTravellerRootAuth(
     private val coordinator: TravellerIdentityCoordinator?,
     createEngine: TravellerCreateAccountEngine?,
     loginEngine: ReturningTravellerLoginEngine?,
+    private val authBackend: com.journeycontinuity.app.auth.TravellerAuthBackend? = null,
+    private val ownerStore: com.journeycontinuity.app.auth.TravellerIdentityStore? = null,
+    private val journeyRepository: com.journeycontinuity.app.data.repository.JourneyRepository? = null,
 ) : TravellerRootAuth {
+    override val sessionStates = authBackend?.observeSessionStates() ?: kotlinx.coroutines.flow.emptyFlow()
+
+    override suspend fun hasActiveJourneyForPersistedOwner(): Boolean =
+        ownerStore?.expectedTravellerUserId() != null &&
+            journeyRepository?.activeJourney?.first() != null
     override suspend fun resolve(): TravellerAuthOutcome =
         coordinator?.resolve() ?: TravellerAuthOutcome.TemporaryAuthUnavailable
 

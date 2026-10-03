@@ -51,6 +51,29 @@ class TravellerAccountViewModelTest {
         assertEquals(1, gateway.loads)
     }
 
+    @Test fun authLossKeepsExplicitlyCachedProfileButBlocksEditAndAuthlessSignOut() = accountTest {
+        val gateway = FakeGateway(profile)
+        val account = TravellerAccountViewModel(gateway)
+        account.load()
+        advanceUntilIdle()
+        assertEquals(profile, account.state.value.profile)
+        account.setReauthenticationNeeded(true)
+        assertEquals(profile, account.state.value.profile)
+        account.openEdit()
+        assertFalse(account.state.value.editOpen)
+        account.load()
+        account.requestSignOut(ready = true, activeJourneyId = activeJourney.id)
+        advanceUntilIdle()
+        assertTrue(account.state.value.reauthenticationNeeded)
+        assertEquals(AccountSignOutStatus.FAILURE, account.state.value.signOutStatus)
+        assertTrue(account.state.value.signOutError!!.contains("Reauthenticate before"))
+        assertEquals(1, gateway.loads)
+        account.setReauthenticationNeeded(false)
+        account.load()
+        advanceUntilIdle()
+        assertEquals(profile, account.state.value.profile)
+    }
+
     @Test fun missingAndUnavailableProfilesShowErrorsWithoutClaimingIdentity() = accountTest {
         val gateway = FakeGateway(profile).apply { loadFailure = TravellerAccountUnavailableException() }
         val account = TravellerAccountViewModel(gateway)
