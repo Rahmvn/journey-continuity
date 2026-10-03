@@ -402,6 +402,11 @@ enabled = true
 verify_jwt = true
 entrypoint = "./functions/provision-fallback/index.ts"
 
+[functions.destination-search]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/destination-search/index.ts"
+
 [functions.africastalking-inbound]
 enabled = true
 verify_jwt = false
