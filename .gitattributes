@@ -1,1 +1,2 @@
 app/src/main/assets/catalogue/ng_admin_v1.json -text
+supabase/migrations/20261003000200_nigeria_admin_catalogue.sql text eol=lf

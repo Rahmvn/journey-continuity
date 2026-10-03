@@ -2,7 +2,7 @@
 // Slice 2A validates the canonical asset. Slice 2B can generate SQL from this same file.
 // Identity: SHA-256 of the exact committed UTF-8 JSON bytes, including whitespace/newline.
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -105,17 +105,140 @@ export function validate(document) {
   check(byParent.get('ng-kwara')?.length === 16, 'Kwara must have 16 LGAs');
 }
 
+const sql = value => `'${String(value).replaceAll("'", "''")}'`;
+
+export function generateSql(document, hash) {
+  validate(document);
+  check(/^[a-f0-9]{64}$/.test(hash), 'Invalid catalogue SHA-256');
+  const dataset = sql(document.datasetId);
+  const version = sql(document.version);
+  const regionRows = document.regions.map(region =>
+    `(${dataset}, ${version}, ${sql(region.id)}, ${sql(region.canonicalName)}, ${sql(region.type)}, ${region.displayOrder})`);
+  const regionsById = new Map(document.regions.map(region => [region.id, region]));
+  const unitRows = document.localUnits.map(unit =>
+    `(${dataset}, ${version}, ${sql(unit.id)}, ${sql(unit.parentRegionId)}, ${sql(regionsById.get(unit.parentRegionId).type)}, ${sql(unit.canonicalName)}, ${sql(unit.type)}, ${unit.displayOrder})`);
+  return `-- GENERATED from app/src/main/assets/catalogue/ng_admin_v1.json.
+-- SHA-256 of exact UTF-8 asset bytes (including final newline): ${hash}
+-- Regenerate with: node tools/generate_nigeria_admin_sql.mjs --output supabase/migrations/20261003000200_nigeria_admin_catalogue.sql
+begin;
+
+create table public.admin_catalogue_versions (
+    dataset_id text not null,
+    version text not null,
+    snapshot_date date not null,
+    sha256 text not null check (sha256 ~ '^[a-f0-9]{64}$'),
+    region_count integer not null check (region_count > 0),
+    local_unit_count integer not null check (local_unit_count > 0),
+    primary key (dataset_id, version)
+);
+create table public.admin_regions (
+    dataset_id text not null,
+    version text not null,
+    id text not null,
+    canonical_name text not null check (length(btrim(canonical_name)) > 0),
+    region_type text not null check (region_type in ('STATE', 'FCT')),
+    display_order integer not null check (display_order >= 0),
+    primary key (dataset_id, version, id),
+    unique (dataset_id, version, id, region_type),
+    unique (dataset_id, version, display_order),
+    foreign key (dataset_id, version)
+        references public.admin_catalogue_versions(dataset_id, version) on delete restrict
+);
+create table public.admin_local_units (
+    dataset_id text not null,
+    version text not null,
+    id text not null,
+    parent_region_id text not null,
+    parent_region_type text not null,
+    canonical_name text not null check (length(btrim(canonical_name)) > 0),
+    local_unit_type text not null check (local_unit_type in ('LGA', 'AREA_COUNCIL')),
+    display_order integer not null check (display_order >= 0),
+    primary key (dataset_id, version, id),
+    unique (dataset_id, version, parent_region_id, display_order),
+    check ((parent_region_type = 'STATE' and local_unit_type = 'LGA') or
+           (parent_region_type = 'FCT' and local_unit_type = 'AREA_COUNCIL')),
+    foreign key (dataset_id, version, parent_region_id, parent_region_type)
+        references public.admin_regions(dataset_id, version, id, region_type) on delete restrict
+);
+
+-- Reference data is migration-managed; client roles have neither reads nor writes.
+alter table public.admin_catalogue_versions enable row level security;
+alter table public.admin_regions enable row level security;
+alter table public.admin_local_units enable row level security;
+revoke all on public.admin_catalogue_versions, public.admin_regions, public.admin_local_units
+    from public, anon, authenticated, service_role;
+
+insert into public.admin_catalogue_versions
+    (dataset_id, version, snapshot_date, sha256, region_count, local_unit_count)
+values (${dataset}, ${version}, ${sql(document.snapshotDate)}, ${sql(hash)}, 37, 774);
+insert into public.admin_regions
+    (dataset_id, version, id, canonical_name, region_type, display_order)
+values
+    ${regionRows.join(',\n    ')};
+insert into public.admin_local_units
+    (dataset_id, version, id, parent_region_id, parent_region_type, canonical_name, local_unit_type, display_order)
+values
+    ${unitRows.join(',\n    ')};
+
+-- INSERT only: old-client ON CONFLICT UPDATE and historical lifecycle updates
+-- continue through the existing destination-preservation/terminal triggers.
+create function public.validate_journey_catalogue_destination_insert()
+returns trigger language plpgsql security definer set search_path = '' as $$
+begin
+    if new.destination_kind is null then
+        return new;
+    end if;
+    if new.destination_admin_dataset_version is null or not exists (
+        select 1 from public.admin_catalogue_versions v
+        where v.dataset_id = 'NG_ADMIN' and v.version = new.destination_admin_dataset_version
+    ) then
+        raise exception 'Unknown or missing destination catalogue version' using errcode = '22023';
+    end if;
+    if new.destination_country_code is distinct from 'NG' or not exists (
+        select 1 from public.admin_regions r
+        join public.admin_local_units u
+          on u.dataset_id = r.dataset_id and u.version = r.version
+         and u.parent_region_id = r.id and u.parent_region_type = r.region_type
+        where r.dataset_id = 'NG_ADMIN'
+          and r.version = new.destination_admin_dataset_version
+          and r.id = new.destination_state_id
+          and r.canonical_name = new.destination_state_name
+          and u.id = new.destination_lga_id
+          and u.canonical_name = new.destination_lga_name
+    ) then
+        raise exception 'Journey destination does not match catalogue snapshot' using errcode = '22023';
+    end if;
+    return new;
+end;
+$$;
+create trigger journeys_catalogue_destination_validate_insert
+before insert on public.journeys
+for each row execute function public.validate_journey_catalogue_destination_insert();
+revoke all on function public.validate_journey_catalogue_destination_insert()
+    from public, anon, authenticated, service_role;
+commit;
+`;
+}
+
+export function loadCanonical() {
+  const bytes = readFileSync(asset);
+  const document = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+  validate(document);
+  return { bytes, document, hash: createHash('sha256').update(bytes).digest('hex') };
+}
+
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
-  if (process.argv.length !== 3 || process.argv[2] !== '--validate') {
-    console.error('Usage: node tools/generate_nigeria_admin_sql.mjs --validate');
+  const [mode, path] = process.argv.slice(2);
+  if (!['--validate', '--output', '--check'].includes(mode) ||
+      (mode === '--validate' ? path !== undefined : !path) || process.argv.length > (mode === '--validate' ? 3 : 4)) {
+    console.error('Usage: node tools/generate_nigeria_admin_sql.mjs --validate | --output <path> | --check <path>');
     process.exitCode = 2;
   } else {
     try {
-      const bytes = readFileSync(asset);
-      const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-      const document = JSON.parse(text);
-      validate(document);
-      const hash = createHash('sha256').update(bytes).digest('hex');
+      const { document, hash } = loadCanonical();
+      if (mode === '--output') writeFileSync(path, generateSql(document, hash), 'utf8');
+      if (mode === '--check') check(readFileSync(path, 'utf8') === generateSql(document, hash),
+        `Generated SQL differs: ${path}`);
       console.log(`NG_ADMIN ${document.version}: 37 regions (36 STATE, 1 FCT), ` +
         '774 local units (768 LGA, 6 AREA_COUNCIL)');
       console.log(`SHA-256 exact UTF-8 asset bytes: ${hash}`);

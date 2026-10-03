@@ -1,5 +1,8 @@
 begin;
 select no_plan();
+-- This foundation suite exercises rows written before catalogue enforcement.
+-- The catalogue suite tests current INSERT validation; rollback restores this trigger.
+alter table public.journeys disable trigger journeys_catalogue_destination_validate_insert;
 
 insert into auth.users (id, instance_id, aud, role, email, created_at, updated_at)
 values
