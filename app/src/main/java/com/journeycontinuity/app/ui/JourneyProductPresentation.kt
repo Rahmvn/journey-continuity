@@ -2,6 +2,7 @@ package com.journeycontinuity.app.ui
 
 import com.journeycontinuity.app.degraded.ConnectivityPhase
 import com.journeycontinuity.app.degraded.DegradedConnectivityState
+import com.journeycontinuity.app.degraded.SmsFallbackStatus
 import com.journeycontinuity.app.domain.Journey
 import com.journeycontinuity.app.service.CurrentJourneyConnectivity
 
@@ -22,38 +23,48 @@ internal fun routeAfterJourneyChange(route: JourneyProductRoute, active: Journey
         else -> route
     }
 
-internal data class ConnectivityCopy(val title: String, val detail: String)
+internal enum class JourneyConnectivityPresentation(val title: String?, val detail: String?) {
+    NORMAL(null, null),
+    CHECKING_CONNECTION(
+        "Checking connection",
+        "Alabarin is checking this Journey's current connection.",
+    ),
+    LIMITED_FALLBACK_AVAILABLE(
+        "Limited connectivity",
+        "SMS fallback is available if normal internet communication is limited.",
+    ),
+    LIMITED_FALLBACK_UNAVAILABLE(
+        "Limited connectivity",
+        "Fresh information may not reach trusted contacts until communication is restored.",
+    ),
+    RECOVERING(
+        "Connection restored",
+        "Alabarin is checking cloud communication while the connection stabilizes.",
+    ),
+}
 
-internal fun travellerConnectivityCopy(
+internal fun travellerConnectivityPresentation(
+    journeyId: String,
     state: DegradedConnectivityState?,
     current: CurrentJourneyConnectivity?,
-    smsRouteReady: Boolean,
+    smsFallbackStatus: SmsFallbackStatus,
     hasAcceptedContact: Boolean,
-): ConnectivityCopy? {
-    val persisted = state ?: return null
-    val reconciled = current?.takeIf { it.journeyId == persisted.journeyId }
-    val fallbackAvailable = smsRouteReady && hasAcceptedContact &&
-        persisted.fallbackBindingProvisioned && persisted.transportAvailable
-    val limited = ConnectivityCopy(
-        "Limited connectivity",
-        if (fallbackAvailable) {
-            "SMS fallback is available if normal internet communication is limited."
-        } else {
-            "Fresh information may not reach trusted contacts until communication is restored."
-        },
-    )
+): JourneyConnectivityPresentation {
+    val persisted = state?.takeIf { it.journeyId == journeyId && it.journeyActive }
+    val reconciled = current?.takeIf { it.journeyId == journeyId }
+        ?: return JourneyConnectivityPresentation.CHECKING_CONNECTION
+    val fallbackAvailable = smsFallbackStatus.destinationConfigured &&
+        smsFallbackStatus.ready && hasAcceptedContact &&
+        persisted?.fallbackBindingProvisioned == true
+    val limited = if (fallbackAvailable) JourneyConnectivityPresentation.LIMITED_FALLBACK_AVAILABLE
+        else JourneyConnectivityPresentation.LIMITED_FALLBACK_UNAVAILABLE
     return when {
-        reconciled?.validatedInternetAvailable == false -> limited
-        persisted.connectivityPhase == ConnectivityPhase.HEALTHY -> null
-        persisted.connectivityPhase == ConnectivityPhase.RECOVERING && reconciled == null ->
-            ConnectivityCopy(
-                "Checking connection",
-                "Recent Journey information may still need to sync.",
-            )
-        persisted.connectivityPhase == ConnectivityPhase.RECOVERING -> ConnectivityCopy(
-            "Connection restored",
-            "Alabarin is syncing recent information while communication stabilizes.",
-        )
+        !reconciled.validatedInternetAvailable -> limited
+        persisted?.connectivityPhase == ConnectivityPhase.HEALTHY ->
+            JourneyConnectivityPresentation.NORMAL
+        persisted?.connectivityPhase == ConnectivityPhase.RECOVERING ->
+            JourneyConnectivityPresentation.RECOVERING
+        persisted == null -> JourneyConnectivityPresentation.CHECKING_CONNECTION
         else -> limited
     }
 }

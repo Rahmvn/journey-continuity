@@ -203,7 +203,7 @@ fun JourneyProductRoot(
                                 journey = journey,
                                 state = state,
                                 locationUiState = locationUiState,
-                                smsFallbackReady = smsFallbackStatus.ready,
+                                smsFallbackStatus = smsFallbackStatus,
                                 onBack = viewModel::backToHome,
                                 onRetry = onRetryMonitoring,
                                 onEndCompleted = viewModel::endJourney,
@@ -550,7 +550,7 @@ internal fun JourneyActiveScreen(
     journey: Journey,
     state: JourneyUiState,
     locationUiState: LocationUiState,
-    smsFallbackReady: Boolean,
+    smsFallbackStatus: SmsFallbackStatus,
     onBack: () -> Unit,
     onRetry: () -> Unit,
     onEndCompleted: () -> Unit,
@@ -561,8 +561,8 @@ internal fun JourneyActiveScreen(
         locationUiState.access != ForegroundLocationAccess.NONE &&
         locationUiState.locationServicesEnabled
     val accepted = state.trustedContacts.any { it.status == TrustedContactStatus.ACCEPTED }
-    val connectivity = travellerConnectivityCopy(
-        state.degradation, state.currentConnectivity, smsFallbackReady, accepted,
+    val connectivity = travellerConnectivityPresentation(
+        journey.id, state.degradation, state.currentConnectivity, smsFallbackStatus, accepted,
     )
     Column(modifier.fillMaxSize().padding(start = 24.dp, end = 24.dp, bottom = 24.dp)) {
         Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
@@ -593,21 +593,26 @@ internal fun JourneyActiveScreen(
                     }
                 }
             }
-            connectivity?.let { copy ->
+            if (connectivity != JourneyConnectivityPresentation.NORMAL) {
                 Spacer(Modifier.height(28.dp))
-                Row {
-                    Image(painterResource(when {
-                        copy.title == "Connection restored" || copy.title == "Checking connection" ->
-                            R.drawable.alabarin_recovering
-                        copy.detail.startsWith("SMS fallback") -> R.drawable.alabarin_limited
-                        else -> R.drawable.alabarin_unavailable
+                Row(Modifier.testTag("journey_connectivity_status")) {
+                    Image(painterResource(when (connectivity) {
+                        JourneyConnectivityPresentation.CHECKING_CONNECTION,
+                        JourneyConnectivityPresentation.RECOVERING -> R.drawable.alabarin_recovering
+                        JourneyConnectivityPresentation.LIMITED_FALLBACK_AVAILABLE ->
+                            R.drawable.alabarin_limited
+                        JourneyConnectivityPresentation.LIMITED_FALLBACK_UNAVAILABLE ->
+                            R.drawable.alabarin_unavailable
+                        JourneyConnectivityPresentation.NORMAL -> error("Normal has no context row")
                     }), null, Modifier.size(18.dp))
                     Spacer(Modifier.width(10.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(copy.title, color = if (copy.detail.startsWith("Fresh")) Warning else ContextBlue,
+                        Text(requireNotNull(connectivity.title),
+                            color = if (connectivity == JourneyConnectivityPresentation.LIMITED_FALLBACK_UNAVAILABLE)
+                                Warning else ContextBlue,
                             style = textStyle(15, 21, FontWeight.Medium))
                         Spacer(Modifier.height(6.dp))
-                        Text(copy.detail, color = Body, style = textStyle(14, 20))
+                        Text(requireNotNull(connectivity.detail), color = Body, style = textStyle(14, 20))
                     }
                 }
             }

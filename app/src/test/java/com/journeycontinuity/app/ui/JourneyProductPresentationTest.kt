@@ -2,6 +2,9 @@ package com.journeycontinuity.app.ui
 
 import com.journeycontinuity.app.degraded.ConnectivityPhase
 import com.journeycontinuity.app.degraded.DegradedConnectivityState
+import com.journeycontinuity.app.degraded.SmsSubscriptionChoice
+import com.journeycontinuity.app.degraded.UnconfiguredSmsFallbackRouteProvider
+import com.journeycontinuity.app.degraded.evaluateSmsFallbackStatus
 import com.journeycontinuity.app.domain.Journey
 import com.journeycontinuity.app.domain.JourneyStatus
 import com.journeycontinuity.app.service.CurrentJourneyConnectivity
@@ -44,47 +47,63 @@ class JourneyProductPresentationTest {
         assertTrue(canSubmitJourneyStart("Ilorin", 2_000, 1_000))
     }
 
-    @Test fun connectivityCopyIsCalmAndRequiresRealFallbackRoute() {
-        assertNull(travellerConnectivityCopy(state(ConnectivityPhase.HEALTHY), null, false, false))
-        val limited = travellerConnectivityCopy(state(ConnectivityPhase.INTERRUPTED), null, false, true)!!
-        assertEquals("Limited connectivity", limited.title)
-        assertTrue(limited.detail.contains("may not reach"))
-        assertEquals(limited, travellerConnectivityCopy(state(ConnectivityPhase.DEGRADED), null, false, true))
-        assertTrue(travellerConnectivityCopy(state(ConnectivityPhase.DEGRADED), null, true, true)!!
-            .detail.contains("SMS fallback is available"))
-        assertTrue(travellerConnectivityCopy(state(ConnectivityPhase.DEGRADED), null, true, false)!!
-            .detail.contains("may not reach"))
-        val recovering = travellerConnectivityCopy(state(ConnectivityPhase.RECOVERING),
-            CurrentJourneyConnectivity(active.id, true), false, false)!!
-        assertEquals("Connection restored", recovering.title)
-        assertTrue(recovering.detail.contains("syncing recent information"))
-        for (copy in listOf(limited, recovering)) {
-            assertFalse(copy.detail.contains("delivered", ignoreCase = true))
-            assertFalse(copy.detail.contains("read", ignoreCase = true))
-            assertFalse(copy.detail.contains("danger", ignoreCase = true))
-        }
+    @Test fun normalRequiresCurrentJourneyScopedConnectivityAndPersistedHealth() {
+        assertEquals(JourneyConnectivityPresentation.NORMAL, presentation(ConnectivityPhase.HEALTHY,
+            CurrentJourneyConnectivity(active.id, true)))
+        assertEquals(JourneyConnectivityPresentation.CHECKING_CONNECTION,
+            presentation(ConnectivityPhase.HEALTHY, null))
+        assertEquals(JourneyConnectivityPresentation.CHECKING_CONNECTION,
+            presentation(ConnectivityPhase.HEALTHY, CurrentJourneyConnectivity("old", true)))
+        assertEquals(JourneyConnectivityPresentation.CHECKING_CONNECTION,
+            travellerConnectivityPresentation(active.id, null,
+                CurrentJourneyConnectivity(active.id, true), smsStatus(false), false))
+        assertEquals(JourneyConnectivityPresentation.LIMITED_FALLBACK_UNAVAILABLE,
+            presentation(ConnectivityPhase.HEALTHY, CurrentJourneyConnectivity(active.id, false)))
+        assertNull(JourneyConnectivityPresentation.NORMAL.title)
     }
 
-    @Test fun persistedRecoveryNeedsCurrentJourneyRuntimeConfirmation() {
-        val persisted = state(ConnectivityPhase.RECOVERING)
-        val pending = travellerConnectivityCopy(persisted, null, false, false)!!
-        assertEquals("Checking connection", pending.title)
-        assertFalse(pending.detail.contains("restored", ignoreCase = true))
-        assertEquals(pending, travellerConnectivityCopy(persisted,
-            CurrentJourneyConnectivity("previous-journey", true), false, false))
+    @Test fun actualUnconfiguredRouteOverridesStalePersistedTransportFlag() {
+        assertNull(UnconfiguredSmsFallbackRouteProvider.currentRoute())
+        val status = smsStatus(UnconfiguredSmsFallbackRouteProvider.currentRoute() != null)
+        assertFalse(status.ready)
+        assertEquals(JourneyConnectivityPresentation.LIMITED_FALLBACK_UNAVAILABLE,
+            presentation(ConnectivityPhase.DEGRADED,
+                CurrentJourneyConnectivity(active.id, false), status, true))
+        // Even an inconsistent stale snapshot cannot make an absent destination available.
+        assertEquals(JourneyConnectivityPresentation.LIMITED_FALLBACK_UNAVAILABLE,
+            presentation(ConnectivityPhase.DEGRADED,
+                CurrentJourneyConnectivity(active.id, false), status.copy(ready = true), true))
+    }
 
-        val confirmed = travellerConnectivityCopy(persisted,
-            CurrentJourneyConnectivity(active.id, true), false, false)!!
-        assertEquals("Connection restored", confirmed.title)
+    @Test fun configuredRouteAndBoundJourneyCanPresentFutureFallbackWithoutDeliveryClaim() {
+        val available = presentation(ConnectivityPhase.DEGRADED,
+            CurrentJourneyConnectivity(active.id, false), smsStatus(true), true)
+        assertEquals(JourneyConnectivityPresentation.LIMITED_FALLBACK_AVAILABLE, available)
+        assertTrue(available.detail!!.contains("available"))
+        assertFalse(available.detail.contains("delivered", ignoreCase = true))
+        assertEquals(JourneyConnectivityPresentation.LIMITED_FALLBACK_UNAVAILABLE,
+            presentation(ConnectivityPhase.DEGRADED,
+                CurrentJourneyConnectivity(active.id, false), smsStatus(true), false))
+        assertEquals(JourneyConnectivityPresentation.LIMITED_FALLBACK_UNAVAILABLE,
+            travellerConnectivityPresentation(active.id,
+                state(ConnectivityPhase.DEGRADED).copy(fallbackBindingProvisioned = false),
+                CurrentJourneyConnectivity(active.id, false), smsStatus(true), true))
+    }
 
-        val offline = travellerConnectivityCopy(persisted,
-            CurrentJourneyConnectivity(active.id, false), false, false)!!
-        assertEquals("Limited connectivity", offline.title)
-        assertFalse(offline.detail.contains("Alabarin is syncing"))
-        assertEquals("Limited connectivity", travellerConnectivityCopy(
-            state(ConnectivityPhase.HEALTHY),
-            CurrentJourneyConnectivity(active.id, false), false, false,
-        )?.title)
+    @Test fun recoveryWaitsForCurrentNetworkAndClaimsNeitherSyncNorSafety() {
+        val pending = presentation(ConnectivityPhase.RECOVERING, null)
+        assertEquals(JourneyConnectivityPresentation.CHECKING_CONNECTION, pending)
+        assertFalse(pending.detail!!.contains("offline", ignoreCase = true))
+        val recovering = presentation(ConnectivityPhase.RECOVERING,
+            CurrentJourneyConnectivity(active.id, true))
+        assertEquals(JourneyConnectivityPresentation.RECOVERING, recovering)
+        for (claim in listOf("syncing", "synced", "contacted", "delivered", "safe", "arrived")) {
+            assertFalse(recovering.detail!!.contains(claim, ignoreCase = true))
+        }
+        assertEquals(JourneyConnectivityPresentation.LIMITED_FALLBACK_UNAVAILABLE,
+            presentation(ConnectivityPhase.RECOVERING,
+                CurrentJourneyConnectivity(active.id, false)))
+        assertEquals(JourneyStatus.ACTIVE, active.status)
     }
 
     @Test fun activeRowAloneNeverProvesBackgroundServiceIsRunning() {
@@ -100,5 +119,21 @@ class JourneyProductPresentationTest {
         connectivityPhase = phase,
         fallbackBindingProvisioned = true,
         transportAvailable = true,
+    )
+
+    private fun presentation(
+        phase: ConnectivityPhase,
+        current: CurrentJourneyConnectivity?,
+        status: com.journeycontinuity.app.degraded.SmsFallbackStatus = smsStatus(false),
+        hasAcceptedContact: Boolean = false,
+    ) = travellerConnectivityPresentation(active.id, state(phase), current, status, hasAcceptedContact)
+
+    private fun smsStatus(destinationConfigured: Boolean) = evaluateSmsFallbackStatus(
+        sendPermissionGranted = true,
+        phoneStatePermissionGranted = true,
+        telephonyMessagingSupported = true,
+        activeSubscriptions = listOf(SmsSubscriptionChoice(1, "SIM 1")),
+        selectedSubscriptionId = 1,
+        destinationConfigured = destinationConfigured,
     )
 }

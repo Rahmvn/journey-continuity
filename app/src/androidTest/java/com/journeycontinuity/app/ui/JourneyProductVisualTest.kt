@@ -26,10 +26,16 @@ import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
 import androidx.test.runner.lifecycle.Stage
 import com.journeycontinuity.app.degraded.ConnectivityPhase
 import com.journeycontinuity.app.degraded.DegradedConnectivityState
+import com.journeycontinuity.app.degraded.SmsFallbackStatus
+import com.journeycontinuity.app.degraded.SmsSubscriptionChoice
+import com.journeycontinuity.app.degraded.evaluateSmsFallbackStatus
 import com.journeycontinuity.app.domain.Journey
 import com.journeycontinuity.app.domain.JourneyStatus
 import com.journeycontinuity.app.service.CurrentJourneyConnectivity
 import com.journeycontinuity.app.telemetry.ForegroundLocationAccess
+import com.journeycontinuity.app.trusted.TrustedContactStatus
+import com.journeycontinuity.app.trusted.TrustedContactSubjectKind
+import com.journeycontinuity.app.trusted.TrustedContactSummary
 import java.io.File
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -112,8 +118,10 @@ class JourneyProductVisualTest {
                 Box(Modifier.size(390.dp, 844.dp).testTag("journeyFrame")) {
                     JourneyActiveScreen(journey,
                         JourneyUiState(isRestoring = false, activeJourney = journey,
-                            monitoringJourneyId = journey.id),
-                        LocationUiState(ForegroundLocationAccess.PRECISE), false,
+                            monitoringJourneyId = journey.id,
+                            currentConnectivity = CurrentJourneyConnectivity(journey.id, true),
+                            degradation = degradation(ConnectivityPhase.HEALTHY)),
+                        LocationUiState(ForegroundLocationAccess.PRECISE), smsStatus(false),
                         { returnedHome++ }, {}, {})
                 }
             }
@@ -122,6 +130,7 @@ class JourneyProductVisualTest {
         compose.onNodeWithText("Latitude").assertDoesNotExist()
         compose.onNodeWithText("Evidence fresh").assertDoesNotExist()
         capture("active-normal")
+        capture("section08-normal")
         compose.onNodeWithContentDescription("Return to Home").performClick()
         compose.runOnIdle { assertEquals(1, returnedHome) }
     }
@@ -146,10 +155,11 @@ class JourneyProductVisualTest {
                 CompositionLocalProvider(LocalDensity provides Density(density.density, 1.4f)) {
                     JourneyActiveScreen(journey,
                         JourneyUiState(isRestoring = false, activeJourney = journey,
+                            currentConnectivity = CurrentJourneyConnectivity(journey.id, false),
                             degradation = DegradedConnectivityState(
                                 journeyId = journey.id, journeyActive = true,
                                 connectivityPhase = ConnectivityPhase.DEGRADED)),
-                        LocationUiState(), false, {}, {}, {})
+                        LocationUiState(), smsStatus(false), {}, {}, {})
                 }
             }
         }
@@ -174,14 +184,82 @@ class JourneyProductVisualTest {
                         degradation = DegradedConnectivityState(
                             journeyId = journey.id, journeyActive = true,
                             connectivityPhase = ConnectivityPhase.RECOVERING)),
-                    LocationUiState(ForegroundLocationAccess.PRECISE), false, {}, {}, {})
+                    LocationUiState(ForegroundLocationAccess.PRECISE), smsStatus(false), {}, {}, {})
             }
         }
         compose.onNodeWithText("Connection restored").assertIsDisplayed()
-        compose.onNodeWithText("Alabarin is syncing recent information while communication stabilizes.")
+        compose.onNodeWithText("Alabarin is checking cloud communication while the connection stabilizes.")
             .assertIsDisplayed()
         capture("active-recovering")
+        capture("section08-recovering")
     }
+
+    @Test fun section08StartupUnknownUsesNeutralCopy() {
+        setContent {
+            Box(Modifier.size(390.dp, 844.dp).testTag("journeyFrame")) {
+                JourneyActiveScreen(journey,
+                    JourneyUiState(isRestoring = false, activeJourney = journey,
+                        monitoringJourneyId = journey.id,
+                        degradation = degradation(ConnectivityPhase.HEALTHY)),
+                    LocationUiState(ForegroundLocationAccess.PRECISE), smsStatus(false),
+                    {}, {}, {})
+            }
+        }
+        compose.onNodeWithText("Checking connection").assertIsDisplayed()
+        compose.onNodeWithText("Limited connectivity").assertDoesNotExist()
+        capture("section08-startup-unknown")
+    }
+
+    @Test fun section08FallbackUnavailableUsesCurrentProductionTruth() {
+        setContent {
+            Box(Modifier.size(390.dp, 844.dp).testTag("journeyFrame")) {
+                JourneyActiveScreen(journey,
+                    JourneyUiState(isRestoring = false, activeJourney = journey,
+                        monitoringJourneyId = journey.id,
+                        currentConnectivity = CurrentJourneyConnectivity(journey.id, false),
+                        degradation = degradation(ConnectivityPhase.DEGRADED)),
+                    LocationUiState(ForegroundLocationAccess.PRECISE), smsStatus(false),
+                    {}, {}, {})
+            }
+        }
+        compose.onNodeWithText("Fresh information may not reach trusted contacts until communication is restored.")
+            .assertIsDisplayed()
+        compose.onNodeWithText("Monitoring in background").assertIsDisplayed()
+        capture("section08-fallback-unavailable")
+    }
+
+    @Test fun section08FallbackAvailableIsFixtureOnly() {
+        setContent {
+            Box(Modifier.size(390.dp, 844.dp).testTag("journeyFrame")) {
+                JourneyActiveScreen(journey,
+                    JourneyUiState(isRestoring = false, activeJourney = journey,
+                        monitoringJourneyId = journey.id,
+                        currentConnectivity = CurrentJourneyConnectivity(journey.id, false),
+                        degradation = degradation(ConnectivityPhase.DEGRADED),
+                        trustedContacts = listOf(TrustedContactSummary(
+                            "contact-1", TrustedContactSubjectKind.RELATIONSHIP, "Aisha",
+                            "aisha@example.com", TrustedContactStatus.ACCEPTED, null, null, 1,
+                        ))),
+                    LocationUiState(ForegroundLocationAccess.PRECISE), smsStatus(true),
+                    {}, {}, {})
+            }
+        }
+        compose.onNodeWithText("SMS fallback is available if normal internet communication is limited.")
+            .assertIsDisplayed()
+        capture("section08-fallback-available-fixture")
+    }
+
+    private fun degradation(phase: ConnectivityPhase) = DegradedConnectivityState(
+        journeyId = journey.id, journeyActive = true, connectivityPhase = phase,
+        fallbackBindingProvisioned = true, transportAvailable = true,
+    )
+
+    private fun smsStatus(destinationConfigured: Boolean): SmsFallbackStatus = evaluateSmsFallbackStatus(
+        sendPermissionGranted = true, phoneStatePermissionGranted = true,
+        telephonyMessagingSupported = true,
+        activeSubscriptions = listOf(SmsSubscriptionChoice(1, "SIM 1")),
+        selectedSubscriptionId = 1, destinationConfigured = destinationConfigured,
+    )
 
     private fun capture(name: String) {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
