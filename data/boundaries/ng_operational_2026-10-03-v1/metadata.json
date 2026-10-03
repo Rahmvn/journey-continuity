@@ -1,0 +1,62 @@
+{
+  "datasetId": "NG_OPERATIONAL_BOUNDARIES",
+  "version": "alabarin-2026-10-03-v1",
+  "snapshotDate": "2026-10-03",
+  "adminCatalogueVersion": "alabarin-2026-10-03-v1",
+  "adminCatalogueSha256": "e5a75f4d7f906ab3bd2d4db806bbbfa1b4c7ac2ff04f6cca3e52dd39e6b24aa4",
+  "hashRule": "SHA-256 of each file's exact stored bytes; no newline or JSON normalization",
+  "meaning": "Reviewed operational boundaries, not legal boundary certification",
+  "archiveChoice": "Official ArcGIS Hub GeoPackage download returned HTTP 500 during acquisition; the official FeatureServer full-precision GeoJSON export is preserved byte-for-byte instead.",
+  "license": "CC BY 4.0",
+  "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+  "attribution": "GRID3; eHealth Africa and Proxy Logics, 2020. Nigeria Operational LGA and State Boundaries. Adapted by Alabarin through explicit administrative-ID mapping and geometry review. No geometry simplification or repair.",
+  "sourceLayers": [
+    {
+      "name": "GRID3 NGA - Operational LGA Boundaries",
+      "itemId": "2bb616a49ee84f409427cc2143787113",
+      "serviceLayerUrl": "https://services3.arcgis.com/BU6Aadhn6tbBEdyk/arcgis/rest/services/NGA_LGA_Boundaries_2/FeatureServer/0",
+      "descriptionRelease": "March 2021",
+      "arcgisItemModifiedUtc": "2025-09-04T12:42:16Z",
+      "export": "Official FeatureServer query, all attributes and full geometry, outSR=4326, f=geojson, FID ascending; no simplification",
+      "queryParameters": "where=1%3D1&outFields=%2A&returnGeometry=true&outSR=4326&f=geojson&orderByFields=FID+ASC&resultRecordCount=2000",
+      "file": "grid3_lga.geojson",
+      "bytes": 8135461,
+      "sha256": "784cc510bbbdbca2848bb02fb1a4a1a681885d464b9a09f29529ddb3a10f10a3",
+      "features": 774
+    },
+    {
+      "name": "GRID3 NGA - Operational State Boundaries",
+      "itemId": "c41532b720504f4799fe20438b7e3b7f",
+      "serviceLayerUrl": "https://services3.arcgis.com/BU6Aadhn6tbBEdyk/arcgis/rest/services/NGA_State_Boundaries_V2/FeatureServer/0",
+      "descriptionRelease": "September 2020",
+      "arcgisItemModifiedUtc": "2024-04-30T18:27:47Z",
+      "export": "Official FeatureServer query, all attributes and full geometry, outSR=4326, f=geojson, FID ascending; no simplification",
+      "queryParameters": "where=1%3D1&outFields=%2A&returnGeometry=true&outSR=4326&f=geojson&orderByFields=FID+ASC&resultRecordCount=2000",
+      "file": "grid3_state.geojson",
+      "bytes": 1937285,
+      "sha256": "97cece7f6304c0962f3c66d3d2f43cd8cbe8c0804d980c6e5bef6d0f5c8025ca",
+      "features": 37
+    }
+  ],
+  "geometryCrs": "EPSG:4326",
+  "mapping": {
+    "file": "mapping.json",
+    "bytes": 276277,
+    "sha256": "92700100062315eefd485629567ee17aa5c77b5fc42a41520b21fb21a85f329b",
+    "regions": 37,
+    "localUnits": 774,
+    "exactNameMatches": 679,
+    "catalogueAliasMatches": 1,
+    "reviewedNameDifferences": 94
+  },
+  "acceptancePoints": {
+    "file": "acceptance_points.json",
+    "bytes": 2640,
+    "sha256": "e5841f981a629e12bfe178563a079fd6caa2edc9365db2fd80c0f1c92bb53997"
+  },
+  "geometryAudit": {
+    "file": "geometry_audit.json",
+    "bytes": 7297,
+    "sha256": "e51841f1e15f143501a51f27a1dc6163aea7939f858625f3a1e77bcc5334a592"
+  }
+}

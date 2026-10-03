@@ -1,0 +1,240 @@
+{
+  "auditDate": "2026-10-04",
+  "method": "PostGIS 3.3.7 on isolated local audit database; original GeoJSON parsed with ST_GeomFromGeoJSON and wrapped with ST_Multi only; no repair or simplification",
+  "sourceFiles": [
+    "grid3_lga.geojson",
+    "grid3_state.geojson"
+  ],
+  "featureCounts": {
+    "state": 37,
+    "localUnit": 774,
+    "sourcePolygon": 749,
+    "sourceMultiPolygon": 25
+  },
+  "geometry": {
+    "invalid": 0,
+    "nullOrEmpty": 0,
+    "wrongSrid": 0,
+    "nonFiniteCoordinates": 0,
+    "duplicateGeometryPairs": 0,
+    "multiPolygonUnits": [
+      {
+        "globalid": "69278622-41b8-43af-981f-8696092cceda",
+        "sourceName": "Brass",
+        "parts": 2,
+        "alabarinLocalUnitId": "ng-bayelsa-brass"
+      },
+      {
+        "globalid": "3c6fef0a-7ef2-44f7-84e4-b076e9e017d6",
+        "sourceName": "Nembe",
+        "parts": 2,
+        "alabarinLocalUnitId": "ng-bayelsa-nembe"
+      },
+      {
+        "globalid": "1891324d-0b82-4eb9-9845-d01d394490cf",
+        "sourceName": "Burutu",
+        "parts": 2,
+        "alabarinLocalUnitId": "ng-delta-burutu"
+      },
+      {
+        "globalid": "74ccffe6-efcd-4b51-8a0f-57e4a3694d31",
+        "sourceName": "Patani",
+        "parts": 2,
+        "alabarinLocalUnitId": "ng-delta-patani"
+      },
+      {
+        "globalid": "88187ced-e635-46a7-b092-b07d7cd58c2f",
+        "sourceName": "Warri South-West",
+        "parts": 3,
+        "alabarinLocalUnitId": "ng-delta-warri-south-west"
+      },
+      {
+        "globalid": "8755ab48-a373-4023-9ca3-c4528d051aeb",
+        "sourceName": "Ishielu",
+        "parts": 2,
+        "alabarinLocalUnitId": "ng-ebonyi-ishielu"
+      },
+      {
+        "globalid": "efb6c09a-e495-43ba-b15b-47f2b9953c8d",
+        "sourceName": "Gombe",
+        "parts": 2,
+        "alabarinLocalUnitId": "ng-gombe-gombe"
+      },
+      {
+        "globalid": "48a66450-5ebd-4fd4-8873-69dd2abb405d",
+        "sourceName": "Ideato South",
+        "parts": 2,
+        "alabarinLocalUnitId": "ng-imo-ideato-south"
+      },
+      {
+        "globalid": "2aac3e0a-961b-4360-9a1b-a85fa9f1d737",
+        "sourceName": "Njaba",
+        "parts": 2,
+        "alabarinLocalUnitId": "ng-imo-njaba"
+      },
+      {
+        "globalid": "d2aa1884-c874-42de-99a6-b9e5a7a3ae49",
+        "sourceName": "Nkwerre",
+        "parts": 2,
+        "alabarinLocalUnitId": "ng-imo-nkwerre"
+      },
+      {
+        "globalid": "9d87368d-fa6e-4294-990f-f4bf40d68bc4",
+        "sourceName": "Onuimo",
+        "parts": 2,
+        "alabarinLocalUnitId": "ng-imo-onuimo"
+      },
+      {
+        "globalid": "08313f76-b308-42a8-a6a2-c1f447863112",
+        "sourceName": "Owerri West",
+        "parts": 2,
+        "alabarinLocalUnitId": "ng-imo-owerri-west"
+      },
+      {
+        "globalid": "ad5a9ab1-c2aa-43fc-af1c-438a6fdfe568",
+        "sourceName": "Kauru",
+        "parts": 2,
+        "alabarinLocalUnitId": "ng-kaduna-kauru"
+      },
+      {
+        "globalid": "18756e0e-0db4-4515-8fa5-28c61e49a1a7",
+        "sourceName": "Wasagu-Danko",
+        "parts": 2,
+        "alabarinLocalUnitId": "ng-kebbi-wasagu-danko"
+      },
+      {
+        "globalid": "49f75f81-e677-498f-b0e7-2eeb7fa37356",
+        "sourceName": "Ilorin East",
+        "parts": 2,
+        "alabarinLocalUnitId": "ng-kwara-ilorin-east"
+      },
+      {
+        "globalid": "addeabaf-f2f8-4a85-8d0c-1cab72f7b7a1",
+        "sourceName": "Ilorin South",
+        "parts": 2,
+        "alabarinLocalUnitId": "ng-kwara-ilorin-south"
+      },
+      {
+        "globalid": "cf1f873b-1ea3-404b-ba04-41a635aacca1",
+        "sourceName": "Lavun",
+        "parts": 2,
+        "alabarinLocalUnitId": "ng-niger-lavun"
+      },
+      {
+        "globalid": "ba1cf12b-2da8-4071-979d-054da497f349",
+        "sourceName": "Odogbolu",
+        "parts": 2,
+        "alabarinLocalUnitId": "ng-ogun-odogbolu"
+      },
+      {
+        "globalid": "93e6472f-a63d-4771-a3b4-631ada3c6a1d",
+        "sourceName": "Egbeda",
+        "parts": 2,
+        "alabarinLocalUnitId": "ng-oyo-egbeda"
+      },
+      {
+        "globalid": "2e95a8d9-45ff-4bb7-9913-3351457344a6",
+        "sourceName": "Olorunsogo",
+        "parts": 2,
+        "alabarinLocalUnitId": "ng-oyo-olorunsogo"
+      },
+      {
+        "globalid": "e75004ad-30ab-4fc3-8473-a4ad3f11880a",
+        "sourceName": "Oyo West",
+        "parts": 2,
+        "alabarinLocalUnitId": "ng-oyo-oyo-west"
+      },
+      {
+        "globalid": "62c0d2c5-3294-49ac-aa0f-7ad75d20aa9a",
+        "sourceName": "Emuoha",
+        "parts": 2,
+        "alabarinLocalUnitId": "ng-rivers-emohua"
+      },
+      {
+        "globalid": "e60a5381-6fa3-47bd-9fe5-962f754b7a80",
+        "sourceName": "Gassol",
+        "parts": 2,
+        "alabarinLocalUnitId": "ng-taraba-gassol"
+      },
+      {
+        "globalid": "a4fb8178-ef45-4ef1-ab27-ba4a4dec8151",
+        "sourceName": "Bade",
+        "parts": 2,
+        "alabarinLocalUnitId": "ng-yobe-bade"
+      },
+      {
+        "globalid": "c6e5e259-b2d1-46dd-ac54-245def7d2bf3",
+        "sourceName": "Gusau",
+        "parts": 2,
+        "alabarinLocalUnitId": "ng-zamfara-gusau"
+      }
+    ],
+    "unitsWithHoles": [
+      {
+        "globalid": "66b15c4e-ebac-4fa8-ae4a-f14833cd112b",
+        "sourceName": "Ohaukwu",
+        "holes": 1,
+        "alabarinLocalUnitId": "ng-ebonyi-ohaukwu"
+      },
+      {
+        "globalid": "1e9e7140-356a-4732-805c-b5d0b25da7ca",
+        "sourceName": "Oyun",
+        "holes": 1,
+        "alabarinLocalUnitId": "ng-kwara-oyun"
+      },
+      {
+        "globalid": "1e32a4cd-643a-42d2-b2c2-4430198a31d6",
+        "sourceName": "Bosso",
+        "holes": 1,
+        "alabarinLocalUnitId": "ng-niger-bosso"
+      },
+      {
+        "globalid": "fe5497e3-db43-4e45-9566-12fe1d1c8484",
+        "sourceName": "Lagelu",
+        "holes": 1,
+        "alabarinLocalUnitId": "ng-oyo-lagelu"
+      }
+    ],
+    "interiorRingCount": 4
+  },
+  "topology": {
+    "unitsOutsideMappedState": 0,
+    "siblingPositiveAreaOverlapPairs": 0,
+    "stateMinusLocalUnionSquareKm": {
+      "ng-lagos": 209.526281989925,
+      "ng-delta": 0.00357894308948517,
+      "ng-bayelsa": 0.00242034465812333,
+      "ng-ogun": 0.00224750724548101
+    },
+    "lagosGapNote": "One continuous gap polygon at longitude 3.37936127810053..3.63292474408172, latitude 6.44705277306707..6.60786398083809. Water/coastline interpretation is plausible but not established by this audit; do not fill or assign it."
+  },
+  "offa": {
+    "alabarinLocalUnitId": "ng-kwara-offa",
+    "grid3GlobalId": "5dc415a1-ef4e-476a-830c-50bbdce223bd",
+    "sourceGeometryType": "Polygon",
+    "valid": true,
+    "areaSquareKm": 73.1129594538824,
+    "bboxLonLat": [
+      4.6504344937569,
+      8.12319095799637,
+      4.75840178001818,
+      8.21744346524378
+    ],
+    "sharedBorderNeighbourIds": [
+      "ng-kwara-oyun"
+    ],
+    "sharedBorderKmWithOyun": 40.9019917188946,
+    "geometryInteriorPointLonLat": [
+      4.692343165552252,
+      8.17152106389602
+    ],
+    "knownOffaTownPointLonLat": [
+      4.7227435,
+      8.1560008
+    ],
+    "geometryConcern": null
+  },
+  "acceptancePointsFile": "acceptance_points.json",
+  "blockingGeometryDefects": false,
+  "caution": "Operational boundaries are evidence of membership in this reviewed snapshot, not legal boundary certification or proof of physical device location."
+}

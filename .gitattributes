@@ -1,2 +1,4 @@
 app/src/main/assets/catalogue/ng_admin_v1.json -text
+data/boundaries/ng_operational_2026-10-03-v1/*.geojson -text
+data/boundaries/ng_operational_2026-10-03-v1/mapping.json -text
 supabase/migrations/20261003000200_nigeria_admin_catalogue.sql text eol=lf

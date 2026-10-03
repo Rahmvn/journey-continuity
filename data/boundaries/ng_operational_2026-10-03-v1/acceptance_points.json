@@ -1,0 +1,59 @@
+{
+  "purpose": "Review fixtures only; no Journey admission uses these coordinates",
+  "pointCoordinateOrder": "longitude, latitude (EPSG:4326)",
+  "points": [
+    {
+      "id": "offa_city",
+      "label": "Offa town reference point",
+      "longitude": 4.7227435,
+      "latitude": 8.1560008,
+      "expectedLocalUnitId": "ng-kwara-offa",
+      "selectionBasis": "Geoapify Offa locality result, checked against unsimplified GRID3 polygon with ST_Contains; not a specific building"
+    },
+    {
+      "id": "national_hospital_abuja",
+      "label": "National Hospital Abuja",
+      "longitude": 7.4619731,
+      "latitude": 9.039929,
+      "expectedLocalUnitId": "ng-fct-abuja-municipal",
+      "selectionBasis": "Geoapify named-facility result; Federal Ministry of Health independently lists the hospital in Abuja FCT; checked with ST_Contains",
+      "independentReference": "https://ndr.health.gov.ng/teaching-hospitals/"
+    },
+    {
+      "id": "federal_teaching_hospital_gombe",
+      "label": "Federal Teaching Hospital Gombe",
+      "longitude": 11.1363065,
+      "latitude": 10.2990598,
+      "expectedLocalUnitId": "ng-gombe-gombe",
+      "selectionBasis": "Geoapify named-facility result; hospital's own contact page identifies Gombe city; checked with ST_Contains",
+      "independentReference": "https://www.fthgombe.gov.ng/pages/contact.php"
+    },
+    {
+      "id": "delta_state_university_abraka",
+      "label": "Delta State University, Abraka",
+      "longitude": 6.1216518,
+      "latitude": 5.7927494,
+      "expectedLocalUnitId": "ng-delta-ethiope-east",
+      "selectionBasis": "Geoapify named-campus result; university's own About page confirms its Abraka campus; checked with ST_Contains",
+      "independentReference": "https://www.delsu.edu.ng/about/index.htm"
+    },
+    {
+      "id": "oyun_neighbour",
+      "label": "Oyun locality reference point outside Offa",
+      "longitude": 4.6316354,
+      "latitude": 8.1998492,
+      "expectedLocalUnitId": "ng-kwara-oyun",
+      "selectionBasis": "Geoapify Oyun locality result, checked with ST_Contains in Oyun and ST_Covers=false in Offa"
+    },
+    {
+      "id": "offa_oyun_shared_vertex",
+      "label": "Exact Offa/Oyun shared border vertex",
+      "longitude": 4.65057447773,
+      "latitude": 8.14435408227513,
+      "expectedLocalUnitId": null,
+      "boundaryUnitIds": ["ng-kwara-offa", "ng-kwara-oyun"],
+      "selectionBasis": "ST_PointN at half the vertex count of the longest LineString in ST_Intersection(ST_Boundary(Offa), ST_Boundary(Oyun)); both polygons ST_Covers=true and ST_Contains=false",
+      "expectedResult": "BOUNDARY_AMBIGUOUS"
+    }
+  ]
+}
