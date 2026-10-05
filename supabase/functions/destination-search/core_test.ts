@@ -3,6 +3,7 @@ import {
   assertStringIncludes,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
+  type BoundaryOutcome,
   type CatalogueContext,
   type DestinationSearchDependencies,
   handleDestinationSearch,
@@ -85,8 +86,16 @@ function setup(options: {
   providerStatus?: number;
   authenticated?: boolean;
   throwFetch?: boolean;
+  boundaryOutcome?: BoundaryOutcome;
+  boundaryVersion?: string | null;
+  throwBoundary?: boolean;
 } = {}) {
-  const seen = { urls: [] as URL[], authenticated: 0, catalogue: 0 };
+  const seen = {
+    urls: [] as URL[],
+    authenticated: 0,
+    catalogue: 0,
+    boundary: 0,
+  };
   const dependencies: DestinationSearchDependencies = {
     apiKey: "server-only-test-key",
     authenticate: () => {
@@ -115,6 +124,21 @@ function setup(options: {
           },
         ),
       );
+    },
+    verifyBoundary: () => {
+      seen.boundary++;
+      if (options.throwBoundary) {
+        return Promise.reject(new Error("boundary unavailable"));
+      }
+      return Promise.resolve({
+        outcome: options.boundaryOutcome ?? "UNAVAILABLE",
+        boundaryDatasetVersion: options.boundaryVersion === undefined
+          ? options.boundaryOutcome === "UNAVAILABLE" ||
+              !options.boundaryOutcome
+            ? null
+            : "alabarin-2026-10-03-v1"
+          : options.boundaryVersion,
+      });
     },
   };
   return { seen, dependencies };
@@ -221,10 +245,13 @@ Deno.test("contextual query is deterministic and leaves visible request text unt
   );
 });
 
-Deno.test("specific hospital is only POINT_CANDIDATE despite provider-text MATCH", async () => {
-  const { result } = await execute();
+Deno.test("provider-text MATCH alone leaves hospital unselectable when verifier is unavailable", async () => {
+  const { result, seen } = await execute();
   const item = result.results[0];
   assertEquals(item.suitability, "POINT_CANDIDATE");
+  assertEquals(item.boundaryOutcome, "UNAVAILABLE");
+  assertEquals(item.boundaryDatasetVersion, null);
+  assertEquals(seen.boundary, 1);
   assertEquals(item.regionMatch, "MATCH");
   assertEquals(item.localUnitMatch, "MATCH");
   assertEquals(item.resultType, "PLACE");
@@ -234,12 +261,61 @@ Deno.test("specific hospital is only POINT_CANDIDATE despite provider-text MATCH
   assertEquals("destination" in result, false);
 });
 
+Deno.test("National Hospital becomes selectable only after geometric INSIDE", async () => {
+  const { result, seen } = await execute({}, { boundaryOutcome: "INSIDE" });
+  const item = result.results[0];
+  assertEquals(item.suitability, "SELECTABLE_POINT");
+  assertEquals(item.boundaryOutcome, "INSIDE");
+  assertEquals(item.boundaryDatasetVersion, "alabarin-2026-10-03-v1");
+  assertEquals(item.regionMatch, "MATCH");
+  assertEquals(item.localUnitMatch, "MATCH");
+  assertEquals(seen.boundary, 1);
+  assertEquals("destination" in result, false);
+});
+
+Deno.test("boundary outcomes map point candidates without inventing membership", async () => {
+  for (
+    const [boundaryOutcome, suitability] of [
+      ["OUTSIDE_SELECTED_UNIT", "NOT_USABLE"],
+      ["BOUNDARY_AMBIGUOUS", "NEEDS_MAP_PIN"],
+      ["COVERAGE_UNRESOLVED", "NEEDS_MAP_PIN"],
+    ] as const
+  ) {
+    const { result, seen } = await execute({}, { boundaryOutcome });
+    assertEquals(result.results[0].boundaryOutcome, boundaryOutcome);
+    assertEquals(result.results[0].suitability, suitability);
+    assertEquals(seen.boundary, 1);
+  }
+});
+
+Deno.test("boundary outage and incomplete INSIDE evidence never select", async () => {
+  const outage = await execute({}, { throwBoundary: true });
+  assertEquals(outage.result.results[0].suitability, "POINT_CANDIDATE");
+  assertEquals(outage.result.results[0].boundaryOutcome, "UNAVAILABLE");
+  const incomplete = await execute({}, {
+    boundaryOutcome: "INSIDE",
+    boundaryVersion: null,
+  });
+  assertEquals(incomplete.result.results[0].suitability, "POINT_CANDIDATE");
+  assertEquals(incomplete.result.results[0].boundaryOutcome, "UNAVAILABLE");
+});
+
+Deno.test("classifier INVALID_CONTEXT is an application error", async () => {
+  const { response, result } = await execute({}, {
+    boundaryOutcome: "INVALID_CONTEXT",
+  });
+  assertEquals(response.status, 503);
+  assertEquals(result.error.code, "SEARCH_UNAVAILABLE");
+  assertEquals("results" in result, false);
+});
+
 Deno.test("wrong State or known other local unit is NOT_USABLE", async () => {
   const wrongState = await execute({}, {
     providerResults: [{ ...HOSPITAL, state: "Lagos State" }],
   });
   assertEquals(wrongState.result.results[0].regionMatch, "CONTRADICTION");
   assertEquals(wrongState.result.results[0].suitability, "NOT_USABLE");
+  assertEquals(wrongState.seen.boundary, 0);
   const wrongFctAlias = await execute({
     query: "Central Market",
     regionId: "ng-kwara",
@@ -265,6 +341,7 @@ Deno.test("wrong State or known other local unit is NOT_USABLE", async () => {
   });
   assertEquals(wrongUnit.result.results[0].localUnitMatch, "CONTRADICTION");
   assertEquals(wrongUnit.result.results[0].suitability, "NOT_USABLE");
+  assertEquals(wrongUnit.seen.boundary, 0);
 });
 
 Deno.test("missing provider county is UNKNOWN, not boundary verification", async () => {
@@ -284,13 +361,15 @@ Deno.test("roads and broad localities need a pin", async () => {
   });
   assertEquals(road.result.results[0].suitability, "NEEDS_MAP_PIN");
   assertEquals(road.result.results[0].resultType, "ROAD");
+  assertEquals(road.seen.boundary, 0);
   for (const type of ["city", "county", "state", "district", "suburb"]) {
-    const { result } = await execute({}, {
+    const { result, seen } = await execute({}, {
       providerResults: [
         { ...HOSPITAL, result_type: type },
       ],
     });
     assertEquals(result.results[0].suitability, "NEEDS_MAP_PIN");
+    assertEquals(seen.boundary, 0);
   }
 });
 

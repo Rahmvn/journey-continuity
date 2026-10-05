@@ -1,5 +1,9 @@
 import { createClient } from "npm:@supabase/supabase-js@2.116.0";
-import { type CatalogueContext, handleDestinationSearch } from "./core.ts";
+import {
+  type BoundaryVerification,
+  type CatalogueContext,
+  handleDestinationSearch,
+} from "./core.ts";
 
 type RegionRow = {
   id: string;
@@ -99,6 +103,49 @@ Deno.serve(async (request) => {
             row.parent_region_id === region.id && row.id !== unit.id
           ).map((row) => row.canonical_name),
         };
+      },
+      verifyBoundary: async (
+        regionId,
+        localUnitId,
+        latitude,
+        longitude,
+      ): Promise<BoundaryVerification> => {
+        const { data, error } = await service.rpc(
+          "classify_destination_coordinate_service_v1",
+          {
+            p_region_id: regionId,
+            p_local_unit_id: localUnitId,
+            p_latitude: latitude,
+            p_longitude: longitude,
+          },
+        );
+        if (error || !data || typeof data !== "object") {
+          throw new Error("Boundary verification unavailable");
+        }
+        const outcome = data.outcome;
+        if (
+          ![
+            "INSIDE",
+            "OUTSIDE_SELECTED_UNIT",
+            "BOUNDARY_AMBIGUOUS",
+            "COVERAGE_UNRESOLVED",
+            "INVALID_CONTEXT",
+            "UNAVAILABLE",
+          ].includes(outcome)
+        ) throw new Error("Invalid boundary response");
+        const version = data.boundary_dataset_version;
+        if (version !== null && typeof version !== "string") {
+          throw new Error("Invalid boundary version");
+        }
+        if (
+          outcome !== "UNAVAILABLE" && outcome !== "INVALID_CONTEXT" &&
+          (data.boundary_dataset_id !== "NG_OPERATIONAL_BOUNDARIES" ||
+            !version)
+        ) throw new Error("Invalid boundary dataset");
+        return {
+          outcome,
+          boundaryDatasetVersion: version,
+        } as BoundaryVerification;
       },
     });
   } catch {

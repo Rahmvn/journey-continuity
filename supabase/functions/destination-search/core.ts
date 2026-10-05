@@ -1,10 +1,22 @@
 /** Provider-neutral HTTP contract and fail-closed Geoapify adapter. */
 export type SearchMode = "autocomplete" | "search";
-/** Search suitability only. No result is boundary-verified for Journey creation. */
+/** Search suitability only; Journey admission is a separate operation. */
 export type SearchSuitability =
+  | "SELECTABLE_POINT"
   | "POINT_CANDIDATE"
   | "NEEDS_MAP_PIN"
   | "NOT_USABLE";
+export type BoundaryOutcome =
+  | "INSIDE"
+  | "OUTSIDE_SELECTED_UNIT"
+  | "BOUNDARY_AMBIGUOUS"
+  | "COVERAGE_UNRESOLVED"
+  | "INVALID_CONTEXT"
+  | "UNAVAILABLE";
+export type BoundaryVerification = {
+  outcome: BoundaryOutcome;
+  boundaryDatasetVersion: string | null;
+};
 export type AdminMatch = "MATCH" | "UNKNOWN" | "CONTRADICTION";
 export type ResultType = "PLACE" | "ROAD" | "LOCALITY" | "UNKNOWN";
 
@@ -29,6 +41,8 @@ export type PlaceSearchResult = {
   regionMatch: AdminMatch;
   localUnitMatch: AdminMatch;
   suitability: SearchSuitability;
+  boundaryOutcome: BoundaryOutcome | null;
+  boundaryDatasetVersion: string | null;
   attribution: ProviderAttribution | null;
 };
 
@@ -50,6 +64,12 @@ export type DestinationSearchDependencies = {
   ) => Promise<CatalogueContext | null>;
   apiKey: string;
   fetchProvider: typeof fetch;
+  verifyBoundary: (
+    regionId: string,
+    localUnitId: string,
+    latitude: number,
+    longitude: number,
+  ) => Promise<BoundaryVerification>;
 };
 
 const MAX_BODY_BYTES = 2_048;
@@ -147,12 +167,51 @@ export async function handleDestinationSearch(
   if (payload.results.length === 0) {
     return json(200, { outcome: "NO_RESULTS", results: [] });
   }
-  const results = payload.results.slice(0, MAX_RESULTS)
+  const candidates = payload.results.slice(0, MAX_RESULTS)
     .map((item: unknown) => parseResult(item, context, input.query))
     .filter((item: PlaceSearchResult | null): item is PlaceSearchResult =>
       item !== null
     );
-  if (results.length === 0) return error(502, "INVALID_PROVIDER_RESPONSE");
+  if (candidates.length === 0) return error(502, "INVALID_PROVIDER_RESPONSE");
+  const results = await Promise.all(candidates.map(async (candidate) => {
+    if (candidate.suitability !== "POINT_CANDIDATE") return candidate;
+    let verification: BoundaryVerification;
+    try {
+      verification = await dependencies.verifyBoundary(
+        context.regionId,
+        context.localUnitId,
+        candidate.latitude!,
+        candidate.longitude!,
+      );
+    } catch {
+      verification = { outcome: "UNAVAILABLE", boundaryDatasetVersion: null };
+    }
+    if (verification.outcome === "INVALID_CONTEXT") return null;
+    const version = typeof verification.boundaryDatasetVersion === "string" &&
+        verification.boundaryDatasetVersion.trim().length > 0
+      ? verification.boundaryDatasetVersion
+      : null;
+    // A claimed INSIDE without its reviewed dataset version is not evidence.
+    const outcome = verification.outcome === "INSIDE" && !version
+      ? "UNAVAILABLE"
+      : verification.outcome;
+    const suitability: SearchSuitability = outcome === "INSIDE"
+      ? "SELECTABLE_POINT"
+      : outcome === "OUTSIDE_SELECTED_UNIT"
+      ? "NOT_USABLE"
+      : outcome === "BOUNDARY_AMBIGUOUS" || outcome === "COVERAGE_UNRESOLVED"
+      ? "NEEDS_MAP_PIN"
+      : "POINT_CANDIDATE";
+    return {
+      ...candidate,
+      suitability,
+      boundaryOutcome: outcome,
+      boundaryDatasetVersion: outcome === "UNAVAILABLE" ? null : version,
+    };
+  }));
+  if (results.some((item) => item === null)) {
+    return error(503, "SEARCH_UNAVAILABLE");
+  }
   return json(200, { outcome: "OK", results });
 }
 
@@ -288,6 +347,8 @@ function parseResult(
     regionMatch,
     localUnitMatch,
     suitability,
+    boundaryOutcome: null,
+    boundaryDatasetVersion: null,
     attribution,
   };
 }
