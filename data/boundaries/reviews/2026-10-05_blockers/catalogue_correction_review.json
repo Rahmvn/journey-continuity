@@ -1,0 +1,38 @@
+{
+  "reviewDate": "2026-10-05",
+  "oldAdminCatalogueVersion": "alabarin-2026-10-03-v1",
+  "newAdminCatalogueVersion": "alabarin-2026-10-05-v2",
+  "oldAdminCatalogueSha256": "e5a75f4d7f906ab3bd2d4db806bbbfa1b4c7ac2ff04f6cca3e52dd39e6b24aa4",
+  "newAdminCatalogueSha256": "694a02cb25ad723429477da364f8c3bb482f3b5cb6595e1c0571d8c7e27ee911",
+  "stableLocalUnitId": "ng-plateau-quaan-pan",
+  "oldCanonicalName": "Qua’an Pan",
+  "newCanonicalName": "Qua'an Pan",
+  "finding": "The retained v1 name contains U+2019, not U+FFFD. Prior CATALOGUE_ENCODING review category was mistaken. This is a versioned canonical punctuation correction, not invalid UTF-8 repair.",
+  "primarySource": {
+    "authority": "Independent National Electoral Commission",
+    "url": "https://cvr.inecnigeria.org/locator/viewCentre/1710",
+    "observedName": "QUA'AN PAN"
+  },
+  "supportingSource": {
+    "authority": "Plateau State Government / Qua'an-Pan LGA",
+    "url": "https://quaanpanlga.pl.gov.ng/",
+    "observedName": "Qua'an-Pan"
+  },
+  "secondarySource": {
+    "authority": "Plateau State Government",
+    "url": "https://www.plateaustate.gov.ng/uploads/plateau-state-revenue-consolidation-law-2020.pdf",
+    "observedName": "Qua'an-pan"
+  },
+  "editorialDecision": "INEC current locator spelling, title-cased as Qua'an Pan. Hyphenated State/LGA spelling is corroboration of identity, not a new speculative alias.",
+  "boundaryReviewOverlay": {
+    "retainedMappingSha256": "92700100062315eefd485629567ee17aa5c77b5fc42a41520b21fb21a85f329b",
+    "grid3GlobalId": "519888e1-aa4b-40f8-a6c9-bd973018488b",
+    "grid3UniqueId": 28856,
+    "grid3SourceName": "Qua'An Pan",
+    "newCanonicalName": "Qua'an Pan",
+    "reviewCategory": "CASE_VARIANT",
+    "correctionToPriorReview": "U+2019 was misrendered in console output; no replacement character exists. Original hashed mapping retained unchanged.",
+    "mappedUnitsStillComplete": 774
+  },
+  "compatibility": "All stable IDs, parents, types, order, aliases and other names unchanged. Existing v1 Journeys retain their name/version. Server validates v1 and v2 separately. Geometry/source bytes unchanged."
+}

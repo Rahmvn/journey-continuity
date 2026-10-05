@@ -1,0 +1,234 @@
+{
+  "reviewDate": "2026-10-05",
+  "boundaryVersion": "alabarin-2026-10-03-v1",
+  "sourceHashes": {
+    "grid3_lga.geojson": "784cc510bbbdbca2848bb02fb1a4a1a681885d464b9a09f29529ddb3a10f10a3",
+    "grid3_state.geojson": "97cece7f6304c0962f3c66d3d2f43cd8cbe8c0804d980c6e5bef6d0f5c8025ca",
+    "mapping.json": "92700100062315eefd485629567ee17aa5c77b5fc42a41520b21fb21a85f329b"
+  },
+  "derivation": "ST_Difference(Lagos State, ST_UnaryUnion(ST_Collect(mapped Lagos local-unit geometries))); no repair, simplification or assignment",
+  "postgis": {
+    "geometryType": "ST_Polygon",
+    "componentCount": 1,
+    "areaKm2": 209.526281989925,
+    "bbox": "BOX(3.37936127810053 6.44705277306707,3.63292474408172 6.60786398083809)",
+    "centroid": {
+      "type": "Point",
+      "coordinates": [
+        3.481434384,
+        6.517528177
+      ]
+    },
+    "surfacePoint": {
+      "type": "Point",
+      "coordinates": [
+        3.437526504,
+        6.527405374
+      ]
+    },
+    "holes": 0
+  },
+  "borderingLocalUnits": [
+    {
+      "localUnitId": "ng-lagos-apapa",
+      "sharedBorderKm": 0.378975538613627
+    },
+    {
+      "localUnitId": "ng-lagos-epe",
+      "sharedBorderKm": 3.59974239086957
+    },
+    {
+      "localUnitId": "ng-lagos-eti-osa",
+      "sharedBorderKm": 42.0137189597834
+    },
+    {
+      "localUnitId": "ng-lagos-ikorodu",
+      "sharedBorderKm": 39.5239809249169
+    },
+    {
+      "localUnitId": "ng-lagos-kosofe",
+      "sharedBorderKm": 17.1357613491271
+    },
+    {
+      "localUnitId": "ng-lagos-lagos-island",
+      "sharedBorderKm": 3.0439575690719
+    },
+    {
+      "localUnitId": "ng-lagos-lagos-mainland",
+      "sharedBorderKm": 9.265033943375
+    },
+    {
+      "localUnitId": "ng-lagos-somolu",
+      "sharedBorderKm": 1.87031048541483
+    }
+  ],
+  "samples": [
+    {
+      "id": "lagoon_centroid",
+      "longitude": 3.481434384,
+      "latitude": 6.517528177,
+      "strictlyInsideDifference": true,
+      "coveringLocalUnits": []
+    },
+    {
+      "id": "built_up_shore_1",
+      "longitude": 3.396625,
+      "latitude": 6.463625,
+      "strictlyInsideDifference": true,
+      "coveringLocalUnits": []
+    },
+    {
+      "id": "built_up_shore_2",
+      "longitude": 3.3954583333333335,
+      "latitude": 6.487208333333334,
+      "strictlyInsideDifference": true,
+      "coveringLocalUnits": []
+    },
+    {
+      "id": "built_up_shore_3",
+      "longitude": 3.490875,
+      "latitude": 6.449541666666668,
+      "strictlyInsideDifference": true,
+      "coveringLocalUnits": []
+    }
+  ],
+  "classification": "MATERIAL_LAND_GAP",
+  "futureVerifierState": "COVERAGE_UNRESOLVED",
+  "interpretation": "Mostly Lagos Lagoon water; independent land-cover and imagery review also identifies material built-up/shore/reclaimed land within the uncovered polygon. Not a water-only discrepancy. Cause/administrative assignment is not established.",
+  "sourceMetadataFinding": "State abstract: September 2020; LGA abstract: March 2021. Both operational. No inspected source metadata explicitly explains the Lagos omission or guarantees State/LGA tessellation.",
+  "snapshotAssessment": "This coverage finding does not invalidate the reviewed GRID3 operational snapshot.",
+  "admissionEffect": "Blocked pending reviewed boundary-source resolution or explicit product scope decision. A coordinate inside the State/FCT but inside no mapped local-unit polygon remains COVERAGE_UNRESOLVED. Never infer local unit from State-only containment; no gap filling, assignment, extension, repair or permissive buffer.",
+  "imageryReview": {
+    "serviceUrl": "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer",
+    "attribution": "Esri, Vantor, Earthstar Geographics, GIS User Community",
+    "method": "Export f=json then use returned extent for overlay; inspect named sample coordinates. Imagery is reviewed externally, not redistributed here.",
+    "overviewBbox": [
+      3.36,
+      6.43,
+      3.65,
+      6.625
+    ],
+    "landSampleBbox": [
+      3.39,
+      6.458,
+      3.405,
+      6.472
+    ],
+    "observations": "built_up_shore_1 visibly contains roads, structures and developed shoreline on the gap side of the GRID3 border. Lagoon islands/reclamation also visible; does not establish legal LGA ownership."
+  },
+  "referenceUrls": [
+    "https://grid3.org/geospatial-data-nigeria",
+    "https://grid3.org/content/uploads/2020/09/GRID3_BoundariesWhitePaper_Finalized.pdf",
+    "https://lasbca.lagosstate.gov.ng/wp-content/uploads/2021/07/LCMP-UTM_Minna_31N-Geo-2-Overall-Landuse-A0-Sc-25.000-2.pdf",
+    "https://esa-worldcover.org/en/data-access"
+  ],
+  "worldcover": {
+    "sourceUrl": "https://esa-worldcover.s3.eu-central-1.amazonaws.com/v200/2021/map/ESA_WorldCover_10m_2021_v200_N06E003_Map.tif",
+    "documentationUrl": "https://esa-worldcover.org/en/data-access",
+    "citation": "ESA WorldCover 2021 v200, doi:10.5281/zenodo.7254221; CC BY 4.0",
+    "method": "Native 10m raster window; rasterio geometry_mask default pixel-centre selection; no resampling",
+    "caveat": "Classification is not surveyed land truth; pixel proportions are not geodesic area fractions. Published global overall accuracy: 76.7%.",
+    "window": [
+      4548,
+      28704,
+      3048,
+      1932
+    ],
+    "transform": [
+      8.333333333333333e-05,
+      0.0,
+      3.379,
+      0.0,
+      -8.333333333333333e-05,
+      6.6080000000000005,
+      0.0,
+      0.0,
+      1.0
+    ],
+    "crs": "EPSG:4326",
+    "pixelCount": 2466697,
+    "classes": [
+      {
+        "code": 10,
+        "name": "tree_cover",
+        "pixelCount": 4756,
+        "pixelFraction": 0.001928084397881053
+      },
+      {
+        "code": 20,
+        "name": "shrubland",
+        "pixelCount": 12,
+        "pixelFraction": 4.864805040910983e-06
+      },
+      {
+        "code": 30,
+        "name": "grassland",
+        "pixelCount": 26363,
+        "pixelFraction": 0.010687571274461355
+      },
+      {
+        "code": 40,
+        "name": "cropland",
+        "pixelCount": 2654,
+        "pixelFraction": 0.0010759327148814792
+      },
+      {
+        "code": 50,
+        "name": "built_up",
+        "pixelCount": 10926,
+        "pixelFraction": 0.00442940498974945
+      },
+      {
+        "code": 60,
+        "name": "bare_sparse_vegetation",
+        "pixelCount": 19893,
+        "pixelFraction": 0.008064630556570182
+      },
+      {
+        "code": 80,
+        "name": "permanent_water",
+        "pixelCount": 2219368,
+        "pixelFraction": 0.8997327195030439
+      },
+      {
+        "code": 90,
+        "name": "herbaceous_wetland",
+        "pixelCount": 36788,
+        "pixelFraction": 0.014913870653752772
+      },
+      {
+        "code": 95,
+        "name": "mangroves",
+        "pixelCount": 145937,
+        "pixelFraction": 0.05916292110461885
+      }
+    ],
+    "samples": [
+      {
+        "id": "lagoon_centroid",
+        "longitude": 3.481434384,
+        "latitude": 6.517528177,
+        "classCode": 80
+      },
+      {
+        "id": "built_up_shore_1",
+        "longitude": 3.396625,
+        "latitude": 6.463625,
+        "classCode": 50
+      },
+      {
+        "id": "built_up_shore_2",
+        "longitude": 3.3954583333333335,
+        "latitude": 6.487208333333334,
+        "classCode": 50
+      },
+      {
+        "id": "built_up_shore_3",
+        "longitude": 3.490875,
+        "latitude": 6.449541666666668,
+        "classCode": 50
+      }
+    ]
+  },
+  "derivedGeometrySha256": "742f82a79657ad3883b6f45f76695ed6f80263a1cf653615db3588a50679e289"
+}
