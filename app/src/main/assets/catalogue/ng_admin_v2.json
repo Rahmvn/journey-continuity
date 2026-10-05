@@ -1,0 +1,6036 @@
+{
+  "datasetId": "NG_ADMIN",
+  "version": "alabarin-2026-10-05-v2",
+  "snapshotDate": "2026-10-05",
+  "hashRule": "SHA-256 of exact committed UTF-8 JSON bytes",
+  "sources": [
+    {
+      "id": "source-01",
+      "authority": "Independent National Electoral Commission",
+      "title": "State Offices and LGA directory index",
+      "url": "https://www.inecnigeria.org/about/state-offices",
+      "retrievedAt": "2026-10-03"
+    },
+    {
+      "id": "source-02",
+      "authority": "Abia State Government",
+      "title": "Abia State Government local governments",
+      "url": "https://abiastate.gov.ng/local-governments-3/",
+      "retrievedAt": "2026-10-03"
+    },
+    {
+      "id": "source-03",
+      "authority": "Independent National Electoral Commission",
+      "title": "Adamawa LGA office directory",
+      "url": "https://www.inecnigeria.org/documents/ADAMAWA-STATE.pdf",
+      "retrievedAt": "2026-10-03"
+    },
+    {
+      "id": "source-04",
+      "authority": "Independent National Electoral Commission",
+      "title": "Akwa Ibom LGA office directory",
+      "url": "https://www.inecnigeria.org/documents/AKWA-IBOM-STATE.pdf",
+      "retrievedAt": "2026-10-03"
+    },
+    {
+      "id": "source-05",
+      "authority": "Independent National Electoral Commission",
+      "title": "Anambra LGA office directory",
+      "url": "https://www.inecnigeria.org/documents/ANAMBRA-STATE.pdf",
+      "retrievedAt": "2026-10-03"
+    },
+    {
+      "id": "source-06",
+      "authority": "Independent National Electoral Commission",
+      "title": "Bauchi LGA office directory",
+      "url": "https://www.inecnigeria.org/documents/BAUCHI-STATE.pdf",
+      "retrievedAt": "2026-10-03"
+    },
+    {
+      "id": "source-07",
+      "authority": "Independent National Electoral Commission",
+      "title": "Bayelsa LGA office directory",
+      "url": "https://www.inecnigeria.org/documents/BAYELSA-STATE.pdf",
+      "retrievedAt": "2026-10-03"
+    },
+    {
+      "id": "source-08",
+      "authority": "Independent National Electoral Commission",
+      "title": "Benue LGA office directory",
+      "url": "https://www.inecnigeria.org/documents/BENUE-STATE.pdf",
+      "retrievedAt": "2026-10-03"
+    },
+    {
+      "id": "source-09",
+      "authority": "Benue State Government",
+      "title": "Benue State 2026-2028 fiscal plan",
+      "url": "https://planning.benuestate.gov.ng/wp-content/uploads/2025/12/Benue-State-EFU-FSP-BPS-2026-2028-Final-Signature_111247.pdf",
+      "retrievedAt": "2026-10-03"
+    },
+    {
+      "id": "source-10",
+      "authority": "Independent National Electoral Commission",
+      "title": "Borno LGA office directory",
+      "url": "https://www.inecnigeria.org/documents/BORNO-STATE.pdf",
+      "retrievedAt": "2026-10-03"
+    },
+    {
+      "id": "source-11",
+      "authority": "Independent National Electoral Commission",
+      "title": "INEC Borno Polling Unit Directory 2015",
+      "url": "https://www.inecnigeria.org/wp-content/uploads/2019/02/PU_Directory_Revised_January_2015_Borno.pdf",
+      "retrievedAt": "2026-10-03"
+    },
+    {
+      "id": "source-12",
+      "authority": "Independent National Electoral Commission",
+      "title": "INEC 2019 House of Representatives list",
+      "url": "https://www.inecnigeria.org/wp-content/uploads/2019/04/2019-GENERAL-ELECTIONS-UPDATED-LIST-OF-ELECTED-CANDIDATES-TO-THE-HOUSE-OF-REPRESENTATIVES.pdf",
+      "retrievedAt": "2026-10-03"
+    },
+    {
+      "id": "source-13",
+      "authority": "Independent National Electoral Commission",
+      "title": "Cross River LGA office directory",
+      "url": "https://www.inecnigeria.org/documents/CROSS-RIVER-STATE.pdf",
+      "retrievedAt": "2026-10-03"
+    },
+    {
+      "id": "source-14",
+      "authority": "Delta State Government",
+      "title": "Delta State Government Medium-Term Development Plan 2024-2027",
+      "url": "https://deltastate.gov.ng/wp-content/uploads/2025/07/Delta-State-1-1.pdf",
+      "retrievedAt": "2026-10-03"
+    },
+    {
+      "id": "source-15",
+      "authority": "Ebonyi State Government",
+      "title": "Ebonyi State Government 2025 LGA pension payment schedule",
+      "url": "https://ebonyistate.gov.ng/ministry/official-page/towns-and-villages/public-service-announcement-2",
+      "retrievedAt": "2026-10-03"
+    },
+    {
+      "id": "source-16",
+      "authority": "Ebonyi State Government",
+      "title": "2026 budget location Afikpo South Edda",
+      "url": "https://ebonyistate.gov.ng/storage/documents/min-1-proposed-2026-pdf-1769901855.pdf",
+      "retrievedAt": "2026-10-03"
+    },
+    {
+      "id": "source-17",
+      "authority": "Independent National Electoral Commission",
+      "title": "Edo LGA office directory",
+      "url": "https://www.inecnigeria.org/documents/EDO-STATE.pdf",
+      "retrievedAt": "2026-10-03"
+    },
+    {
+      "id": "source-19",
+      "authority": "Enugu State Government",
+      "title": "Enugu State Government LGA directory",
+      "url": "https://enugustate.gov.ng/lgas/",
+      "retrievedAt": "2026-10-03"
+    },
+    {
+      "id": "source-20",
+      "authority": "Federal Capital Territory Administration",
+      "title": "FCT Administration six Area Councils",
+      "url": "https://fcta.gov.ng/ova_dep/outdoor-advertisement-signage/",
+      "retrievedAt": "2026-10-03"
+    },
+    {
+      "id": "source-21",
+      "authority": "Gombe State Government",
+      "title": "Gombe State Government LGA directory",
+      "url": "https://gombestate.gov.ng/pages/lgas.php",
+      "retrievedAt": "2026-10-03"
+    },
+    {
+      "id": "source-22",
+      "authority": "Independent National Electoral Commission",
+      "title": "Imo LGA office directory",
+      "url": "https://www.inecnigeria.org/documents/IMO-STATE.pdf",
+      "retrievedAt": "2026-10-03"
+    },
+    {
+      "id": "source-23",
+      "authority": "Imo State Government",
+      "title": "Imo State Government payroll LGA list",
+      "url": "https://payroll.imostate.gov.ng/payroll/Views/chk_Summary",
+      "retrievedAt": "2026-10-03"
+    },
+    {
+      "id": "source-24",
+      "authority": "Independent National Electoral Commission",
+      "title": "Jigawa LGA office directory",
+      "url": "https://www.inecnigeria.org/documents/JIGAWA-STATE.pdf",
+      "retrievedAt": "2026-10-03"
+    },
+    {
+      "id": "source-25",
+      "authority": "Jigawa State Government",
+      "title": "Jigawa State Government LGA directory",
+      "url": "https://jigawastate.gov.ng/jglga",
+      "retrievedAt": "2026-10-03"
+    },
+    {
+      "id": "source-26",
+      "authority": "Independent National Electoral Commission",
+      "title": "Kaduna LGA office directory",
+      "url": "https://www.inecnigeria.org/documents/KADUNA-STATE.pdf",
+      "retrievedAt": "2026-10-03"
+    },
+    {
+      "id": "source-27",
+      "authority": "Kano State Government",
+      "title": "Kano State Local Government Planning and Budget Guideline",
+      "url": "https://kanostate.gov.ng/wp-content/uploads/2025/03/Kano-State-LG-Planning-and-Budget-Manual-and-Guideline.pdf",
+      "retrievedAt": "2026-10-03"
+    },
+    {
+      "id": "source-28",
+      "authority": "Independent National Electoral Commission",
+      "title": "Katsina LGA office directory",
+      "url": "https://www.inecnigeria.org/documents/KATSINA-STATE.pdf",
+      "retrievedAt": "2026-10-03"
+    },
+    {
+      "id": "source-29",
+      "authority": "Kebbi State Investment Promotion Agency",
+      "title": "Kebbi State Investment Promotion Agency LGA directory",
+      "url": "https://kipa.kebbistate.gov.ng/explore-kebbi/",
+      "retrievedAt": "2026-10-03"
+    },
+    {
+      "id": "source-30",
+      "authority": "Kogi State Government",
+      "title": "Kogi State Government structure",
+      "url": "https://kogistate.gov.ng/structure/",
+      "retrievedAt": "2026-10-03"
+    },
+    {
+      "id": "source-31",
+      "authority": "Independent National Electoral Commission",
+      "title": "Kwara LGA office directory",
+      "url": "https://www.inecnigeria.org/documents/KWARA-STATE.pdf",
+      "retrievedAt": "2026-10-03"
+    },
+    {
+      "id": "source-32",
+      "authority": "Independent National Electoral Commission",
+      "title": "Lagos LGA office directory",
+      "url": "https://www.inecnigeria.org/documents/LAGOS-STATE.pdf",
+      "retrievedAt": "2026-10-03"
+    },
+    {
+      "id": "source-33",
+      "authority": "Lagos State Government",
+      "title": "Lagos State Government enforcement centres",
+      "url": "https://tms.lagosstate.gov.ng/mobile/mComplianceCenter.aspx",
+      "retrievedAt": "2026-10-03"
+    },
+    {
+      "id": "source-34",
+      "authority": "Independent National Electoral Commission",
+      "title": "Nasarawa LGA office directory",
+      "url": "https://www.inecnigeria.org/documents/NASARAWA-STATE.pdf",
+      "retrievedAt": "2026-10-03"
+    },
+    {
+      "id": "source-35",
+      "authority": "Niger State Government",
+      "title": "Niger State 2023 Local Government consolidated financial statements",
+      "url": "https://nogp.nigerstate.gov.ng/wp-content/uploads/NIGER-STATE-2023-LOCAL-GOVERNMENT-CONSOLIDATED-FINANCIAL-STATEMENTS.pdf",
+      "retrievedAt": "2026-10-03"
+    },
+    {
+      "id": "source-36",
+      "authority": "Ogun State Government",
+      "title": "Ogun State Auditor-General 2024 local governments report",
+      "url": "https://api.ogunstate.gov.ng/archive/CONSOLIDATEDREPORTOFTHEAUDITOR-GENERALFORLOCALGOVERNMENTSYEAR2024.pdf",
+      "retrievedAt": "2026-10-03"
+    },
+    {
+      "id": "source-37",
+      "authority": "Independent National Electoral Commission",
+      "title": "Ondo LGA office directory",
+      "url": "https://www.inecnigeria.org/documents/ONDO-STATE.pdf",
+      "retrievedAt": "2026-10-03"
+    },
+    {
+      "id": "source-38",
+      "authority": "Independent National Electoral Commission",
+      "title": "Osun LGA office directory",
+      "url": "https://www.inecnigeria.org/documents/OSUN-STATE.pdf",
+      "retrievedAt": "2026-10-03"
+    },
+    {
+      "id": "source-39",
+      "authority": "Independent National Electoral Commission",
+      "title": "Oyo LGA office directory",
+      "url": "https://www.inecnigeria.org/documents/OYO-STATE.pdf",
+      "retrievedAt": "2026-10-03"
+    },
+    {
+      "id": "source-40",
+      "authority": "Plateau State Government",
+      "title": "Plateau State Labour Information",
+      "url": "https://plateaustate.gov.ng/uploads/Plateau_State_Labour_Information.pdf",
+      "retrievedAt": "2026-10-03"
+    },
+    {
+      "id": "source-41",
+      "authority": "Independent National Electoral Commission",
+      "title": "Rivers LGA office directory",
+      "url": "https://www.inecnigeria.org/documents/RIVERS-STATE.pdf",
+      "retrievedAt": "2026-10-03"
+    },
+    {
+      "id": "source-42",
+      "authority": "Independent National Electoral Commission",
+      "title": "Sokoto LGA office directory",
+      "url": "https://www.inecnigeria.org/documents/SOKOTO-STATE.pdf",
+      "retrievedAt": "2026-10-03"
+    },
+    {
+      "id": "source-43",
+      "authority": "Independent National Electoral Commission",
+      "title": "Taraba LGA office directory",
+      "url": "https://www.inecnigeria.org/documents/TARABA-STATE.pdf",
+      "retrievedAt": "2026-10-03"
+    },
+    {
+      "id": "source-44",
+      "authority": "Independent National Electoral Commission",
+      "title": "Yobe LGA office directory",
+      "url": "https://www.inecnigeria.org/documents/YOBE-STATE.pdf",
+      "retrievedAt": "2026-10-03"
+    },
+    {
+      "id": "source-45",
+      "authority": "Independent National Electoral Commission",
+      "title": "Zamfara LGA office directory",
+      "url": "https://www.inecnigeria.org/documents/ZAMFARA-STATE.pdf",
+      "retrievedAt": "2026-10-03"
+    },
+    {
+      "id": "source-46",
+      "authority": "Ekiti State Government",
+      "title": "2025-2027 Multi-Year Budget Framework, 16 Local Government Councils",
+      "url": "https://ekitistate.gov.ng/wp-content/uploads/2025/2025-2027%20Multi-Year%20Budget%20Framework.pdf",
+      "retrievedAt": "2026-10-03"
+    },
+    {
+      "id": "source-47",
+      "authority": "Ebonyi State Government",
+      "title": "Ebonyi State profile, local government areas",
+      "url": "https://ebonyistate.gov.ng/page/ebonyi-state-profile",
+      "retrievedAt": "2026-10-03"
+    },
+    {
+      "id": "source-48",
+      "authority": "Independent National Electoral Commission",
+      "title": "Current CVR locator: Plateau Qua'an Pan LGA",
+      "url": "https://cvr.inecnigeria.org/locator/viewCentre/1710",
+      "retrievedAt": "2026-10-05"
+    }
+  ],
+  "regions": [
+    {
+      "id": "ng-abia",
+      "canonicalName": "Abia",
+      "type": "STATE",
+      "displayOrder": 0,
+      "sourceId": "source-02"
+    },
+    {
+      "id": "ng-adamawa",
+      "canonicalName": "Adamawa",
+      "type": "STATE",
+      "displayOrder": 1,
+      "sourceId": "source-03"
+    },
+    {
+      "id": "ng-akwa-ibom",
+      "canonicalName": "Akwa Ibom",
+      "type": "STATE",
+      "displayOrder": 2,
+      "sourceId": "source-04"
+    },
+    {
+      "id": "ng-anambra",
+      "canonicalName": "Anambra",
+      "type": "STATE",
+      "displayOrder": 3,
+      "sourceId": "source-05"
+    },
+    {
+      "id": "ng-bauchi",
+      "canonicalName": "Bauchi",
+      "type": "STATE",
+      "displayOrder": 4,
+      "sourceId": "source-06"
+    },
+    {
+      "id": "ng-bayelsa",
+      "canonicalName": "Bayelsa",
+      "type": "STATE",
+      "displayOrder": 5,
+      "sourceId": "source-07"
+    },
+    {
+      "id": "ng-benue",
+      "canonicalName": "Benue",
+      "type": "STATE",
+      "displayOrder": 6,
+      "sourceId": "source-08"
+    },
+    {
+      "id": "ng-borno",
+      "canonicalName": "Borno",
+      "type": "STATE",
+      "displayOrder": 7,
+      "sourceId": "source-10"
+    },
+    {
+      "id": "ng-cross-river",
+      "canonicalName": "Cross River",
+      "type": "STATE",
+      "displayOrder": 8,
+      "sourceId": "source-13"
+    },
+    {
+      "id": "ng-delta",
+      "canonicalName": "Delta",
+      "type": "STATE",
+      "displayOrder": 9,
+      "sourceId": "source-14"
+    },
+    {
+      "id": "ng-ebonyi",
+      "canonicalName": "Ebonyi",
+      "type": "STATE",
+      "displayOrder": 10,
+      "sourceId": "source-15"
+    },
+    {
+      "id": "ng-edo",
+      "canonicalName": "Edo",
+      "type": "STATE",
+      "displayOrder": 11,
+      "sourceId": "source-17"
+    },
+    {
+      "id": "ng-ekiti",
+      "canonicalName": "Ekiti",
+      "type": "STATE",
+      "displayOrder": 12,
+      "sourceId": "source-46"
+    },
+    {
+      "id": "ng-enugu",
+      "canonicalName": "Enugu",
+      "type": "STATE",
+      "displayOrder": 13,
+      "sourceId": "source-19"
+    },
+    {
+      "id": "ng-fct",
+      "canonicalName": "Federal Capital Territory",
+      "type": "FCT",
+      "displayOrder": 14,
+      "sourceId": "source-20"
+    },
+    {
+      "id": "ng-gombe",
+      "canonicalName": "Gombe",
+      "type": "STATE",
+      "displayOrder": 15,
+      "sourceId": "source-21"
+    },
+    {
+      "id": "ng-imo",
+      "canonicalName": "Imo",
+      "type": "STATE",
+      "displayOrder": 16,
+      "sourceId": "source-22"
+    },
+    {
+      "id": "ng-jigawa",
+      "canonicalName": "Jigawa",
+      "type": "STATE",
+      "displayOrder": 17,
+      "sourceId": "source-24"
+    },
+    {
+      "id": "ng-kaduna",
+      "canonicalName": "Kaduna",
+      "type": "STATE",
+      "displayOrder": 18,
+      "sourceId": "source-26"
+    },
+    {
+      "id": "ng-kano",
+      "canonicalName": "Kano",
+      "type": "STATE",
+      "displayOrder": 19,
+      "sourceId": "source-27"
+    },
+    {
+      "id": "ng-katsina",
+      "canonicalName": "Katsina",
+      "type": "STATE",
+      "displayOrder": 20,
+      "sourceId": "source-28"
+    },
+    {
+      "id": "ng-kebbi",
+      "canonicalName": "Kebbi",
+      "type": "STATE",
+      "displayOrder": 21,
+      "sourceId": "source-29"
+    },
+    {
+      "id": "ng-kogi",
+      "canonicalName": "Kogi",
+      "type": "STATE",
+      "displayOrder": 22,
+      "sourceId": "source-30"
+    },
+    {
+      "id": "ng-kwara",
+      "canonicalName": "Kwara",
+      "type": "STATE",
+      "displayOrder": 23,
+      "sourceId": "source-31"
+    },
+    {
+      "id": "ng-lagos",
+      "canonicalName": "Lagos",
+      "type": "STATE",
+      "displayOrder": 24,
+      "sourceId": "source-32"
+    },
+    {
+      "id": "ng-nasarawa",
+      "canonicalName": "Nasarawa",
+      "type": "STATE",
+      "displayOrder": 25,
+      "sourceId": "source-34"
+    },
+    {
+      "id": "ng-niger",
+      "canonicalName": "Niger",
+      "type": "STATE",
+      "displayOrder": 26,
+      "sourceId": "source-35"
+    },
+    {
+      "id": "ng-ogun",
+      "canonicalName": "Ogun",
+      "type": "STATE",
+      "displayOrder": 27,
+      "sourceId": "source-36"
+    },
+    {
+      "id": "ng-ondo",
+      "canonicalName": "Ondo",
+      "type": "STATE",
+      "displayOrder": 28,
+      "sourceId": "source-37"
+    },
+    {
+      "id": "ng-osun",
+      "canonicalName": "Osun",
+      "type": "STATE",
+      "displayOrder": 29,
+      "sourceId": "source-38"
+    },
+    {
+      "id": "ng-oyo",
+      "canonicalName": "Oyo",
+      "type": "STATE",
+      "displayOrder": 30,
+      "sourceId": "source-39"
+    },
+    {
+      "id": "ng-plateau",
+      "canonicalName": "Plateau",
+      "type": "STATE",
+      "displayOrder": 31,
+      "sourceId": "source-40"
+    },
+    {
+      "id": "ng-rivers",
+      "canonicalName": "Rivers",
+      "type": "STATE",
+      "displayOrder": 32,
+      "sourceId": "source-41"
+    },
+    {
+      "id": "ng-sokoto",
+      "canonicalName": "Sokoto",
+      "type": "STATE",
+      "displayOrder": 33,
+      "sourceId": "source-42"
+    },
+    {
+      "id": "ng-taraba",
+      "canonicalName": "Taraba",
+      "type": "STATE",
+      "displayOrder": 34,
+      "sourceId": "source-43"
+    },
+    {
+      "id": "ng-yobe",
+      "canonicalName": "Yobe",
+      "type": "STATE",
+      "displayOrder": 35,
+      "sourceId": "source-44"
+    },
+    {
+      "id": "ng-zamfara",
+      "canonicalName": "Zamfara",
+      "type": "STATE",
+      "displayOrder": 36,
+      "sourceId": "source-45"
+    }
+  ],
+  "localUnits": [
+    {
+      "id": "ng-abia-aba-north",
+      "parentRegionId": "ng-abia",
+      "canonicalName": "Aba North",
+      "type": "LGA",
+      "displayOrder": 0
+    },
+    {
+      "id": "ng-abia-aba-south",
+      "parentRegionId": "ng-abia",
+      "canonicalName": "Aba South",
+      "type": "LGA",
+      "displayOrder": 1
+    },
+    {
+      "id": "ng-abia-arochukwu",
+      "parentRegionId": "ng-abia",
+      "canonicalName": "Arochukwu",
+      "type": "LGA",
+      "displayOrder": 2
+    },
+    {
+      "id": "ng-abia-bende",
+      "parentRegionId": "ng-abia",
+      "canonicalName": "Bende",
+      "type": "LGA",
+      "displayOrder": 3
+    },
+    {
+      "id": "ng-abia-ikwuano",
+      "parentRegionId": "ng-abia",
+      "canonicalName": "Ikwuano",
+      "type": "LGA",
+      "displayOrder": 4
+    },
+    {
+      "id": "ng-abia-isialangwa-north",
+      "parentRegionId": "ng-abia",
+      "canonicalName": "Isialangwa North",
+      "type": "LGA",
+      "displayOrder": 5
+    },
+    {
+      "id": "ng-abia-isialangwa-south",
+      "parentRegionId": "ng-abia",
+      "canonicalName": "Isialangwa South",
+      "type": "LGA",
+      "displayOrder": 6
+    },
+    {
+      "id": "ng-abia-isuikwuato",
+      "parentRegionId": "ng-abia",
+      "canonicalName": "Isuikwuato",
+      "type": "LGA",
+      "displayOrder": 7
+    },
+    {
+      "id": "ng-abia-obingwa",
+      "parentRegionId": "ng-abia",
+      "canonicalName": "Obingwa",
+      "type": "LGA",
+      "displayOrder": 8
+    },
+    {
+      "id": "ng-abia-ohafia",
+      "parentRegionId": "ng-abia",
+      "canonicalName": "Ohafia",
+      "type": "LGA",
+      "displayOrder": 9
+    },
+    {
+      "id": "ng-abia-osisioma",
+      "parentRegionId": "ng-abia",
+      "canonicalName": "Osisioma",
+      "type": "LGA",
+      "displayOrder": 10
+    },
+    {
+      "id": "ng-abia-ugwunnagbo",
+      "parentRegionId": "ng-abia",
+      "canonicalName": "Ugwunnagbo",
+      "type": "LGA",
+      "displayOrder": 11
+    },
+    {
+      "id": "ng-abia-ukwa-east",
+      "parentRegionId": "ng-abia",
+      "canonicalName": "Ukwa East",
+      "type": "LGA",
+      "displayOrder": 12
+    },
+    {
+      "id": "ng-abia-ukwa-west",
+      "parentRegionId": "ng-abia",
+      "canonicalName": "Ukwa West",
+      "type": "LGA",
+      "displayOrder": 13
+    },
+    {
+      "id": "ng-abia-umuahia-north",
+      "parentRegionId": "ng-abia",
+      "canonicalName": "Umuahia North",
+      "type": "LGA",
+      "displayOrder": 14
+    },
+    {
+      "id": "ng-abia-umuahia-south",
+      "parentRegionId": "ng-abia",
+      "canonicalName": "Umuahia South",
+      "type": "LGA",
+      "displayOrder": 15
+    },
+    {
+      "id": "ng-abia-umunneochi",
+      "parentRegionId": "ng-abia",
+      "canonicalName": "Umunneochi",
+      "type": "LGA",
+      "displayOrder": 16
+    },
+    {
+      "id": "ng-adamawa-demsa",
+      "parentRegionId": "ng-adamawa",
+      "canonicalName": "Demsa",
+      "type": "LGA",
+      "displayOrder": 0
+    },
+    {
+      "id": "ng-adamawa-fufore",
+      "parentRegionId": "ng-adamawa",
+      "canonicalName": "Fufore",
+      "type": "LGA",
+      "displayOrder": 1
+    },
+    {
+      "id": "ng-adamawa-ganye",
+      "parentRegionId": "ng-adamawa",
+      "canonicalName": "Ganye",
+      "type": "LGA",
+      "displayOrder": 2
+    },
+    {
+      "id": "ng-adamawa-girei",
+      "parentRegionId": "ng-adamawa",
+      "canonicalName": "Girei",
+      "type": "LGA",
+      "displayOrder": 3
+    },
+    {
+      "id": "ng-adamawa-gombi",
+      "parentRegionId": "ng-adamawa",
+      "canonicalName": "Gombi",
+      "type": "LGA",
+      "displayOrder": 4
+    },
+    {
+      "id": "ng-adamawa-guyuk",
+      "parentRegionId": "ng-adamawa",
+      "canonicalName": "Guyuk",
+      "type": "LGA",
+      "displayOrder": 5
+    },
+    {
+      "id": "ng-adamawa-hong",
+      "parentRegionId": "ng-adamawa",
+      "canonicalName": "Hong",
+      "type": "LGA",
+      "displayOrder": 6
+    },
+    {
+      "id": "ng-adamawa-jada",
+      "parentRegionId": "ng-adamawa",
+      "canonicalName": "Jada",
+      "type": "LGA",
+      "displayOrder": 7
+    },
+    {
+      "id": "ng-adamawa-lamurde",
+      "parentRegionId": "ng-adamawa",
+      "canonicalName": "Lamurde",
+      "type": "LGA",
+      "displayOrder": 8
+    },
+    {
+      "id": "ng-adamawa-madagali",
+      "parentRegionId": "ng-adamawa",
+      "canonicalName": "Madagali",
+      "type": "LGA",
+      "displayOrder": 9
+    },
+    {
+      "id": "ng-adamawa-maiha",
+      "parentRegionId": "ng-adamawa",
+      "canonicalName": "Maiha",
+      "type": "LGA",
+      "displayOrder": 10
+    },
+    {
+      "id": "ng-adamawa-mayo-belwa",
+      "parentRegionId": "ng-adamawa",
+      "canonicalName": "Mayo Belwa",
+      "type": "LGA",
+      "displayOrder": 11
+    },
+    {
+      "id": "ng-adamawa-michika",
+      "parentRegionId": "ng-adamawa",
+      "canonicalName": "Michika",
+      "type": "LGA",
+      "displayOrder": 12
+    },
+    {
+      "id": "ng-adamawa-mubi-north",
+      "parentRegionId": "ng-adamawa",
+      "canonicalName": "Mubi North",
+      "type": "LGA",
+      "displayOrder": 13
+    },
+    {
+      "id": "ng-adamawa-mubi-south",
+      "parentRegionId": "ng-adamawa",
+      "canonicalName": "Mubi South",
+      "type": "LGA",
+      "displayOrder": 14
+    },
+    {
+      "id": "ng-adamawa-numan",
+      "parentRegionId": "ng-adamawa",
+      "canonicalName": "Numan",
+      "type": "LGA",
+      "displayOrder": 15
+    },
+    {
+      "id": "ng-adamawa-shelleng",
+      "parentRegionId": "ng-adamawa",
+      "canonicalName": "Shelleng",
+      "type": "LGA",
+      "displayOrder": 16
+    },
+    {
+      "id": "ng-adamawa-song",
+      "parentRegionId": "ng-adamawa",
+      "canonicalName": "Song",
+      "type": "LGA",
+      "displayOrder": 17
+    },
+    {
+      "id": "ng-adamawa-toungo",
+      "parentRegionId": "ng-adamawa",
+      "canonicalName": "Toungo",
+      "type": "LGA",
+      "displayOrder": 18
+    },
+    {
+      "id": "ng-adamawa-yola-north",
+      "parentRegionId": "ng-adamawa",
+      "canonicalName": "Yola North",
+      "type": "LGA",
+      "displayOrder": 19
+    },
+    {
+      "id": "ng-adamawa-yola-south",
+      "parentRegionId": "ng-adamawa",
+      "canonicalName": "Yola South",
+      "type": "LGA",
+      "displayOrder": 20
+    },
+    {
+      "id": "ng-akwa-ibom-abak",
+      "parentRegionId": "ng-akwa-ibom",
+      "canonicalName": "Abak",
+      "type": "LGA",
+      "displayOrder": 0
+    },
+    {
+      "id": "ng-akwa-ibom-eastern-obolo",
+      "parentRegionId": "ng-akwa-ibom",
+      "canonicalName": "Eastern Obolo",
+      "type": "LGA",
+      "displayOrder": 1
+    },
+    {
+      "id": "ng-akwa-ibom-eket",
+      "parentRegionId": "ng-akwa-ibom",
+      "canonicalName": "Eket",
+      "type": "LGA",
+      "displayOrder": 2
+    },
+    {
+      "id": "ng-akwa-ibom-esit-eket",
+      "parentRegionId": "ng-akwa-ibom",
+      "canonicalName": "Esit Eket",
+      "type": "LGA",
+      "displayOrder": 3
+    },
+    {
+      "id": "ng-akwa-ibom-essien-udim",
+      "parentRegionId": "ng-akwa-ibom",
+      "canonicalName": "Essien Udim",
+      "type": "LGA",
+      "displayOrder": 4
+    },
+    {
+      "id": "ng-akwa-ibom-etim-ekpo",
+      "parentRegionId": "ng-akwa-ibom",
+      "canonicalName": "Etim Ekpo",
+      "type": "LGA",
+      "displayOrder": 5
+    },
+    {
+      "id": "ng-akwa-ibom-etinan",
+      "parentRegionId": "ng-akwa-ibom",
+      "canonicalName": "Etinan",
+      "type": "LGA",
+      "displayOrder": 6
+    },
+    {
+      "id": "ng-akwa-ibom-ibeno",
+      "parentRegionId": "ng-akwa-ibom",
+      "canonicalName": "Ibeno",
+      "type": "LGA",
+      "displayOrder": 7
+    },
+    {
+      "id": "ng-akwa-ibom-ibesikpo-asutan",
+      "parentRegionId": "ng-akwa-ibom",
+      "canonicalName": "Ibesikpo Asutan",
+      "type": "LGA",
+      "displayOrder": 8
+    },
+    {
+      "id": "ng-akwa-ibom-ibiono-ibom",
+      "parentRegionId": "ng-akwa-ibom",
+      "canonicalName": "Ibiono Ibom",
+      "type": "LGA",
+      "displayOrder": 9
+    },
+    {
+      "id": "ng-akwa-ibom-ika",
+      "parentRegionId": "ng-akwa-ibom",
+      "canonicalName": "Ika",
+      "type": "LGA",
+      "displayOrder": 10
+    },
+    {
+      "id": "ng-akwa-ibom-ikono",
+      "parentRegionId": "ng-akwa-ibom",
+      "canonicalName": "Ikono",
+      "type": "LGA",
+      "displayOrder": 11
+    },
+    {
+      "id": "ng-akwa-ibom-ikot-abasi",
+      "parentRegionId": "ng-akwa-ibom",
+      "canonicalName": "Ikot Abasi",
+      "type": "LGA",
+      "displayOrder": 12
+    },
+    {
+      "id": "ng-akwa-ibom-ikot-ekpene",
+      "parentRegionId": "ng-akwa-ibom",
+      "canonicalName": "Ikot Ekpene",
+      "type": "LGA",
+      "displayOrder": 13
+    },
+    {
+      "id": "ng-akwa-ibom-ini",
+      "parentRegionId": "ng-akwa-ibom",
+      "canonicalName": "Ini",
+      "type": "LGA",
+      "displayOrder": 14
+    },
+    {
+      "id": "ng-akwa-ibom-itu",
+      "parentRegionId": "ng-akwa-ibom",
+      "canonicalName": "Itu",
+      "type": "LGA",
+      "displayOrder": 15
+    },
+    {
+      "id": "ng-akwa-ibom-mbo",
+      "parentRegionId": "ng-akwa-ibom",
+      "canonicalName": "Mbo",
+      "type": "LGA",
+      "displayOrder": 16
+    },
+    {
+      "id": "ng-akwa-ibom-mkpat-enin",
+      "parentRegionId": "ng-akwa-ibom",
+      "canonicalName": "Mkpat Enin",
+      "type": "LGA",
+      "displayOrder": 17
+    },
+    {
+      "id": "ng-akwa-ibom-nsit-atai",
+      "parentRegionId": "ng-akwa-ibom",
+      "canonicalName": "Nsit Atai",
+      "type": "LGA",
+      "displayOrder": 18
+    },
+    {
+      "id": "ng-akwa-ibom-nsit-ibom",
+      "parentRegionId": "ng-akwa-ibom",
+      "canonicalName": "Nsit Ibom",
+      "type": "LGA",
+      "displayOrder": 19
+    },
+    {
+      "id": "ng-akwa-ibom-nsit-ubium",
+      "parentRegionId": "ng-akwa-ibom",
+      "canonicalName": "Nsit Ubium",
+      "type": "LGA",
+      "displayOrder": 20
+    },
+    {
+      "id": "ng-akwa-ibom-obot-akara",
+      "parentRegionId": "ng-akwa-ibom",
+      "canonicalName": "Obot Akara",
+      "type": "LGA",
+      "displayOrder": 21
+    },
+    {
+      "id": "ng-akwa-ibom-okobo",
+      "parentRegionId": "ng-akwa-ibom",
+      "canonicalName": "Okobo",
+      "type": "LGA",
+      "displayOrder": 22
+    },
+    {
+      "id": "ng-akwa-ibom-onna",
+      "parentRegionId": "ng-akwa-ibom",
+      "canonicalName": "Onna",
+      "type": "LGA",
+      "displayOrder": 23
+    },
+    {
+      "id": "ng-akwa-ibom-oron",
+      "parentRegionId": "ng-akwa-ibom",
+      "canonicalName": "Oron",
+      "type": "LGA",
+      "displayOrder": 24
+    },
+    {
+      "id": "ng-akwa-ibom-oruk-anam",
+      "parentRegionId": "ng-akwa-ibom",
+      "canonicalName": "Oruk Anam",
+      "type": "LGA",
+      "displayOrder": 25
+    },
+    {
+      "id": "ng-akwa-ibom-udung-uko",
+      "parentRegionId": "ng-akwa-ibom",
+      "canonicalName": "Udung Uko",
+      "type": "LGA",
+      "displayOrder": 26
+    },
+    {
+      "id": "ng-akwa-ibom-ukanafun",
+      "parentRegionId": "ng-akwa-ibom",
+      "canonicalName": "Ukanafun",
+      "type": "LGA",
+      "displayOrder": 27
+    },
+    {
+      "id": "ng-akwa-ibom-uruan",
+      "parentRegionId": "ng-akwa-ibom",
+      "canonicalName": "Uruan",
+      "type": "LGA",
+      "displayOrder": 28
+    },
+    {
+      "id": "ng-akwa-ibom-urue-offong-oruko",
+      "parentRegionId": "ng-akwa-ibom",
+      "canonicalName": "Urue Offong/Oruko",
+      "type": "LGA",
+      "displayOrder": 29
+    },
+    {
+      "id": "ng-akwa-ibom-uyo",
+      "parentRegionId": "ng-akwa-ibom",
+      "canonicalName": "Uyo",
+      "type": "LGA",
+      "displayOrder": 30
+    },
+    {
+      "id": "ng-anambra-aguata",
+      "parentRegionId": "ng-anambra",
+      "canonicalName": "Aguata",
+      "type": "LGA",
+      "displayOrder": 0
+    },
+    {
+      "id": "ng-anambra-anambra-east",
+      "parentRegionId": "ng-anambra",
+      "canonicalName": "Anambra East",
+      "type": "LGA",
+      "displayOrder": 1
+    },
+    {
+      "id": "ng-anambra-anambra-west",
+      "parentRegionId": "ng-anambra",
+      "canonicalName": "Anambra West",
+      "type": "LGA",
+      "displayOrder": 2
+    },
+    {
+      "id": "ng-anambra-anaocha",
+      "parentRegionId": "ng-anambra",
+      "canonicalName": "Anaocha",
+      "type": "LGA",
+      "displayOrder": 3
+    },
+    {
+      "id": "ng-anambra-awka-north",
+      "parentRegionId": "ng-anambra",
+      "canonicalName": "Awka North",
+      "type": "LGA",
+      "displayOrder": 4
+    },
+    {
+      "id": "ng-anambra-awka-south",
+      "parentRegionId": "ng-anambra",
+      "canonicalName": "Awka South",
+      "type": "LGA",
+      "displayOrder": 5
+    },
+    {
+      "id": "ng-anambra-ayamelum",
+      "parentRegionId": "ng-anambra",
+      "canonicalName": "Ayamelum",
+      "type": "LGA",
+      "displayOrder": 6
+    },
+    {
+      "id": "ng-anambra-dunukofia",
+      "parentRegionId": "ng-anambra",
+      "canonicalName": "Dunukofia",
+      "type": "LGA",
+      "displayOrder": 7
+    },
+    {
+      "id": "ng-anambra-ekwusigo",
+      "parentRegionId": "ng-anambra",
+      "canonicalName": "Ekwusigo",
+      "type": "LGA",
+      "displayOrder": 8
+    },
+    {
+      "id": "ng-anambra-idemili-north",
+      "parentRegionId": "ng-anambra",
+      "canonicalName": "Idemili North",
+      "type": "LGA",
+      "displayOrder": 9
+    },
+    {
+      "id": "ng-anambra-idemili-south",
+      "parentRegionId": "ng-anambra",
+      "canonicalName": "Idemili South",
+      "type": "LGA",
+      "displayOrder": 10
+    },
+    {
+      "id": "ng-anambra-ihiala",
+      "parentRegionId": "ng-anambra",
+      "canonicalName": "Ihiala",
+      "type": "LGA",
+      "displayOrder": 11
+    },
+    {
+      "id": "ng-anambra-njikoka",
+      "parentRegionId": "ng-anambra",
+      "canonicalName": "Njikoka",
+      "type": "LGA",
+      "displayOrder": 12
+    },
+    {
+      "id": "ng-anambra-nnewi-north",
+      "parentRegionId": "ng-anambra",
+      "canonicalName": "Nnewi North",
+      "type": "LGA",
+      "displayOrder": 13
+    },
+    {
+      "id": "ng-anambra-nnewi-south",
+      "parentRegionId": "ng-anambra",
+      "canonicalName": "Nnewi South",
+      "type": "LGA",
+      "displayOrder": 14
+    },
+    {
+      "id": "ng-anambra-ogbaru",
+      "parentRegionId": "ng-anambra",
+      "canonicalName": "Ogbaru",
+      "type": "LGA",
+      "displayOrder": 15
+    },
+    {
+      "id": "ng-anambra-onitsha-north",
+      "parentRegionId": "ng-anambra",
+      "canonicalName": "Onitsha North",
+      "type": "LGA",
+      "displayOrder": 16
+    },
+    {
+      "id": "ng-anambra-onitsha-south",
+      "parentRegionId": "ng-anambra",
+      "canonicalName": "Onitsha South",
+      "type": "LGA",
+      "displayOrder": 17
+    },
+    {
+      "id": "ng-anambra-orumba-north",
+      "parentRegionId": "ng-anambra",
+      "canonicalName": "Orumba North",
+      "type": "LGA",
+      "displayOrder": 18
+    },
+    {
+      "id": "ng-anambra-orumba-south",
+      "parentRegionId": "ng-anambra",
+      "canonicalName": "Orumba South",
+      "type": "LGA",
+      "displayOrder": 19
+    },
+    {
+      "id": "ng-anambra-oyi",
+      "parentRegionId": "ng-anambra",
+      "canonicalName": "Oyi",
+      "type": "LGA",
+      "displayOrder": 20
+    },
+    {
+      "id": "ng-bauchi-alkaleri",
+      "parentRegionId": "ng-bauchi",
+      "canonicalName": "Alkaleri",
+      "type": "LGA",
+      "displayOrder": 0
+    },
+    {
+      "id": "ng-bauchi-bauchi",
+      "parentRegionId": "ng-bauchi",
+      "canonicalName": "Bauchi",
+      "type": "LGA",
+      "displayOrder": 1
+    },
+    {
+      "id": "ng-bauchi-bogoro",
+      "parentRegionId": "ng-bauchi",
+      "canonicalName": "Bogoro",
+      "type": "LGA",
+      "displayOrder": 2
+    },
+    {
+      "id": "ng-bauchi-dambam",
+      "parentRegionId": "ng-bauchi",
+      "canonicalName": "Dambam",
+      "type": "LGA",
+      "displayOrder": 3
+    },
+    {
+      "id": "ng-bauchi-darazo",
+      "parentRegionId": "ng-bauchi",
+      "canonicalName": "Darazo",
+      "type": "LGA",
+      "displayOrder": 4
+    },
+    {
+      "id": "ng-bauchi-dass",
+      "parentRegionId": "ng-bauchi",
+      "canonicalName": "Dass",
+      "type": "LGA",
+      "displayOrder": 5
+    },
+    {
+      "id": "ng-bauchi-gamawa",
+      "parentRegionId": "ng-bauchi",
+      "canonicalName": "Gamawa",
+      "type": "LGA",
+      "displayOrder": 6
+    },
+    {
+      "id": "ng-bauchi-ganjuwa",
+      "parentRegionId": "ng-bauchi",
+      "canonicalName": "Ganjuwa",
+      "type": "LGA",
+      "displayOrder": 7
+    },
+    {
+      "id": "ng-bauchi-giade",
+      "parentRegionId": "ng-bauchi",
+      "canonicalName": "Giade",
+      "type": "LGA",
+      "displayOrder": 8
+    },
+    {
+      "id": "ng-bauchi-itas-gadau",
+      "parentRegionId": "ng-bauchi",
+      "canonicalName": "Itas Gadau",
+      "type": "LGA",
+      "displayOrder": 9
+    },
+    {
+      "id": "ng-bauchi-jamaare",
+      "parentRegionId": "ng-bauchi",
+      "canonicalName": "Jama'are",
+      "type": "LGA",
+      "displayOrder": 10
+    },
+    {
+      "id": "ng-bauchi-katagum",
+      "parentRegionId": "ng-bauchi",
+      "canonicalName": "Katagum",
+      "type": "LGA",
+      "displayOrder": 11
+    },
+    {
+      "id": "ng-bauchi-kirfi",
+      "parentRegionId": "ng-bauchi",
+      "canonicalName": "Kirfi",
+      "type": "LGA",
+      "displayOrder": 12
+    },
+    {
+      "id": "ng-bauchi-misau",
+      "parentRegionId": "ng-bauchi",
+      "canonicalName": "Misau",
+      "type": "LGA",
+      "displayOrder": 13
+    },
+    {
+      "id": "ng-bauchi-ningi",
+      "parentRegionId": "ng-bauchi",
+      "canonicalName": "Ningi",
+      "type": "LGA",
+      "displayOrder": 14
+    },
+    {
+      "id": "ng-bauchi-shira",
+      "parentRegionId": "ng-bauchi",
+      "canonicalName": "Shira",
+      "type": "LGA",
+      "displayOrder": 15
+    },
+    {
+      "id": "ng-bauchi-tafawa-balewa",
+      "parentRegionId": "ng-bauchi",
+      "canonicalName": "Tafawa Balewa",
+      "type": "LGA",
+      "displayOrder": 16
+    },
+    {
+      "id": "ng-bauchi-toro",
+      "parentRegionId": "ng-bauchi",
+      "canonicalName": "Toro",
+      "type": "LGA",
+      "displayOrder": 17
+    },
+    {
+      "id": "ng-bauchi-warji",
+      "parentRegionId": "ng-bauchi",
+      "canonicalName": "Warji",
+      "type": "LGA",
+      "displayOrder": 18
+    },
+    {
+      "id": "ng-bauchi-zaki",
+      "parentRegionId": "ng-bauchi",
+      "canonicalName": "Zaki",
+      "type": "LGA",
+      "displayOrder": 19
+    },
+    {
+      "id": "ng-bayelsa-brass",
+      "parentRegionId": "ng-bayelsa",
+      "canonicalName": "Brass",
+      "type": "LGA",
+      "displayOrder": 0
+    },
+    {
+      "id": "ng-bayelsa-ekeremor",
+      "parentRegionId": "ng-bayelsa",
+      "canonicalName": "Ekeremor",
+      "type": "LGA",
+      "displayOrder": 1
+    },
+    {
+      "id": "ng-bayelsa-kolokuma-opokuma",
+      "parentRegionId": "ng-bayelsa",
+      "canonicalName": "Kolokuma/Opokuma",
+      "type": "LGA",
+      "displayOrder": 2
+    },
+    {
+      "id": "ng-bayelsa-nembe",
+      "parentRegionId": "ng-bayelsa",
+      "canonicalName": "Nembe",
+      "type": "LGA",
+      "displayOrder": 3
+    },
+    {
+      "id": "ng-bayelsa-ogbia",
+      "parentRegionId": "ng-bayelsa",
+      "canonicalName": "Ogbia",
+      "type": "LGA",
+      "displayOrder": 4
+    },
+    {
+      "id": "ng-bayelsa-sagbama",
+      "parentRegionId": "ng-bayelsa",
+      "canonicalName": "Sagbama",
+      "type": "LGA",
+      "displayOrder": 5
+    },
+    {
+      "id": "ng-bayelsa-southern-ijaw",
+      "parentRegionId": "ng-bayelsa",
+      "canonicalName": "Southern Ijaw",
+      "type": "LGA",
+      "displayOrder": 6
+    },
+    {
+      "id": "ng-bayelsa-yenagoa",
+      "parentRegionId": "ng-bayelsa",
+      "canonicalName": "Yenagoa",
+      "type": "LGA",
+      "displayOrder": 7
+    },
+    {
+      "id": "ng-benue-ado",
+      "parentRegionId": "ng-benue",
+      "canonicalName": "Ado",
+      "type": "LGA",
+      "displayOrder": 0
+    },
+    {
+      "id": "ng-benue-agatu",
+      "parentRegionId": "ng-benue",
+      "canonicalName": "Agatu",
+      "type": "LGA",
+      "displayOrder": 1
+    },
+    {
+      "id": "ng-benue-apa",
+      "parentRegionId": "ng-benue",
+      "canonicalName": "Apa",
+      "type": "LGA",
+      "displayOrder": 2
+    },
+    {
+      "id": "ng-benue-buruku",
+      "parentRegionId": "ng-benue",
+      "canonicalName": "Buruku",
+      "type": "LGA",
+      "displayOrder": 3
+    },
+    {
+      "id": "ng-benue-gboko",
+      "parentRegionId": "ng-benue",
+      "canonicalName": "Gboko",
+      "type": "LGA",
+      "displayOrder": 4
+    },
+    {
+      "id": "ng-benue-guma",
+      "parentRegionId": "ng-benue",
+      "canonicalName": "Guma",
+      "type": "LGA",
+      "displayOrder": 5
+    },
+    {
+      "id": "ng-benue-gwer-east",
+      "parentRegionId": "ng-benue",
+      "canonicalName": "Gwer East",
+      "type": "LGA",
+      "displayOrder": 6
+    },
+    {
+      "id": "ng-benue-gwer-west",
+      "parentRegionId": "ng-benue",
+      "canonicalName": "Gwer West",
+      "type": "LGA",
+      "displayOrder": 7
+    },
+    {
+      "id": "ng-benue-katsina-ala",
+      "parentRegionId": "ng-benue",
+      "canonicalName": "Katsina Ala",
+      "type": "LGA",
+      "displayOrder": 8,
+      "sourceId": "source-09"
+    },
+    {
+      "id": "ng-benue-konshisha",
+      "parentRegionId": "ng-benue",
+      "canonicalName": "Konshisha",
+      "type": "LGA",
+      "displayOrder": 9
+    },
+    {
+      "id": "ng-benue-kwande",
+      "parentRegionId": "ng-benue",
+      "canonicalName": "Kwande",
+      "type": "LGA",
+      "displayOrder": 10
+    },
+    {
+      "id": "ng-benue-logo",
+      "parentRegionId": "ng-benue",
+      "canonicalName": "Logo",
+      "type": "LGA",
+      "displayOrder": 11
+    },
+    {
+      "id": "ng-benue-makurdi",
+      "parentRegionId": "ng-benue",
+      "canonicalName": "Makurdi",
+      "type": "LGA",
+      "displayOrder": 12
+    },
+    {
+      "id": "ng-benue-obi",
+      "parentRegionId": "ng-benue",
+      "canonicalName": "Obi",
+      "type": "LGA",
+      "displayOrder": 13
+    },
+    {
+      "id": "ng-benue-ogbadibo",
+      "parentRegionId": "ng-benue",
+      "canonicalName": "Ogbadibo",
+      "type": "LGA",
+      "displayOrder": 14
+    },
+    {
+      "id": "ng-benue-ohimini",
+      "parentRegionId": "ng-benue",
+      "canonicalName": "Ohimini",
+      "type": "LGA",
+      "displayOrder": 15
+    },
+    {
+      "id": "ng-benue-oju",
+      "parentRegionId": "ng-benue",
+      "canonicalName": "Oju",
+      "type": "LGA",
+      "displayOrder": 16
+    },
+    {
+      "id": "ng-benue-okpokwu",
+      "parentRegionId": "ng-benue",
+      "canonicalName": "Okpokwu",
+      "type": "LGA",
+      "displayOrder": 17
+    },
+    {
+      "id": "ng-benue-otukpo",
+      "parentRegionId": "ng-benue",
+      "canonicalName": "Otukpo",
+      "type": "LGA",
+      "displayOrder": 18
+    },
+    {
+      "id": "ng-benue-tarka",
+      "parentRegionId": "ng-benue",
+      "canonicalName": "Tarka",
+      "type": "LGA",
+      "displayOrder": 19
+    },
+    {
+      "id": "ng-benue-ukum",
+      "parentRegionId": "ng-benue",
+      "canonicalName": "Ukum",
+      "type": "LGA",
+      "displayOrder": 20
+    },
+    {
+      "id": "ng-benue-ushongo",
+      "parentRegionId": "ng-benue",
+      "canonicalName": "Ushongo",
+      "type": "LGA",
+      "displayOrder": 21
+    },
+    {
+      "id": "ng-benue-vandeikya",
+      "parentRegionId": "ng-benue",
+      "canonicalName": "Vandeikya",
+      "type": "LGA",
+      "displayOrder": 22
+    },
+    {
+      "id": "ng-borno-abadam",
+      "parentRegionId": "ng-borno",
+      "canonicalName": "Abadam",
+      "type": "LGA",
+      "displayOrder": 0
+    },
+    {
+      "id": "ng-borno-askira-uba",
+      "parentRegionId": "ng-borno",
+      "canonicalName": "Askira/Uba",
+      "type": "LGA",
+      "displayOrder": 1,
+      "sourceId": "source-11"
+    },
+    {
+      "id": "ng-borno-bama",
+      "parentRegionId": "ng-borno",
+      "canonicalName": "Bama",
+      "type": "LGA",
+      "displayOrder": 2
+    },
+    {
+      "id": "ng-borno-bayo",
+      "parentRegionId": "ng-borno",
+      "canonicalName": "Bayo",
+      "type": "LGA",
+      "displayOrder": 3
+    },
+    {
+      "id": "ng-borno-biu",
+      "parentRegionId": "ng-borno",
+      "canonicalName": "Biu",
+      "type": "LGA",
+      "displayOrder": 4
+    },
+    {
+      "id": "ng-borno-chibok",
+      "parentRegionId": "ng-borno",
+      "canonicalName": "Chibok",
+      "type": "LGA",
+      "displayOrder": 5
+    },
+    {
+      "id": "ng-borno-damboa",
+      "parentRegionId": "ng-borno",
+      "canonicalName": "Damboa",
+      "type": "LGA",
+      "displayOrder": 6
+    },
+    {
+      "id": "ng-borno-dikwa",
+      "parentRegionId": "ng-borno",
+      "canonicalName": "Dikwa",
+      "type": "LGA",
+      "displayOrder": 7
+    },
+    {
+      "id": "ng-borno-gubio",
+      "parentRegionId": "ng-borno",
+      "canonicalName": "Gubio",
+      "type": "LGA",
+      "displayOrder": 8
+    },
+    {
+      "id": "ng-borno-guzamala",
+      "parentRegionId": "ng-borno",
+      "canonicalName": "Guzamala",
+      "type": "LGA",
+      "displayOrder": 9
+    },
+    {
+      "id": "ng-borno-gwoza",
+      "parentRegionId": "ng-borno",
+      "canonicalName": "Gwoza",
+      "type": "LGA",
+      "displayOrder": 10
+    },
+    {
+      "id": "ng-borno-hawul",
+      "parentRegionId": "ng-borno",
+      "canonicalName": "Hawul",
+      "type": "LGA",
+      "displayOrder": 11
+    },
+    {
+      "id": "ng-borno-jere",
+      "parentRegionId": "ng-borno",
+      "canonicalName": "Jere",
+      "type": "LGA",
+      "displayOrder": 12
+    },
+    {
+      "id": "ng-borno-kaga",
+      "parentRegionId": "ng-borno",
+      "canonicalName": "Kaga",
+      "type": "LGA",
+      "displayOrder": 13
+    },
+    {
+      "id": "ng-borno-kala-balge",
+      "parentRegionId": "ng-borno",
+      "canonicalName": "Kala-Balge",
+      "type": "LGA",
+      "displayOrder": 14
+    },
+    {
+      "id": "ng-borno-konduga",
+      "parentRegionId": "ng-borno",
+      "canonicalName": "Konduga",
+      "type": "LGA",
+      "displayOrder": 15
+    },
+    {
+      "id": "ng-borno-kukawa",
+      "parentRegionId": "ng-borno",
+      "canonicalName": "Kukawa",
+      "type": "LGA",
+      "displayOrder": 16
+    },
+    {
+      "id": "ng-borno-kwaya-kusar",
+      "parentRegionId": "ng-borno",
+      "canonicalName": "Kwaya-Kusar",
+      "type": "LGA",
+      "displayOrder": 17
+    },
+    {
+      "id": "ng-borno-mafa",
+      "parentRegionId": "ng-borno",
+      "canonicalName": "Mafa",
+      "type": "LGA",
+      "displayOrder": 18
+    },
+    {
+      "id": "ng-borno-magumeri",
+      "parentRegionId": "ng-borno",
+      "canonicalName": "Magumeri",
+      "type": "LGA",
+      "displayOrder": 19
+    },
+    {
+      "id": "ng-borno-maiduguri-metropolitan",
+      "parentRegionId": "ng-borno",
+      "canonicalName": "Maiduguri Metropolitan",
+      "type": "LGA",
+      "displayOrder": 20,
+      "sourceId": "source-12"
+    },
+    {
+      "id": "ng-borno-marte",
+      "parentRegionId": "ng-borno",
+      "canonicalName": "Marte",
+      "type": "LGA",
+      "displayOrder": 21
+    },
+    {
+      "id": "ng-borno-mobbar",
+      "parentRegionId": "ng-borno",
+      "canonicalName": "Mobbar",
+      "type": "LGA",
+      "displayOrder": 22
+    },
+    {
+      "id": "ng-borno-monguno",
+      "parentRegionId": "ng-borno",
+      "canonicalName": "Monguno",
+      "type": "LGA",
+      "displayOrder": 23
+    },
+    {
+      "id": "ng-borno-ngala",
+      "parentRegionId": "ng-borno",
+      "canonicalName": "Ngala",
+      "type": "LGA",
+      "displayOrder": 24
+    },
+    {
+      "id": "ng-borno-nganzai",
+      "parentRegionId": "ng-borno",
+      "canonicalName": "Nganzai",
+      "type": "LGA",
+      "displayOrder": 25
+    },
+    {
+      "id": "ng-borno-shani",
+      "parentRegionId": "ng-borno",
+      "canonicalName": "Shani",
+      "type": "LGA",
+      "displayOrder": 26
+    },
+    {
+      "id": "ng-cross-river-abi",
+      "parentRegionId": "ng-cross-river",
+      "canonicalName": "Abi",
+      "type": "LGA",
+      "displayOrder": 0
+    },
+    {
+      "id": "ng-cross-river-akamkpa",
+      "parentRegionId": "ng-cross-river",
+      "canonicalName": "Akamkpa",
+      "type": "LGA",
+      "displayOrder": 1
+    },
+    {
+      "id": "ng-cross-river-akpabuyo",
+      "parentRegionId": "ng-cross-river",
+      "canonicalName": "Akpabuyo",
+      "type": "LGA",
+      "displayOrder": 2
+    },
+    {
+      "id": "ng-cross-river-bakassi",
+      "parentRegionId": "ng-cross-river",
+      "canonicalName": "Bakassi",
+      "type": "LGA",
+      "displayOrder": 3
+    },
+    {
+      "id": "ng-cross-river-bekwarra",
+      "parentRegionId": "ng-cross-river",
+      "canonicalName": "Bekwarra",
+      "type": "LGA",
+      "displayOrder": 4
+    },
+    {
+      "id": "ng-cross-river-biase",
+      "parentRegionId": "ng-cross-river",
+      "canonicalName": "Biase",
+      "type": "LGA",
+      "displayOrder": 5
+    },
+    {
+      "id": "ng-cross-river-boki",
+      "parentRegionId": "ng-cross-river",
+      "canonicalName": "Boki",
+      "type": "LGA",
+      "displayOrder": 6
+    },
+    {
+      "id": "ng-cross-river-calabar-municipality",
+      "parentRegionId": "ng-cross-river",
+      "canonicalName": "Calabar Municipality",
+      "type": "LGA",
+      "displayOrder": 7
+    },
+    {
+      "id": "ng-cross-river-calabar-south",
+      "parentRegionId": "ng-cross-river",
+      "canonicalName": "Calabar South",
+      "type": "LGA",
+      "displayOrder": 8
+    },
+    {
+      "id": "ng-cross-river-etung",
+      "parentRegionId": "ng-cross-river",
+      "canonicalName": "Etung",
+      "type": "LGA",
+      "displayOrder": 9
+    },
+    {
+      "id": "ng-cross-river-ikom",
+      "parentRegionId": "ng-cross-river",
+      "canonicalName": "Ikom",
+      "type": "LGA",
+      "displayOrder": 10
+    },
+    {
+      "id": "ng-cross-river-obanliku",
+      "parentRegionId": "ng-cross-river",
+      "canonicalName": "Obanliku",
+      "type": "LGA",
+      "displayOrder": 11
+    },
+    {
+      "id": "ng-cross-river-obubra",
+      "parentRegionId": "ng-cross-river",
+      "canonicalName": "Obubra",
+      "type": "LGA",
+      "displayOrder": 12
+    },
+    {
+      "id": "ng-cross-river-obudu",
+      "parentRegionId": "ng-cross-river",
+      "canonicalName": "Obudu",
+      "type": "LGA",
+      "displayOrder": 13
+    },
+    {
+      "id": "ng-cross-river-odukpani",
+      "parentRegionId": "ng-cross-river",
+      "canonicalName": "Odukpani",
+      "type": "LGA",
+      "displayOrder": 14
+    },
+    {
+      "id": "ng-cross-river-ogoja",
+      "parentRegionId": "ng-cross-river",
+      "canonicalName": "Ogoja",
+      "type": "LGA",
+      "displayOrder": 15
+    },
+    {
+      "id": "ng-cross-river-yakurr",
+      "parentRegionId": "ng-cross-river",
+      "canonicalName": "Yakurr",
+      "type": "LGA",
+      "displayOrder": 16
+    },
+    {
+      "id": "ng-cross-river-yala",
+      "parentRegionId": "ng-cross-river",
+      "canonicalName": "Yala",
+      "type": "LGA",
+      "displayOrder": 17
+    },
+    {
+      "id": "ng-delta-aniocha-north",
+      "parentRegionId": "ng-delta",
+      "canonicalName": "Aniocha North",
+      "type": "LGA",
+      "displayOrder": 0
+    },
+    {
+      "id": "ng-delta-aniocha-south",
+      "parentRegionId": "ng-delta",
+      "canonicalName": "Aniocha South",
+      "type": "LGA",
+      "displayOrder": 1
+    },
+    {
+      "id": "ng-delta-bomadi",
+      "parentRegionId": "ng-delta",
+      "canonicalName": "Bomadi",
+      "type": "LGA",
+      "displayOrder": 2
+    },
+    {
+      "id": "ng-delta-burutu",
+      "parentRegionId": "ng-delta",
+      "canonicalName": "Burutu",
+      "type": "LGA",
+      "displayOrder": 3
+    },
+    {
+      "id": "ng-delta-ethiope-east",
+      "parentRegionId": "ng-delta",
+      "canonicalName": "Ethiope East",
+      "type": "LGA",
+      "displayOrder": 4
+    },
+    {
+      "id": "ng-delta-ethiope-west",
+      "parentRegionId": "ng-delta",
+      "canonicalName": "Ethiope West",
+      "type": "LGA",
+      "displayOrder": 5
+    },
+    {
+      "id": "ng-delta-ika-north-east",
+      "parentRegionId": "ng-delta",
+      "canonicalName": "Ika North East",
+      "type": "LGA",
+      "displayOrder": 6
+    },
+    {
+      "id": "ng-delta-ika-south",
+      "parentRegionId": "ng-delta",
+      "canonicalName": "Ika South",
+      "type": "LGA",
+      "displayOrder": 7
+    },
+    {
+      "id": "ng-delta-isoko-north",
+      "parentRegionId": "ng-delta",
+      "canonicalName": "Isoko North",
+      "type": "LGA",
+      "displayOrder": 8
+    },
+    {
+      "id": "ng-delta-isoko-south",
+      "parentRegionId": "ng-delta",
+      "canonicalName": "Isoko South",
+      "type": "LGA",
+      "displayOrder": 9
+    },
+    {
+      "id": "ng-delta-ndokwa-east",
+      "parentRegionId": "ng-delta",
+      "canonicalName": "Ndokwa East",
+      "type": "LGA",
+      "displayOrder": 10
+    },
+    {
+      "id": "ng-delta-ndokwa-west",
+      "parentRegionId": "ng-delta",
+      "canonicalName": "Ndokwa West",
+      "type": "LGA",
+      "displayOrder": 11
+    },
+    {
+      "id": "ng-delta-okpe",
+      "parentRegionId": "ng-delta",
+      "canonicalName": "Okpe",
+      "type": "LGA",
+      "displayOrder": 12
+    },
+    {
+      "id": "ng-delta-oshimili-north",
+      "parentRegionId": "ng-delta",
+      "canonicalName": "Oshimili North",
+      "type": "LGA",
+      "displayOrder": 13
+    },
+    {
+      "id": "ng-delta-oshimili-south",
+      "parentRegionId": "ng-delta",
+      "canonicalName": "Oshimili South",
+      "type": "LGA",
+      "displayOrder": 14
+    },
+    {
+      "id": "ng-delta-patani",
+      "parentRegionId": "ng-delta",
+      "canonicalName": "Patani",
+      "type": "LGA",
+      "displayOrder": 15
+    },
+    {
+      "id": "ng-delta-sapele",
+      "parentRegionId": "ng-delta",
+      "canonicalName": "Sapele",
+      "type": "LGA",
+      "displayOrder": 16
+    },
+    {
+      "id": "ng-delta-udu",
+      "parentRegionId": "ng-delta",
+      "canonicalName": "Udu",
+      "type": "LGA",
+      "displayOrder": 17
+    },
+    {
+      "id": "ng-delta-ughelli-north",
+      "parentRegionId": "ng-delta",
+      "canonicalName": "Ughelli North",
+      "type": "LGA",
+      "displayOrder": 18
+    },
+    {
+      "id": "ng-delta-ughelli-south",
+      "parentRegionId": "ng-delta",
+      "canonicalName": "Ughelli South",
+      "type": "LGA",
+      "displayOrder": 19
+    },
+    {
+      "id": "ng-delta-ukwuani",
+      "parentRegionId": "ng-delta",
+      "canonicalName": "Ukwuani",
+      "type": "LGA",
+      "displayOrder": 20
+    },
+    {
+      "id": "ng-delta-uvwie",
+      "parentRegionId": "ng-delta",
+      "canonicalName": "Uvwie",
+      "type": "LGA",
+      "displayOrder": 21
+    },
+    {
+      "id": "ng-delta-warri-north",
+      "parentRegionId": "ng-delta",
+      "canonicalName": "Warri North",
+      "type": "LGA",
+      "displayOrder": 22
+    },
+    {
+      "id": "ng-delta-warri-south",
+      "parentRegionId": "ng-delta",
+      "canonicalName": "Warri South",
+      "type": "LGA",
+      "displayOrder": 23
+    },
+    {
+      "id": "ng-delta-warri-south-west",
+      "parentRegionId": "ng-delta",
+      "canonicalName": "Warri South West",
+      "type": "LGA",
+      "displayOrder": 24
+    },
+    {
+      "id": "ng-ebonyi-abakaliki",
+      "parentRegionId": "ng-ebonyi",
+      "canonicalName": "Abakaliki",
+      "type": "LGA",
+      "displayOrder": 0
+    },
+    {
+      "id": "ng-ebonyi-afikpo-north",
+      "parentRegionId": "ng-ebonyi",
+      "canonicalName": "Afikpo North",
+      "type": "LGA",
+      "displayOrder": 1,
+      "sourceId": "source-47"
+    },
+    {
+      "id": "ng-ebonyi-ebonyi",
+      "parentRegionId": "ng-ebonyi",
+      "canonicalName": "Ebonyi",
+      "type": "LGA",
+      "displayOrder": 2
+    },
+    {
+      "id": "ng-ebonyi-edda",
+      "parentRegionId": "ng-ebonyi",
+      "canonicalName": "Edda",
+      "type": "LGA",
+      "displayOrder": 3,
+      "aliases": [
+        "Afikpo South"
+      ],
+      "sourceId": "source-16"
+    },
+    {
+      "id": "ng-ebonyi-ezza-north",
+      "parentRegionId": "ng-ebonyi",
+      "canonicalName": "Ezza North",
+      "type": "LGA",
+      "displayOrder": 4
+    },
+    {
+      "id": "ng-ebonyi-ezza-south",
+      "parentRegionId": "ng-ebonyi",
+      "canonicalName": "Ezza South",
+      "type": "LGA",
+      "displayOrder": 5
+    },
+    {
+      "id": "ng-ebonyi-ikwo",
+      "parentRegionId": "ng-ebonyi",
+      "canonicalName": "Ikwo",
+      "type": "LGA",
+      "displayOrder": 6
+    },
+    {
+      "id": "ng-ebonyi-ishielu",
+      "parentRegionId": "ng-ebonyi",
+      "canonicalName": "Ishielu",
+      "type": "LGA",
+      "displayOrder": 7
+    },
+    {
+      "id": "ng-ebonyi-ivo",
+      "parentRegionId": "ng-ebonyi",
+      "canonicalName": "Ivo",
+      "type": "LGA",
+      "displayOrder": 8
+    },
+    {
+      "id": "ng-ebonyi-izzi",
+      "parentRegionId": "ng-ebonyi",
+      "canonicalName": "Izzi",
+      "type": "LGA",
+      "displayOrder": 9
+    },
+    {
+      "id": "ng-ebonyi-ohaozara",
+      "parentRegionId": "ng-ebonyi",
+      "canonicalName": "Ohaozara",
+      "type": "LGA",
+      "displayOrder": 10
+    },
+    {
+      "id": "ng-ebonyi-ohaukwu",
+      "parentRegionId": "ng-ebonyi",
+      "canonicalName": "Ohaukwu",
+      "type": "LGA",
+      "displayOrder": 11
+    },
+    {
+      "id": "ng-ebonyi-onicha",
+      "parentRegionId": "ng-ebonyi",
+      "canonicalName": "Onicha",
+      "type": "LGA",
+      "displayOrder": 12
+    },
+    {
+      "id": "ng-edo-akoko-edo",
+      "parentRegionId": "ng-edo",
+      "canonicalName": "Akoko Edo",
+      "type": "LGA",
+      "displayOrder": 0
+    },
+    {
+      "id": "ng-edo-egor",
+      "parentRegionId": "ng-edo",
+      "canonicalName": "Egor",
+      "type": "LGA",
+      "displayOrder": 1
+    },
+    {
+      "id": "ng-edo-esan-central",
+      "parentRegionId": "ng-edo",
+      "canonicalName": "Esan Central",
+      "type": "LGA",
+      "displayOrder": 2
+    },
+    {
+      "id": "ng-edo-esan-north-east",
+      "parentRegionId": "ng-edo",
+      "canonicalName": "Esan North East",
+      "type": "LGA",
+      "displayOrder": 3
+    },
+    {
+      "id": "ng-edo-esan-south-east",
+      "parentRegionId": "ng-edo",
+      "canonicalName": "Esan South East",
+      "type": "LGA",
+      "displayOrder": 4
+    },
+    {
+      "id": "ng-edo-esan-west",
+      "parentRegionId": "ng-edo",
+      "canonicalName": "Esan West",
+      "type": "LGA",
+      "displayOrder": 5
+    },
+    {
+      "id": "ng-edo-etsako-central",
+      "parentRegionId": "ng-edo",
+      "canonicalName": "Etsako Central",
+      "type": "LGA",
+      "displayOrder": 6
+    },
+    {
+      "id": "ng-edo-etsako-east",
+      "parentRegionId": "ng-edo",
+      "canonicalName": "Etsako East",
+      "type": "LGA",
+      "displayOrder": 7
+    },
+    {
+      "id": "ng-edo-etsako-west",
+      "parentRegionId": "ng-edo",
+      "canonicalName": "Etsako West",
+      "type": "LGA",
+      "displayOrder": 8
+    },
+    {
+      "id": "ng-edo-igueben",
+      "parentRegionId": "ng-edo",
+      "canonicalName": "Igueben",
+      "type": "LGA",
+      "displayOrder": 9
+    },
+    {
+      "id": "ng-edo-ikpoba-okha",
+      "parentRegionId": "ng-edo",
+      "canonicalName": "Ikpoba Okha",
+      "type": "LGA",
+      "displayOrder": 10
+    },
+    {
+      "id": "ng-edo-oredo",
+      "parentRegionId": "ng-edo",
+      "canonicalName": "Oredo",
+      "type": "LGA",
+      "displayOrder": 11
+    },
+    {
+      "id": "ng-edo-orhionmwon",
+      "parentRegionId": "ng-edo",
+      "canonicalName": "Orhionmwon",
+      "type": "LGA",
+      "displayOrder": 12
+    },
+    {
+      "id": "ng-edo-ovia-north-east",
+      "parentRegionId": "ng-edo",
+      "canonicalName": "Ovia North East",
+      "type": "LGA",
+      "displayOrder": 13
+    },
+    {
+      "id": "ng-edo-ovia-south-west",
+      "parentRegionId": "ng-edo",
+      "canonicalName": "Ovia South West",
+      "type": "LGA",
+      "displayOrder": 14
+    },
+    {
+      "id": "ng-edo-owan-east",
+      "parentRegionId": "ng-edo",
+      "canonicalName": "Owan East",
+      "type": "LGA",
+      "displayOrder": 15
+    },
+    {
+      "id": "ng-edo-owan-west",
+      "parentRegionId": "ng-edo",
+      "canonicalName": "Owan West",
+      "type": "LGA",
+      "displayOrder": 16
+    },
+    {
+      "id": "ng-edo-uhunmwode",
+      "parentRegionId": "ng-edo",
+      "canonicalName": "Uhunmwode",
+      "type": "LGA",
+      "displayOrder": 17
+    },
+    {
+      "id": "ng-ekiti-ado-ekiti",
+      "parentRegionId": "ng-ekiti",
+      "canonicalName": "Ado Ekiti",
+      "type": "LGA",
+      "displayOrder": 0
+    },
+    {
+      "id": "ng-ekiti-aiyekire",
+      "parentRegionId": "ng-ekiti",
+      "canonicalName": "Aiyekire",
+      "type": "LGA",
+      "displayOrder": 1
+    },
+    {
+      "id": "ng-ekiti-efon",
+      "parentRegionId": "ng-ekiti",
+      "canonicalName": "Efon",
+      "type": "LGA",
+      "displayOrder": 2
+    },
+    {
+      "id": "ng-ekiti-ekiti-east",
+      "parentRegionId": "ng-ekiti",
+      "canonicalName": "Ekiti East",
+      "type": "LGA",
+      "displayOrder": 3
+    },
+    {
+      "id": "ng-ekiti-ekiti-south-west",
+      "parentRegionId": "ng-ekiti",
+      "canonicalName": "Ekiti South West",
+      "type": "LGA",
+      "displayOrder": 4
+    },
+    {
+      "id": "ng-ekiti-ekiti-west",
+      "parentRegionId": "ng-ekiti",
+      "canonicalName": "Ekiti West",
+      "type": "LGA",
+      "displayOrder": 5
+    },
+    {
+      "id": "ng-ekiti-emure",
+      "parentRegionId": "ng-ekiti",
+      "canonicalName": "Emure",
+      "type": "LGA",
+      "displayOrder": 6
+    },
+    {
+      "id": "ng-ekiti-ido-osi",
+      "parentRegionId": "ng-ekiti",
+      "canonicalName": "Ido-Osi",
+      "type": "LGA",
+      "displayOrder": 7
+    },
+    {
+      "id": "ng-ekiti-ijero",
+      "parentRegionId": "ng-ekiti",
+      "canonicalName": "Ijero",
+      "type": "LGA",
+      "displayOrder": 8
+    },
+    {
+      "id": "ng-ekiti-ikere",
+      "parentRegionId": "ng-ekiti",
+      "canonicalName": "Ikere",
+      "type": "LGA",
+      "displayOrder": 9
+    },
+    {
+      "id": "ng-ekiti-ikole",
+      "parentRegionId": "ng-ekiti",
+      "canonicalName": "Ikole",
+      "type": "LGA",
+      "displayOrder": 10
+    },
+    {
+      "id": "ng-ekiti-ilejemeji",
+      "parentRegionId": "ng-ekiti",
+      "canonicalName": "Ilejemeji",
+      "type": "LGA",
+      "displayOrder": 11
+    },
+    {
+      "id": "ng-ekiti-irepodun-ifelodun",
+      "parentRegionId": "ng-ekiti",
+      "canonicalName": "Irepodun/Ifelodun",
+      "type": "LGA",
+      "displayOrder": 12
+    },
+    {
+      "id": "ng-ekiti-ise-orun",
+      "parentRegionId": "ng-ekiti",
+      "canonicalName": "Ise/Orun",
+      "type": "LGA",
+      "displayOrder": 13
+    },
+    {
+      "id": "ng-ekiti-moba",
+      "parentRegionId": "ng-ekiti",
+      "canonicalName": "Moba",
+      "type": "LGA",
+      "displayOrder": 14
+    },
+    {
+      "id": "ng-ekiti-oye",
+      "parentRegionId": "ng-ekiti",
+      "canonicalName": "Oye",
+      "type": "LGA",
+      "displayOrder": 15
+    },
+    {
+      "id": "ng-enugu-aninri",
+      "parentRegionId": "ng-enugu",
+      "canonicalName": "Aninri",
+      "type": "LGA",
+      "displayOrder": 0
+    },
+    {
+      "id": "ng-enugu-awgu",
+      "parentRegionId": "ng-enugu",
+      "canonicalName": "Awgu",
+      "type": "LGA",
+      "displayOrder": 1
+    },
+    {
+      "id": "ng-enugu-enugu-east",
+      "parentRegionId": "ng-enugu",
+      "canonicalName": "Enugu East",
+      "type": "LGA",
+      "displayOrder": 2
+    },
+    {
+      "id": "ng-enugu-enugu-north",
+      "parentRegionId": "ng-enugu",
+      "canonicalName": "Enugu North",
+      "type": "LGA",
+      "displayOrder": 3
+    },
+    {
+      "id": "ng-enugu-enugu-south",
+      "parentRegionId": "ng-enugu",
+      "canonicalName": "Enugu South",
+      "type": "LGA",
+      "displayOrder": 4
+    },
+    {
+      "id": "ng-enugu-ezeagu",
+      "parentRegionId": "ng-enugu",
+      "canonicalName": "Ezeagu",
+      "type": "LGA",
+      "displayOrder": 5
+    },
+    {
+      "id": "ng-enugu-igbo-etiti",
+      "parentRegionId": "ng-enugu",
+      "canonicalName": "Igbo Etiti",
+      "type": "LGA",
+      "displayOrder": 6
+    },
+    {
+      "id": "ng-enugu-igbo-eze-north",
+      "parentRegionId": "ng-enugu",
+      "canonicalName": "Igbo Eze North",
+      "type": "LGA",
+      "displayOrder": 7
+    },
+    {
+      "id": "ng-enugu-igbo-eze-south",
+      "parentRegionId": "ng-enugu",
+      "canonicalName": "Igbo Eze South",
+      "type": "LGA",
+      "displayOrder": 8
+    },
+    {
+      "id": "ng-enugu-isi-uzo",
+      "parentRegionId": "ng-enugu",
+      "canonicalName": "Isi Uzo",
+      "type": "LGA",
+      "displayOrder": 9
+    },
+    {
+      "id": "ng-enugu-nkanu-east",
+      "parentRegionId": "ng-enugu",
+      "canonicalName": "Nkanu East",
+      "type": "LGA",
+      "displayOrder": 10
+    },
+    {
+      "id": "ng-enugu-nkanu-west",
+      "parentRegionId": "ng-enugu",
+      "canonicalName": "Nkanu West",
+      "type": "LGA",
+      "displayOrder": 11
+    },
+    {
+      "id": "ng-enugu-nsukka",
+      "parentRegionId": "ng-enugu",
+      "canonicalName": "Nsukka",
+      "type": "LGA",
+      "displayOrder": 12
+    },
+    {
+      "id": "ng-enugu-oji-river",
+      "parentRegionId": "ng-enugu",
+      "canonicalName": "Oji River",
+      "type": "LGA",
+      "displayOrder": 13
+    },
+    {
+      "id": "ng-enugu-udenu",
+      "parentRegionId": "ng-enugu",
+      "canonicalName": "Udenu",
+      "type": "LGA",
+      "displayOrder": 14
+    },
+    {
+      "id": "ng-enugu-udi",
+      "parentRegionId": "ng-enugu",
+      "canonicalName": "Udi",
+      "type": "LGA",
+      "displayOrder": 15
+    },
+    {
+      "id": "ng-enugu-uzo-uwani",
+      "parentRegionId": "ng-enugu",
+      "canonicalName": "Uzo-Uwani",
+      "type": "LGA",
+      "displayOrder": 16
+    },
+    {
+      "id": "ng-fct-abaji",
+      "parentRegionId": "ng-fct",
+      "canonicalName": "Abaji",
+      "type": "AREA_COUNCIL",
+      "displayOrder": 0
+    },
+    {
+      "id": "ng-fct-abuja-municipal",
+      "parentRegionId": "ng-fct",
+      "canonicalName": "Abuja Municipal Area Council",
+      "type": "AREA_COUNCIL",
+      "displayOrder": 1,
+      "aliases": [
+        "AMAC"
+      ]
+    },
+    {
+      "id": "ng-fct-bwari",
+      "parentRegionId": "ng-fct",
+      "canonicalName": "Bwari",
+      "type": "AREA_COUNCIL",
+      "displayOrder": 2
+    },
+    {
+      "id": "ng-fct-gwagwalada",
+      "parentRegionId": "ng-fct",
+      "canonicalName": "Gwagwalada",
+      "type": "AREA_COUNCIL",
+      "displayOrder": 3
+    },
+    {
+      "id": "ng-fct-kuje",
+      "parentRegionId": "ng-fct",
+      "canonicalName": "Kuje",
+      "type": "AREA_COUNCIL",
+      "displayOrder": 4
+    },
+    {
+      "id": "ng-fct-kwali",
+      "parentRegionId": "ng-fct",
+      "canonicalName": "Kwali",
+      "type": "AREA_COUNCIL",
+      "displayOrder": 5
+    },
+    {
+      "id": "ng-gombe-akko",
+      "parentRegionId": "ng-gombe",
+      "canonicalName": "Akko",
+      "type": "LGA",
+      "displayOrder": 0
+    },
+    {
+      "id": "ng-gombe-balanga",
+      "parentRegionId": "ng-gombe",
+      "canonicalName": "Balanga",
+      "type": "LGA",
+      "displayOrder": 1
+    },
+    {
+      "id": "ng-gombe-billiri",
+      "parentRegionId": "ng-gombe",
+      "canonicalName": "Billiri",
+      "type": "LGA",
+      "displayOrder": 2
+    },
+    {
+      "id": "ng-gombe-dukku",
+      "parentRegionId": "ng-gombe",
+      "canonicalName": "Dukku",
+      "type": "LGA",
+      "displayOrder": 3
+    },
+    {
+      "id": "ng-gombe-funakaye",
+      "parentRegionId": "ng-gombe",
+      "canonicalName": "Funakaye",
+      "type": "LGA",
+      "displayOrder": 4
+    },
+    {
+      "id": "ng-gombe-gombe",
+      "parentRegionId": "ng-gombe",
+      "canonicalName": "Gombe",
+      "type": "LGA",
+      "displayOrder": 5
+    },
+    {
+      "id": "ng-gombe-kaltungo",
+      "parentRegionId": "ng-gombe",
+      "canonicalName": "Kaltungo",
+      "type": "LGA",
+      "displayOrder": 6
+    },
+    {
+      "id": "ng-gombe-kwami",
+      "parentRegionId": "ng-gombe",
+      "canonicalName": "Kwami",
+      "type": "LGA",
+      "displayOrder": 7
+    },
+    {
+      "id": "ng-gombe-nafada",
+      "parentRegionId": "ng-gombe",
+      "canonicalName": "Nafada",
+      "type": "LGA",
+      "displayOrder": 8
+    },
+    {
+      "id": "ng-gombe-shongom",
+      "parentRegionId": "ng-gombe",
+      "canonicalName": "Shongom",
+      "type": "LGA",
+      "displayOrder": 9
+    },
+    {
+      "id": "ng-gombe-yamaltu-deba",
+      "parentRegionId": "ng-gombe",
+      "canonicalName": "Yamaltu-Deba",
+      "type": "LGA",
+      "displayOrder": 10
+    },
+    {
+      "id": "ng-imo-aboh-mbaise",
+      "parentRegionId": "ng-imo",
+      "canonicalName": "Aboh-Mbaise",
+      "type": "LGA",
+      "displayOrder": 0
+    },
+    {
+      "id": "ng-imo-ahiazu-mbaise",
+      "parentRegionId": "ng-imo",
+      "canonicalName": "Ahiazu-Mbaise",
+      "type": "LGA",
+      "displayOrder": 1
+    },
+    {
+      "id": "ng-imo-ehime-mbano",
+      "parentRegionId": "ng-imo",
+      "canonicalName": "Ehime-Mbano",
+      "type": "LGA",
+      "displayOrder": 2
+    },
+    {
+      "id": "ng-imo-ezinihitte-mbaise",
+      "parentRegionId": "ng-imo",
+      "canonicalName": "Ezinihitte Mbaise",
+      "type": "LGA",
+      "displayOrder": 3
+    },
+    {
+      "id": "ng-imo-ideato-north",
+      "parentRegionId": "ng-imo",
+      "canonicalName": "Ideato North",
+      "type": "LGA",
+      "displayOrder": 4
+    },
+    {
+      "id": "ng-imo-ideato-south",
+      "parentRegionId": "ng-imo",
+      "canonicalName": "Ideato South",
+      "type": "LGA",
+      "displayOrder": 5
+    },
+    {
+      "id": "ng-imo-ihitte-uboma",
+      "parentRegionId": "ng-imo",
+      "canonicalName": "Ihitte/Uboma",
+      "type": "LGA",
+      "displayOrder": 6
+    },
+    {
+      "id": "ng-imo-ikeduru",
+      "parentRegionId": "ng-imo",
+      "canonicalName": "Ikeduru",
+      "type": "LGA",
+      "displayOrder": 7
+    },
+    {
+      "id": "ng-imo-isiala-mbano",
+      "parentRegionId": "ng-imo",
+      "canonicalName": "Isiala Mbano",
+      "type": "LGA",
+      "displayOrder": 8
+    },
+    {
+      "id": "ng-imo-isu",
+      "parentRegionId": "ng-imo",
+      "canonicalName": "Isu",
+      "type": "LGA",
+      "displayOrder": 9
+    },
+    {
+      "id": "ng-imo-mbaitoli",
+      "parentRegionId": "ng-imo",
+      "canonicalName": "Mbaitoli",
+      "type": "LGA",
+      "displayOrder": 10
+    },
+    {
+      "id": "ng-imo-ngor-okpala",
+      "parentRegionId": "ng-imo",
+      "canonicalName": "Ngor-Okpala",
+      "type": "LGA",
+      "displayOrder": 11
+    },
+    {
+      "id": "ng-imo-njaba",
+      "parentRegionId": "ng-imo",
+      "canonicalName": "Njaba",
+      "type": "LGA",
+      "displayOrder": 12
+    },
+    {
+      "id": "ng-imo-nkwerre",
+      "parentRegionId": "ng-imo",
+      "canonicalName": "Nkwerre",
+      "type": "LGA",
+      "displayOrder": 13,
+      "sourceId": "source-23"
+    },
+    {
+      "id": "ng-imo-nwangele",
+      "parentRegionId": "ng-imo",
+      "canonicalName": "Nwangele",
+      "type": "LGA",
+      "displayOrder": 14
+    },
+    {
+      "id": "ng-imo-obowo",
+      "parentRegionId": "ng-imo",
+      "canonicalName": "Obowo",
+      "type": "LGA",
+      "displayOrder": 15
+    },
+    {
+      "id": "ng-imo-oguta",
+      "parentRegionId": "ng-imo",
+      "canonicalName": "Oguta",
+      "type": "LGA",
+      "displayOrder": 16
+    },
+    {
+      "id": "ng-imo-ohaji-egbema",
+      "parentRegionId": "ng-imo",
+      "canonicalName": "Ohaji/Egbema",
+      "type": "LGA",
+      "displayOrder": 17
+    },
+    {
+      "id": "ng-imo-okigwe",
+      "parentRegionId": "ng-imo",
+      "canonicalName": "Okigwe",
+      "type": "LGA",
+      "displayOrder": 18
+    },
+    {
+      "id": "ng-imo-onuimo",
+      "parentRegionId": "ng-imo",
+      "canonicalName": "Onuimo",
+      "type": "LGA",
+      "displayOrder": 19
+    },
+    {
+      "id": "ng-imo-orlu",
+      "parentRegionId": "ng-imo",
+      "canonicalName": "Orlu",
+      "type": "LGA",
+      "displayOrder": 20
+    },
+    {
+      "id": "ng-imo-orsu",
+      "parentRegionId": "ng-imo",
+      "canonicalName": "Orsu",
+      "type": "LGA",
+      "displayOrder": 21
+    },
+    {
+      "id": "ng-imo-oru-east",
+      "parentRegionId": "ng-imo",
+      "canonicalName": "Oru East",
+      "type": "LGA",
+      "displayOrder": 22
+    },
+    {
+      "id": "ng-imo-oru-west",
+      "parentRegionId": "ng-imo",
+      "canonicalName": "Oru West",
+      "type": "LGA",
+      "displayOrder": 23
+    },
+    {
+      "id": "ng-imo-owerri-municipal",
+      "parentRegionId": "ng-imo",
+      "canonicalName": "Owerri Municipal",
+      "type": "LGA",
+      "displayOrder": 24
+    },
+    {
+      "id": "ng-imo-owerri-north",
+      "parentRegionId": "ng-imo",
+      "canonicalName": "Owerri North",
+      "type": "LGA",
+      "displayOrder": 25
+    },
+    {
+      "id": "ng-imo-owerri-west",
+      "parentRegionId": "ng-imo",
+      "canonicalName": "Owerri West",
+      "type": "LGA",
+      "displayOrder": 26
+    },
+    {
+      "id": "ng-jigawa-auyo",
+      "parentRegionId": "ng-jigawa",
+      "canonicalName": "Auyo",
+      "type": "LGA",
+      "displayOrder": 0
+    },
+    {
+      "id": "ng-jigawa-babura",
+      "parentRegionId": "ng-jigawa",
+      "canonicalName": "Babura",
+      "type": "LGA",
+      "displayOrder": 1
+    },
+    {
+      "id": "ng-jigawa-birnin-kudu",
+      "parentRegionId": "ng-jigawa",
+      "canonicalName": "Birnin Kudu",
+      "type": "LGA",
+      "displayOrder": 2
+    },
+    {
+      "id": "ng-jigawa-birniwa",
+      "parentRegionId": "ng-jigawa",
+      "canonicalName": "Birniwa",
+      "type": "LGA",
+      "displayOrder": 3
+    },
+    {
+      "id": "ng-jigawa-buji",
+      "parentRegionId": "ng-jigawa",
+      "canonicalName": "Buji",
+      "type": "LGA",
+      "displayOrder": 4
+    },
+    {
+      "id": "ng-jigawa-dutse",
+      "parentRegionId": "ng-jigawa",
+      "canonicalName": "Dutse",
+      "type": "LGA",
+      "displayOrder": 5
+    },
+    {
+      "id": "ng-jigawa-gagarawa",
+      "parentRegionId": "ng-jigawa",
+      "canonicalName": "Gagarawa",
+      "type": "LGA",
+      "displayOrder": 6
+    },
+    {
+      "id": "ng-jigawa-garki",
+      "parentRegionId": "ng-jigawa",
+      "canonicalName": "Garki",
+      "type": "LGA",
+      "displayOrder": 7
+    },
+    {
+      "id": "ng-jigawa-gumel",
+      "parentRegionId": "ng-jigawa",
+      "canonicalName": "Gumel",
+      "type": "LGA",
+      "displayOrder": 8
+    },
+    {
+      "id": "ng-jigawa-guri",
+      "parentRegionId": "ng-jigawa",
+      "canonicalName": "Guri",
+      "type": "LGA",
+      "displayOrder": 9
+    },
+    {
+      "id": "ng-jigawa-gwaram",
+      "parentRegionId": "ng-jigawa",
+      "canonicalName": "Gwaram",
+      "type": "LGA",
+      "displayOrder": 10
+    },
+    {
+      "id": "ng-jigawa-gwiwa",
+      "parentRegionId": "ng-jigawa",
+      "canonicalName": "Gwiwa",
+      "type": "LGA",
+      "displayOrder": 11
+    },
+    {
+      "id": "ng-jigawa-hadejia",
+      "parentRegionId": "ng-jigawa",
+      "canonicalName": "Hadejia",
+      "type": "LGA",
+      "displayOrder": 12,
+      "sourceId": "source-25"
+    },
+    {
+      "id": "ng-jigawa-jahun",
+      "parentRegionId": "ng-jigawa",
+      "canonicalName": "Jahun",
+      "type": "LGA",
+      "displayOrder": 13
+    },
+    {
+      "id": "ng-jigawa-kafin-hausa",
+      "parentRegionId": "ng-jigawa",
+      "canonicalName": "Kafin Hausa",
+      "type": "LGA",
+      "displayOrder": 14
+    },
+    {
+      "id": "ng-jigawa-kaugama",
+      "parentRegionId": "ng-jigawa",
+      "canonicalName": "Kaugama",
+      "type": "LGA",
+      "displayOrder": 15
+    },
+    {
+      "id": "ng-jigawa-kazaure",
+      "parentRegionId": "ng-jigawa",
+      "canonicalName": "Kazaure",
+      "type": "LGA",
+      "displayOrder": 16
+    },
+    {
+      "id": "ng-jigawa-kiri-kasamma",
+      "parentRegionId": "ng-jigawa",
+      "canonicalName": "Kiri Kasamma",
+      "type": "LGA",
+      "displayOrder": 17,
+      "sourceId": "source-25"
+    },
+    {
+      "id": "ng-jigawa-kiyawa",
+      "parentRegionId": "ng-jigawa",
+      "canonicalName": "Kiyawa",
+      "type": "LGA",
+      "displayOrder": 18
+    },
+    {
+      "id": "ng-jigawa-maigatari",
+      "parentRegionId": "ng-jigawa",
+      "canonicalName": "Maigatari",
+      "type": "LGA",
+      "displayOrder": 19
+    },
+    {
+      "id": "ng-jigawa-malam-madori",
+      "parentRegionId": "ng-jigawa",
+      "canonicalName": "Malam Madori",
+      "type": "LGA",
+      "displayOrder": 20
+    },
+    {
+      "id": "ng-jigawa-miga",
+      "parentRegionId": "ng-jigawa",
+      "canonicalName": "Miga",
+      "type": "LGA",
+      "displayOrder": 21
+    },
+    {
+      "id": "ng-jigawa-ringim",
+      "parentRegionId": "ng-jigawa",
+      "canonicalName": "Ringim",
+      "type": "LGA",
+      "displayOrder": 22
+    },
+    {
+      "id": "ng-jigawa-roni",
+      "parentRegionId": "ng-jigawa",
+      "canonicalName": "Roni",
+      "type": "LGA",
+      "displayOrder": 23
+    },
+    {
+      "id": "ng-jigawa-sule-tankarkar",
+      "parentRegionId": "ng-jigawa",
+      "canonicalName": "Sule Tankarkar",
+      "type": "LGA",
+      "displayOrder": 24
+    },
+    {
+      "id": "ng-jigawa-taura",
+      "parentRegionId": "ng-jigawa",
+      "canonicalName": "Taura",
+      "type": "LGA",
+      "displayOrder": 25
+    },
+    {
+      "id": "ng-jigawa-yankwashi",
+      "parentRegionId": "ng-jigawa",
+      "canonicalName": "Yankwashi",
+      "type": "LGA",
+      "displayOrder": 26
+    },
+    {
+      "id": "ng-kaduna-birnin-gwari",
+      "parentRegionId": "ng-kaduna",
+      "canonicalName": "Birnin Gwari",
+      "type": "LGA",
+      "displayOrder": 0
+    },
+    {
+      "id": "ng-kaduna-chikun",
+      "parentRegionId": "ng-kaduna",
+      "canonicalName": "Chikun",
+      "type": "LGA",
+      "displayOrder": 1
+    },
+    {
+      "id": "ng-kaduna-giwa",
+      "parentRegionId": "ng-kaduna",
+      "canonicalName": "Giwa",
+      "type": "LGA",
+      "displayOrder": 2
+    },
+    {
+      "id": "ng-kaduna-igabi",
+      "parentRegionId": "ng-kaduna",
+      "canonicalName": "Igabi",
+      "type": "LGA",
+      "displayOrder": 3
+    },
+    {
+      "id": "ng-kaduna-ikara",
+      "parentRegionId": "ng-kaduna",
+      "canonicalName": "Ikara",
+      "type": "LGA",
+      "displayOrder": 4
+    },
+    {
+      "id": "ng-kaduna-jaba",
+      "parentRegionId": "ng-kaduna",
+      "canonicalName": "Jaba",
+      "type": "LGA",
+      "displayOrder": 5
+    },
+    {
+      "id": "ng-kaduna-jemaa",
+      "parentRegionId": "ng-kaduna",
+      "canonicalName": "Jema'a",
+      "type": "LGA",
+      "displayOrder": 6
+    },
+    {
+      "id": "ng-kaduna-kachia",
+      "parentRegionId": "ng-kaduna",
+      "canonicalName": "Kachia",
+      "type": "LGA",
+      "displayOrder": 7
+    },
+    {
+      "id": "ng-kaduna-kaduna-north",
+      "parentRegionId": "ng-kaduna",
+      "canonicalName": "Kaduna North",
+      "type": "LGA",
+      "displayOrder": 8
+    },
+    {
+      "id": "ng-kaduna-kaduna-south",
+      "parentRegionId": "ng-kaduna",
+      "canonicalName": "Kaduna South",
+      "type": "LGA",
+      "displayOrder": 9
+    },
+    {
+      "id": "ng-kaduna-kagarko",
+      "parentRegionId": "ng-kaduna",
+      "canonicalName": "Kagarko",
+      "type": "LGA",
+      "displayOrder": 10
+    },
+    {
+      "id": "ng-kaduna-kajuru",
+      "parentRegionId": "ng-kaduna",
+      "canonicalName": "Kajuru",
+      "type": "LGA",
+      "displayOrder": 11
+    },
+    {
+      "id": "ng-kaduna-kaura",
+      "parentRegionId": "ng-kaduna",
+      "canonicalName": "Kaura",
+      "type": "LGA",
+      "displayOrder": 12
+    },
+    {
+      "id": "ng-kaduna-kauru",
+      "parentRegionId": "ng-kaduna",
+      "canonicalName": "Kauru",
+      "type": "LGA",
+      "displayOrder": 13
+    },
+    {
+      "id": "ng-kaduna-kubau",
+      "parentRegionId": "ng-kaduna",
+      "canonicalName": "Kubau",
+      "type": "LGA",
+      "displayOrder": 14
+    },
+    {
+      "id": "ng-kaduna-kudan",
+      "parentRegionId": "ng-kaduna",
+      "canonicalName": "Kudan",
+      "type": "LGA",
+      "displayOrder": 15
+    },
+    {
+      "id": "ng-kaduna-lere",
+      "parentRegionId": "ng-kaduna",
+      "canonicalName": "Lere",
+      "type": "LGA",
+      "displayOrder": 16
+    },
+    {
+      "id": "ng-kaduna-makarfi",
+      "parentRegionId": "ng-kaduna",
+      "canonicalName": "Makarfi",
+      "type": "LGA",
+      "displayOrder": 17
+    },
+    {
+      "id": "ng-kaduna-sabon-gari",
+      "parentRegionId": "ng-kaduna",
+      "canonicalName": "Sabon Gari",
+      "type": "LGA",
+      "displayOrder": 18
+    },
+    {
+      "id": "ng-kaduna-sanga",
+      "parentRegionId": "ng-kaduna",
+      "canonicalName": "Sanga",
+      "type": "LGA",
+      "displayOrder": 19
+    },
+    {
+      "id": "ng-kaduna-soba",
+      "parentRegionId": "ng-kaduna",
+      "canonicalName": "Soba",
+      "type": "LGA",
+      "displayOrder": 20
+    },
+    {
+      "id": "ng-kaduna-zangon-kataf",
+      "parentRegionId": "ng-kaduna",
+      "canonicalName": "Zangon Kataf",
+      "type": "LGA",
+      "displayOrder": 21
+    },
+    {
+      "id": "ng-kaduna-zaria",
+      "parentRegionId": "ng-kaduna",
+      "canonicalName": "Zaria",
+      "type": "LGA",
+      "displayOrder": 22
+    },
+    {
+      "id": "ng-kano-ajingi",
+      "parentRegionId": "ng-kano",
+      "canonicalName": "Ajingi",
+      "type": "LGA",
+      "displayOrder": 0
+    },
+    {
+      "id": "ng-kano-albasu",
+      "parentRegionId": "ng-kano",
+      "canonicalName": "Albasu",
+      "type": "LGA",
+      "displayOrder": 1
+    },
+    {
+      "id": "ng-kano-bagwai",
+      "parentRegionId": "ng-kano",
+      "canonicalName": "Bagwai",
+      "type": "LGA",
+      "displayOrder": 2
+    },
+    {
+      "id": "ng-kano-bebeji",
+      "parentRegionId": "ng-kano",
+      "canonicalName": "Bebeji",
+      "type": "LGA",
+      "displayOrder": 3
+    },
+    {
+      "id": "ng-kano-bichi",
+      "parentRegionId": "ng-kano",
+      "canonicalName": "Bichi",
+      "type": "LGA",
+      "displayOrder": 4
+    },
+    {
+      "id": "ng-kano-bunkure",
+      "parentRegionId": "ng-kano",
+      "canonicalName": "Bunkure",
+      "type": "LGA",
+      "displayOrder": 5
+    },
+    {
+      "id": "ng-kano-dala",
+      "parentRegionId": "ng-kano",
+      "canonicalName": "Dala",
+      "type": "LGA",
+      "displayOrder": 6
+    },
+    {
+      "id": "ng-kano-dambatta",
+      "parentRegionId": "ng-kano",
+      "canonicalName": "Dambatta",
+      "type": "LGA",
+      "displayOrder": 7
+    },
+    {
+      "id": "ng-kano-dawakin-kudu",
+      "parentRegionId": "ng-kano",
+      "canonicalName": "Dawakin Kudu",
+      "type": "LGA",
+      "displayOrder": 8
+    },
+    {
+      "id": "ng-kano-dawakin-tofa",
+      "parentRegionId": "ng-kano",
+      "canonicalName": "Dawakin Tofa",
+      "type": "LGA",
+      "displayOrder": 9
+    },
+    {
+      "id": "ng-kano-doguwa",
+      "parentRegionId": "ng-kano",
+      "canonicalName": "Doguwa",
+      "type": "LGA",
+      "displayOrder": 10
+    },
+    {
+      "id": "ng-kano-fagge",
+      "parentRegionId": "ng-kano",
+      "canonicalName": "Fagge",
+      "type": "LGA",
+      "displayOrder": 11
+    },
+    {
+      "id": "ng-kano-gabasawa",
+      "parentRegionId": "ng-kano",
+      "canonicalName": "Gabasawa",
+      "type": "LGA",
+      "displayOrder": 12
+    },
+    {
+      "id": "ng-kano-garko",
+      "parentRegionId": "ng-kano",
+      "canonicalName": "Garko",
+      "type": "LGA",
+      "displayOrder": 13
+    },
+    {
+      "id": "ng-kano-garun-mallam",
+      "parentRegionId": "ng-kano",
+      "canonicalName": "Garun Mallam",
+      "type": "LGA",
+      "displayOrder": 14
+    },
+    {
+      "id": "ng-kano-gaya",
+      "parentRegionId": "ng-kano",
+      "canonicalName": "Gaya",
+      "type": "LGA",
+      "displayOrder": 15
+    },
+    {
+      "id": "ng-kano-gezawa",
+      "parentRegionId": "ng-kano",
+      "canonicalName": "Gezawa",
+      "type": "LGA",
+      "displayOrder": 16
+    },
+    {
+      "id": "ng-kano-gwale",
+      "parentRegionId": "ng-kano",
+      "canonicalName": "Gwale",
+      "type": "LGA",
+      "displayOrder": 17
+    },
+    {
+      "id": "ng-kano-gwarzo",
+      "parentRegionId": "ng-kano",
+      "canonicalName": "Gwarzo",
+      "type": "LGA",
+      "displayOrder": 18
+    },
+    {
+      "id": "ng-kano-kabo",
+      "parentRegionId": "ng-kano",
+      "canonicalName": "Kabo",
+      "type": "LGA",
+      "displayOrder": 19
+    },
+    {
+      "id": "ng-kano-kano-municipal",
+      "parentRegionId": "ng-kano",
+      "canonicalName": "Kano Municipal",
+      "type": "LGA",
+      "displayOrder": 20
+    },
+    {
+      "id": "ng-kano-karaye",
+      "parentRegionId": "ng-kano",
+      "canonicalName": "Karaye",
+      "type": "LGA",
+      "displayOrder": 21
+    },
+    {
+      "id": "ng-kano-kibiya",
+      "parentRegionId": "ng-kano",
+      "canonicalName": "Kibiya",
+      "type": "LGA",
+      "displayOrder": 22
+    },
+    {
+      "id": "ng-kano-kiru",
+      "parentRegionId": "ng-kano",
+      "canonicalName": "Kiru",
+      "type": "LGA",
+      "displayOrder": 23
+    },
+    {
+      "id": "ng-kano-kumbotso",
+      "parentRegionId": "ng-kano",
+      "canonicalName": "Kumbotso",
+      "type": "LGA",
+      "displayOrder": 24
+    },
+    {
+      "id": "ng-kano-kunchi",
+      "parentRegionId": "ng-kano",
+      "canonicalName": "Kunchi",
+      "type": "LGA",
+      "displayOrder": 25
+    },
+    {
+      "id": "ng-kano-kura",
+      "parentRegionId": "ng-kano",
+      "canonicalName": "Kura",
+      "type": "LGA",
+      "displayOrder": 26
+    },
+    {
+      "id": "ng-kano-madobi",
+      "parentRegionId": "ng-kano",
+      "canonicalName": "Madobi",
+      "type": "LGA",
+      "displayOrder": 27
+    },
+    {
+      "id": "ng-kano-makoda",
+      "parentRegionId": "ng-kano",
+      "canonicalName": "Makoda",
+      "type": "LGA",
+      "displayOrder": 28
+    },
+    {
+      "id": "ng-kano-minjibir",
+      "parentRegionId": "ng-kano",
+      "canonicalName": "Minjibir",
+      "type": "LGA",
+      "displayOrder": 29
+    },
+    {
+      "id": "ng-kano-nassarawa",
+      "parentRegionId": "ng-kano",
+      "canonicalName": "Nassarawa",
+      "type": "LGA",
+      "displayOrder": 30
+    },
+    {
+      "id": "ng-kano-rano",
+      "parentRegionId": "ng-kano",
+      "canonicalName": "Rano",
+      "type": "LGA",
+      "displayOrder": 31
+    },
+    {
+      "id": "ng-kano-rimin-gado",
+      "parentRegionId": "ng-kano",
+      "canonicalName": "Rimin Gado",
+      "type": "LGA",
+      "displayOrder": 32
+    },
+    {
+      "id": "ng-kano-rogo",
+      "parentRegionId": "ng-kano",
+      "canonicalName": "Rogo",
+      "type": "LGA",
+      "displayOrder": 33
+    },
+    {
+      "id": "ng-kano-shanono",
+      "parentRegionId": "ng-kano",
+      "canonicalName": "Shanono",
+      "type": "LGA",
+      "displayOrder": 34
+    },
+    {
+      "id": "ng-kano-sumaila",
+      "parentRegionId": "ng-kano",
+      "canonicalName": "Sumaila",
+      "type": "LGA",
+      "displayOrder": 35
+    },
+    {
+      "id": "ng-kano-takai",
+      "parentRegionId": "ng-kano",
+      "canonicalName": "Takai",
+      "type": "LGA",
+      "displayOrder": 36
+    },
+    {
+      "id": "ng-kano-tarauni",
+      "parentRegionId": "ng-kano",
+      "canonicalName": "Tarauni",
+      "type": "LGA",
+      "displayOrder": 37
+    },
+    {
+      "id": "ng-kano-tofa",
+      "parentRegionId": "ng-kano",
+      "canonicalName": "Tofa",
+      "type": "LGA",
+      "displayOrder": 38
+    },
+    {
+      "id": "ng-kano-tsanyawa",
+      "parentRegionId": "ng-kano",
+      "canonicalName": "Tsanyawa",
+      "type": "LGA",
+      "displayOrder": 39
+    },
+    {
+      "id": "ng-kano-tudun-wada",
+      "parentRegionId": "ng-kano",
+      "canonicalName": "Tudun Wada",
+      "type": "LGA",
+      "displayOrder": 40
+    },
+    {
+      "id": "ng-kano-ungogo",
+      "parentRegionId": "ng-kano",
+      "canonicalName": "Ungogo",
+      "type": "LGA",
+      "displayOrder": 41
+    },
+    {
+      "id": "ng-kano-warawa",
+      "parentRegionId": "ng-kano",
+      "canonicalName": "Warawa",
+      "type": "LGA",
+      "displayOrder": 42
+    },
+    {
+      "id": "ng-kano-wudil",
+      "parentRegionId": "ng-kano",
+      "canonicalName": "Wudil",
+      "type": "LGA",
+      "displayOrder": 43
+    },
+    {
+      "id": "ng-katsina-bakori",
+      "parentRegionId": "ng-katsina",
+      "canonicalName": "Bakori",
+      "type": "LGA",
+      "displayOrder": 0
+    },
+    {
+      "id": "ng-katsina-batagarawa",
+      "parentRegionId": "ng-katsina",
+      "canonicalName": "Batagarawa",
+      "type": "LGA",
+      "displayOrder": 1
+    },
+    {
+      "id": "ng-katsina-batsari",
+      "parentRegionId": "ng-katsina",
+      "canonicalName": "Batsari",
+      "type": "LGA",
+      "displayOrder": 2
+    },
+    {
+      "id": "ng-katsina-baure",
+      "parentRegionId": "ng-katsina",
+      "canonicalName": "Baure",
+      "type": "LGA",
+      "displayOrder": 3
+    },
+    {
+      "id": "ng-katsina-bindawa",
+      "parentRegionId": "ng-katsina",
+      "canonicalName": "Bindawa",
+      "type": "LGA",
+      "displayOrder": 4
+    },
+    {
+      "id": "ng-katsina-charanchi",
+      "parentRegionId": "ng-katsina",
+      "canonicalName": "Charanchi",
+      "type": "LGA",
+      "displayOrder": 5
+    },
+    {
+      "id": "ng-katsina-dandume",
+      "parentRegionId": "ng-katsina",
+      "canonicalName": "Dandume",
+      "type": "LGA",
+      "displayOrder": 6
+    },
+    {
+      "id": "ng-katsina-danja",
+      "parentRegionId": "ng-katsina",
+      "canonicalName": "Danja",
+      "type": "LGA",
+      "displayOrder": 7
+    },
+    {
+      "id": "ng-katsina-danmusa",
+      "parentRegionId": "ng-katsina",
+      "canonicalName": "Danmusa",
+      "type": "LGA",
+      "displayOrder": 8
+    },
+    {
+      "id": "ng-katsina-daura",
+      "parentRegionId": "ng-katsina",
+      "canonicalName": "Daura",
+      "type": "LGA",
+      "displayOrder": 9
+    },
+    {
+      "id": "ng-katsina-dutsi",
+      "parentRegionId": "ng-katsina",
+      "canonicalName": "Dutsi",
+      "type": "LGA",
+      "displayOrder": 10
+    },
+    {
+      "id": "ng-katsina-dutsinma",
+      "parentRegionId": "ng-katsina",
+      "canonicalName": "Dutsinma",
+      "type": "LGA",
+      "displayOrder": 11
+    },
+    {
+      "id": "ng-katsina-faskari",
+      "parentRegionId": "ng-katsina",
+      "canonicalName": "Faskari",
+      "type": "LGA",
+      "displayOrder": 12
+    },
+    {
+      "id": "ng-katsina-funtua",
+      "parentRegionId": "ng-katsina",
+      "canonicalName": "Funtua",
+      "type": "LGA",
+      "displayOrder": 13
+    },
+    {
+      "id": "ng-katsina-ingawa",
+      "parentRegionId": "ng-katsina",
+      "canonicalName": "Ingawa",
+      "type": "LGA",
+      "displayOrder": 14
+    },
+    {
+      "id": "ng-katsina-jibia",
+      "parentRegionId": "ng-katsina",
+      "canonicalName": "Jibia",
+      "type": "LGA",
+      "displayOrder": 15
+    },
+    {
+      "id": "ng-katsina-kafur",
+      "parentRegionId": "ng-katsina",
+      "canonicalName": "Kafur",
+      "type": "LGA",
+      "displayOrder": 16
+    },
+    {
+      "id": "ng-katsina-kaita",
+      "parentRegionId": "ng-katsina",
+      "canonicalName": "Kaita",
+      "type": "LGA",
+      "displayOrder": 17
+    },
+    {
+      "id": "ng-katsina-kankara",
+      "parentRegionId": "ng-katsina",
+      "canonicalName": "Kankara",
+      "type": "LGA",
+      "displayOrder": 18
+    },
+    {
+      "id": "ng-katsina-kankia",
+      "parentRegionId": "ng-katsina",
+      "canonicalName": "Kankia",
+      "type": "LGA",
+      "displayOrder": 19
+    },
+    {
+      "id": "ng-katsina-katsina",
+      "parentRegionId": "ng-katsina",
+      "canonicalName": "Katsina",
+      "type": "LGA",
+      "displayOrder": 20
+    },
+    {
+      "id": "ng-katsina-kurfi",
+      "parentRegionId": "ng-katsina",
+      "canonicalName": "Kurfi",
+      "type": "LGA",
+      "displayOrder": 21
+    },
+    {
+      "id": "ng-katsina-kusada",
+      "parentRegionId": "ng-katsina",
+      "canonicalName": "Kusada",
+      "type": "LGA",
+      "displayOrder": 22
+    },
+    {
+      "id": "ng-katsina-maiadua",
+      "parentRegionId": "ng-katsina",
+      "canonicalName": "Mai'adua",
+      "type": "LGA",
+      "displayOrder": 23
+    },
+    {
+      "id": "ng-katsina-malumfashi",
+      "parentRegionId": "ng-katsina",
+      "canonicalName": "Malumfashi",
+      "type": "LGA",
+      "displayOrder": 24
+    },
+    {
+      "id": "ng-katsina-mani",
+      "parentRegionId": "ng-katsina",
+      "canonicalName": "Mani",
+      "type": "LGA",
+      "displayOrder": 25
+    },
+    {
+      "id": "ng-katsina-mashi",
+      "parentRegionId": "ng-katsina",
+      "canonicalName": "Mashi",
+      "type": "LGA",
+      "displayOrder": 26
+    },
+    {
+      "id": "ng-katsina-matazu",
+      "parentRegionId": "ng-katsina",
+      "canonicalName": "Matazu",
+      "type": "LGA",
+      "displayOrder": 27
+    },
+    {
+      "id": "ng-katsina-musawa",
+      "parentRegionId": "ng-katsina",
+      "canonicalName": "Musawa",
+      "type": "LGA",
+      "displayOrder": 28
+    },
+    {
+      "id": "ng-katsina-rimi",
+      "parentRegionId": "ng-katsina",
+      "canonicalName": "Rimi",
+      "type": "LGA",
+      "displayOrder": 29
+    },
+    {
+      "id": "ng-katsina-sabuwa",
+      "parentRegionId": "ng-katsina",
+      "canonicalName": "Sabuwa",
+      "type": "LGA",
+      "displayOrder": 30
+    },
+    {
+      "id": "ng-katsina-safana",
+      "parentRegionId": "ng-katsina",
+      "canonicalName": "Safana",
+      "type": "LGA",
+      "displayOrder": 31
+    },
+    {
+      "id": "ng-katsina-sandamu",
+      "parentRegionId": "ng-katsina",
+      "canonicalName": "Sandamu",
+      "type": "LGA",
+      "displayOrder": 32
+    },
+    {
+      "id": "ng-katsina-zango",
+      "parentRegionId": "ng-katsina",
+      "canonicalName": "Zango",
+      "type": "LGA",
+      "displayOrder": 33
+    },
+    {
+      "id": "ng-kebbi-aliero",
+      "parentRegionId": "ng-kebbi",
+      "canonicalName": "Aliero",
+      "type": "LGA",
+      "displayOrder": 0
+    },
+    {
+      "id": "ng-kebbi-arewa",
+      "parentRegionId": "ng-kebbi",
+      "canonicalName": "Arewa",
+      "type": "LGA",
+      "displayOrder": 1
+    },
+    {
+      "id": "ng-kebbi-argungu",
+      "parentRegionId": "ng-kebbi",
+      "canonicalName": "Argungu",
+      "type": "LGA",
+      "displayOrder": 2
+    },
+    {
+      "id": "ng-kebbi-augie",
+      "parentRegionId": "ng-kebbi",
+      "canonicalName": "Augie",
+      "type": "LGA",
+      "displayOrder": 3
+    },
+    {
+      "id": "ng-kebbi-bagudo",
+      "parentRegionId": "ng-kebbi",
+      "canonicalName": "Bagudo",
+      "type": "LGA",
+      "displayOrder": 4
+    },
+    {
+      "id": "ng-kebbi-birnin-kebbi",
+      "parentRegionId": "ng-kebbi",
+      "canonicalName": "Birnin Kebbi",
+      "type": "LGA",
+      "displayOrder": 5
+    },
+    {
+      "id": "ng-kebbi-bunza",
+      "parentRegionId": "ng-kebbi",
+      "canonicalName": "Bunza",
+      "type": "LGA",
+      "displayOrder": 6
+    },
+    {
+      "id": "ng-kebbi-dandi",
+      "parentRegionId": "ng-kebbi",
+      "canonicalName": "Dandi",
+      "type": "LGA",
+      "displayOrder": 7
+    },
+    {
+      "id": "ng-kebbi-fakai",
+      "parentRegionId": "ng-kebbi",
+      "canonicalName": "Fakai",
+      "type": "LGA",
+      "displayOrder": 8
+    },
+    {
+      "id": "ng-kebbi-gwandu",
+      "parentRegionId": "ng-kebbi",
+      "canonicalName": "Gwandu",
+      "type": "LGA",
+      "displayOrder": 9
+    },
+    {
+      "id": "ng-kebbi-jega",
+      "parentRegionId": "ng-kebbi",
+      "canonicalName": "Jega",
+      "type": "LGA",
+      "displayOrder": 10
+    },
+    {
+      "id": "ng-kebbi-kalgo",
+      "parentRegionId": "ng-kebbi",
+      "canonicalName": "Kalgo",
+      "type": "LGA",
+      "displayOrder": 11
+    },
+    {
+      "id": "ng-kebbi-koko-besse",
+      "parentRegionId": "ng-kebbi",
+      "canonicalName": "Koko-Besse",
+      "type": "LGA",
+      "displayOrder": 12
+    },
+    {
+      "id": "ng-kebbi-maiyama",
+      "parentRegionId": "ng-kebbi",
+      "canonicalName": "Maiyama",
+      "type": "LGA",
+      "displayOrder": 13
+    },
+    {
+      "id": "ng-kebbi-ngaski",
+      "parentRegionId": "ng-kebbi",
+      "canonicalName": "Ngaski",
+      "type": "LGA",
+      "displayOrder": 14
+    },
+    {
+      "id": "ng-kebbi-sakaba",
+      "parentRegionId": "ng-kebbi",
+      "canonicalName": "Sakaba",
+      "type": "LGA",
+      "displayOrder": 15
+    },
+    {
+      "id": "ng-kebbi-shanga",
+      "parentRegionId": "ng-kebbi",
+      "canonicalName": "Shanga",
+      "type": "LGA",
+      "displayOrder": 16
+    },
+    {
+      "id": "ng-kebbi-suru",
+      "parentRegionId": "ng-kebbi",
+      "canonicalName": "Suru",
+      "type": "LGA",
+      "displayOrder": 17
+    },
+    {
+      "id": "ng-kebbi-wasagu-danko",
+      "parentRegionId": "ng-kebbi",
+      "canonicalName": "Wasagu/Danko",
+      "type": "LGA",
+      "displayOrder": 18
+    },
+    {
+      "id": "ng-kebbi-yauri",
+      "parentRegionId": "ng-kebbi",
+      "canonicalName": "Yauri",
+      "type": "LGA",
+      "displayOrder": 19
+    },
+    {
+      "id": "ng-kebbi-zuru",
+      "parentRegionId": "ng-kebbi",
+      "canonicalName": "Zuru",
+      "type": "LGA",
+      "displayOrder": 20
+    },
+    {
+      "id": "ng-kogi-adavi",
+      "parentRegionId": "ng-kogi",
+      "canonicalName": "Adavi",
+      "type": "LGA",
+      "displayOrder": 0
+    },
+    {
+      "id": "ng-kogi-ajaokuta",
+      "parentRegionId": "ng-kogi",
+      "canonicalName": "Ajaokuta",
+      "type": "LGA",
+      "displayOrder": 1
+    },
+    {
+      "id": "ng-kogi-ankpa",
+      "parentRegionId": "ng-kogi",
+      "canonicalName": "Ankpa",
+      "type": "LGA",
+      "displayOrder": 2
+    },
+    {
+      "id": "ng-kogi-bassa",
+      "parentRegionId": "ng-kogi",
+      "canonicalName": "Bassa",
+      "type": "LGA",
+      "displayOrder": 3
+    },
+    {
+      "id": "ng-kogi-dekina",
+      "parentRegionId": "ng-kogi",
+      "canonicalName": "Dekina",
+      "type": "LGA",
+      "displayOrder": 4
+    },
+    {
+      "id": "ng-kogi-ibaji",
+      "parentRegionId": "ng-kogi",
+      "canonicalName": "Ibaji",
+      "type": "LGA",
+      "displayOrder": 5
+    },
+    {
+      "id": "ng-kogi-idah",
+      "parentRegionId": "ng-kogi",
+      "canonicalName": "Idah",
+      "type": "LGA",
+      "displayOrder": 6
+    },
+    {
+      "id": "ng-kogi-igalamela-odolu",
+      "parentRegionId": "ng-kogi",
+      "canonicalName": "Igalamela/Odolu",
+      "type": "LGA",
+      "displayOrder": 7
+    },
+    {
+      "id": "ng-kogi-ijumu",
+      "parentRegionId": "ng-kogi",
+      "canonicalName": "Ijumu",
+      "type": "LGA",
+      "displayOrder": 8
+    },
+    {
+      "id": "ng-kogi-kabba-bunu",
+      "parentRegionId": "ng-kogi",
+      "canonicalName": "Kabba-Bunu",
+      "type": "LGA",
+      "displayOrder": 9
+    },
+    {
+      "id": "ng-kogi-kogi",
+      "parentRegionId": "ng-kogi",
+      "canonicalName": "Kogi",
+      "type": "LGA",
+      "displayOrder": 10
+    },
+    {
+      "id": "ng-kogi-lokoja",
+      "parentRegionId": "ng-kogi",
+      "canonicalName": "Lokoja",
+      "type": "LGA",
+      "displayOrder": 11
+    },
+    {
+      "id": "ng-kogi-mopamuro",
+      "parentRegionId": "ng-kogi",
+      "canonicalName": "Mopamuro",
+      "type": "LGA",
+      "displayOrder": 12
+    },
+    {
+      "id": "ng-kogi-ofu",
+      "parentRegionId": "ng-kogi",
+      "canonicalName": "Ofu",
+      "type": "LGA",
+      "displayOrder": 13
+    },
+    {
+      "id": "ng-kogi-ogori-magongo",
+      "parentRegionId": "ng-kogi",
+      "canonicalName": "Ogori-Magongo",
+      "type": "LGA",
+      "displayOrder": 14
+    },
+    {
+      "id": "ng-kogi-okehi",
+      "parentRegionId": "ng-kogi",
+      "canonicalName": "Okehi",
+      "type": "LGA",
+      "displayOrder": 15
+    },
+    {
+      "id": "ng-kogi-okene",
+      "parentRegionId": "ng-kogi",
+      "canonicalName": "Okene",
+      "type": "LGA",
+      "displayOrder": 16
+    },
+    {
+      "id": "ng-kogi-olamaboro",
+      "parentRegionId": "ng-kogi",
+      "canonicalName": "Olamaboro",
+      "type": "LGA",
+      "displayOrder": 17
+    },
+    {
+      "id": "ng-kogi-omala",
+      "parentRegionId": "ng-kogi",
+      "canonicalName": "Omala",
+      "type": "LGA",
+      "displayOrder": 18
+    },
+    {
+      "id": "ng-kogi-yagba-east",
+      "parentRegionId": "ng-kogi",
+      "canonicalName": "Yagba-East",
+      "type": "LGA",
+      "displayOrder": 19
+    },
+    {
+      "id": "ng-kogi-yagba-west",
+      "parentRegionId": "ng-kogi",
+      "canonicalName": "Yagba-West",
+      "type": "LGA",
+      "displayOrder": 20
+    },
+    {
+      "id": "ng-kwara-asa",
+      "parentRegionId": "ng-kwara",
+      "canonicalName": "Asa",
+      "type": "LGA",
+      "displayOrder": 0
+    },
+    {
+      "id": "ng-kwara-baruten",
+      "parentRegionId": "ng-kwara",
+      "canonicalName": "Baruten",
+      "type": "LGA",
+      "displayOrder": 1
+    },
+    {
+      "id": "ng-kwara-edu",
+      "parentRegionId": "ng-kwara",
+      "canonicalName": "Edu",
+      "type": "LGA",
+      "displayOrder": 2
+    },
+    {
+      "id": "ng-kwara-ekiti",
+      "parentRegionId": "ng-kwara",
+      "canonicalName": "Ekiti",
+      "type": "LGA",
+      "displayOrder": 3
+    },
+    {
+      "id": "ng-kwara-ifelodun",
+      "parentRegionId": "ng-kwara",
+      "canonicalName": "Ifelodun",
+      "type": "LGA",
+      "displayOrder": 4
+    },
+    {
+      "id": "ng-kwara-ilorin-east",
+      "parentRegionId": "ng-kwara",
+      "canonicalName": "Ilorin East",
+      "type": "LGA",
+      "displayOrder": 5
+    },
+    {
+      "id": "ng-kwara-ilorin-south",
+      "parentRegionId": "ng-kwara",
+      "canonicalName": "Ilorin South",
+      "type": "LGA",
+      "displayOrder": 6
+    },
+    {
+      "id": "ng-kwara-ilorin-west",
+      "parentRegionId": "ng-kwara",
+      "canonicalName": "Ilorin West",
+      "type": "LGA",
+      "displayOrder": 7
+    },
+    {
+      "id": "ng-kwara-irepodun",
+      "parentRegionId": "ng-kwara",
+      "canonicalName": "Irepodun",
+      "type": "LGA",
+      "displayOrder": 8
+    },
+    {
+      "id": "ng-kwara-isin",
+      "parentRegionId": "ng-kwara",
+      "canonicalName": "Isin",
+      "type": "LGA",
+      "displayOrder": 9
+    },
+    {
+      "id": "ng-kwara-kaiama",
+      "parentRegionId": "ng-kwara",
+      "canonicalName": "Kaiama",
+      "type": "LGA",
+      "displayOrder": 10
+    },
+    {
+      "id": "ng-kwara-moro",
+      "parentRegionId": "ng-kwara",
+      "canonicalName": "Moro",
+      "type": "LGA",
+      "displayOrder": 11
+    },
+    {
+      "id": "ng-kwara-offa",
+      "parentRegionId": "ng-kwara",
+      "canonicalName": "Offa",
+      "type": "LGA",
+      "displayOrder": 12
+    },
+    {
+      "id": "ng-kwara-oke-ero",
+      "parentRegionId": "ng-kwara",
+      "canonicalName": "Oke-Ero",
+      "type": "LGA",
+      "displayOrder": 13
+    },
+    {
+      "id": "ng-kwara-oyun",
+      "parentRegionId": "ng-kwara",
+      "canonicalName": "Oyun",
+      "type": "LGA",
+      "displayOrder": 14
+    },
+    {
+      "id": "ng-kwara-patigi",
+      "parentRegionId": "ng-kwara",
+      "canonicalName": "Patigi",
+      "type": "LGA",
+      "displayOrder": 15
+    },
+    {
+      "id": "ng-lagos-agege",
+      "parentRegionId": "ng-lagos",
+      "canonicalName": "Agege",
+      "type": "LGA",
+      "displayOrder": 0
+    },
+    {
+      "id": "ng-lagos-ajeromi-ifelodun",
+      "parentRegionId": "ng-lagos",
+      "canonicalName": "Ajeromi-Ifelodun",
+      "type": "LGA",
+      "displayOrder": 1
+    },
+    {
+      "id": "ng-lagos-alimosho",
+      "parentRegionId": "ng-lagos",
+      "canonicalName": "Alimosho",
+      "type": "LGA",
+      "displayOrder": 2
+    },
+    {
+      "id": "ng-lagos-amuwo-odofin",
+      "parentRegionId": "ng-lagos",
+      "canonicalName": "Amuwo-Odofin",
+      "type": "LGA",
+      "displayOrder": 3
+    },
+    {
+      "id": "ng-lagos-apapa",
+      "parentRegionId": "ng-lagos",
+      "canonicalName": "Apapa",
+      "type": "LGA",
+      "displayOrder": 4
+    },
+    {
+      "id": "ng-lagos-badagry",
+      "parentRegionId": "ng-lagos",
+      "canonicalName": "Badagry",
+      "type": "LGA",
+      "displayOrder": 5,
+      "sourceId": "source-33"
+    },
+    {
+      "id": "ng-lagos-epe",
+      "parentRegionId": "ng-lagos",
+      "canonicalName": "Epe",
+      "type": "LGA",
+      "displayOrder": 6
+    },
+    {
+      "id": "ng-lagos-eti-osa",
+      "parentRegionId": "ng-lagos",
+      "canonicalName": "Eti-Osa",
+      "type": "LGA",
+      "displayOrder": 7
+    },
+    {
+      "id": "ng-lagos-ibeju-lekki",
+      "parentRegionId": "ng-lagos",
+      "canonicalName": "Ibeju-Lekki",
+      "type": "LGA",
+      "displayOrder": 8
+    },
+    {
+      "id": "ng-lagos-ifako-ijaiye",
+      "parentRegionId": "ng-lagos",
+      "canonicalName": "Ifako-Ijaiye",
+      "type": "LGA",
+      "displayOrder": 9,
+      "sourceId": "source-33"
+    },
+    {
+      "id": "ng-lagos-ikeja",
+      "parentRegionId": "ng-lagos",
+      "canonicalName": "Ikeja",
+      "type": "LGA",
+      "displayOrder": 10
+    },
+    {
+      "id": "ng-lagos-ikorodu",
+      "parentRegionId": "ng-lagos",
+      "canonicalName": "Ikorodu",
+      "type": "LGA",
+      "displayOrder": 11
+    },
+    {
+      "id": "ng-lagos-kosofe",
+      "parentRegionId": "ng-lagos",
+      "canonicalName": "Kosofe",
+      "type": "LGA",
+      "displayOrder": 12
+    },
+    {
+      "id": "ng-lagos-lagos-island",
+      "parentRegionId": "ng-lagos",
+      "canonicalName": "Lagos Island",
+      "type": "LGA",
+      "displayOrder": 13
+    },
+    {
+      "id": "ng-lagos-lagos-mainland",
+      "parentRegionId": "ng-lagos",
+      "canonicalName": "Lagos Mainland",
+      "type": "LGA",
+      "displayOrder": 14
+    },
+    {
+      "id": "ng-lagos-mushin",
+      "parentRegionId": "ng-lagos",
+      "canonicalName": "Mushin",
+      "type": "LGA",
+      "displayOrder": 15
+    },
+    {
+      "id": "ng-lagos-ojo",
+      "parentRegionId": "ng-lagos",
+      "canonicalName": "Ojo",
+      "type": "LGA",
+      "displayOrder": 16
+    },
+    {
+      "id": "ng-lagos-oshodi-isolo",
+      "parentRegionId": "ng-lagos",
+      "canonicalName": "Oshodi-Isolo",
+      "type": "LGA",
+      "displayOrder": 17
+    },
+    {
+      "id": "ng-lagos-somolu",
+      "parentRegionId": "ng-lagos",
+      "canonicalName": "Somolu",
+      "type": "LGA",
+      "displayOrder": 18
+    },
+    {
+      "id": "ng-lagos-surulere",
+      "parentRegionId": "ng-lagos",
+      "canonicalName": "Surulere",
+      "type": "LGA",
+      "displayOrder": 19
+    },
+    {
+      "id": "ng-nasarawa-akwanga",
+      "parentRegionId": "ng-nasarawa",
+      "canonicalName": "Akwanga",
+      "type": "LGA",
+      "displayOrder": 0
+    },
+    {
+      "id": "ng-nasarawa-awe",
+      "parentRegionId": "ng-nasarawa",
+      "canonicalName": "Awe",
+      "type": "LGA",
+      "displayOrder": 1
+    },
+    {
+      "id": "ng-nasarawa-doma",
+      "parentRegionId": "ng-nasarawa",
+      "canonicalName": "Doma",
+      "type": "LGA",
+      "displayOrder": 2
+    },
+    {
+      "id": "ng-nasarawa-karu",
+      "parentRegionId": "ng-nasarawa",
+      "canonicalName": "Karu",
+      "type": "LGA",
+      "displayOrder": 3
+    },
+    {
+      "id": "ng-nasarawa-keana",
+      "parentRegionId": "ng-nasarawa",
+      "canonicalName": "Keana",
+      "type": "LGA",
+      "displayOrder": 4
+    },
+    {
+      "id": "ng-nasarawa-keffi",
+      "parentRegionId": "ng-nasarawa",
+      "canonicalName": "Keffi",
+      "type": "LGA",
+      "displayOrder": 5
+    },
+    {
+      "id": "ng-nasarawa-kokona",
+      "parentRegionId": "ng-nasarawa",
+      "canonicalName": "Kokona",
+      "type": "LGA",
+      "displayOrder": 6
+    },
+    {
+      "id": "ng-nasarawa-lafia",
+      "parentRegionId": "ng-nasarawa",
+      "canonicalName": "Lafia",
+      "type": "LGA",
+      "displayOrder": 7
+    },
+    {
+      "id": "ng-nasarawa-nasarawa",
+      "parentRegionId": "ng-nasarawa",
+      "canonicalName": "Nasarawa",
+      "type": "LGA",
+      "displayOrder": 8
+    },
+    {
+      "id": "ng-nasarawa-nasarawa-eggon",
+      "parentRegionId": "ng-nasarawa",
+      "canonicalName": "Nasarawa Eggon",
+      "type": "LGA",
+      "displayOrder": 9
+    },
+    {
+      "id": "ng-nasarawa-obi",
+      "parentRegionId": "ng-nasarawa",
+      "canonicalName": "Obi",
+      "type": "LGA",
+      "displayOrder": 10
+    },
+    {
+      "id": "ng-nasarawa-toto",
+      "parentRegionId": "ng-nasarawa",
+      "canonicalName": "Toto",
+      "type": "LGA",
+      "displayOrder": 11
+    },
+    {
+      "id": "ng-nasarawa-wamba",
+      "parentRegionId": "ng-nasarawa",
+      "canonicalName": "Wamba",
+      "type": "LGA",
+      "displayOrder": 12
+    },
+    {
+      "id": "ng-niger-agaie",
+      "parentRegionId": "ng-niger",
+      "canonicalName": "Agaie",
+      "type": "LGA",
+      "displayOrder": 0
+    },
+    {
+      "id": "ng-niger-agwara",
+      "parentRegionId": "ng-niger",
+      "canonicalName": "Agwara",
+      "type": "LGA",
+      "displayOrder": 1
+    },
+    {
+      "id": "ng-niger-bida",
+      "parentRegionId": "ng-niger",
+      "canonicalName": "Bida",
+      "type": "LGA",
+      "displayOrder": 2
+    },
+    {
+      "id": "ng-niger-borgu",
+      "parentRegionId": "ng-niger",
+      "canonicalName": "Borgu",
+      "type": "LGA",
+      "displayOrder": 3
+    },
+    {
+      "id": "ng-niger-bosso",
+      "parentRegionId": "ng-niger",
+      "canonicalName": "Bosso",
+      "type": "LGA",
+      "displayOrder": 4
+    },
+    {
+      "id": "ng-niger-chanchaga",
+      "parentRegionId": "ng-niger",
+      "canonicalName": "Chanchaga",
+      "type": "LGA",
+      "displayOrder": 5
+    },
+    {
+      "id": "ng-niger-edati",
+      "parentRegionId": "ng-niger",
+      "canonicalName": "Edati",
+      "type": "LGA",
+      "displayOrder": 6
+    },
+    {
+      "id": "ng-niger-gbako",
+      "parentRegionId": "ng-niger",
+      "canonicalName": "Gbako",
+      "type": "LGA",
+      "displayOrder": 7
+    },
+    {
+      "id": "ng-niger-gurara",
+      "parentRegionId": "ng-niger",
+      "canonicalName": "Gurara",
+      "type": "LGA",
+      "displayOrder": 8
+    },
+    {
+      "id": "ng-niger-katcha",
+      "parentRegionId": "ng-niger",
+      "canonicalName": "Katcha",
+      "type": "LGA",
+      "displayOrder": 9
+    },
+    {
+      "id": "ng-niger-kontagora",
+      "parentRegionId": "ng-niger",
+      "canonicalName": "Kontagora",
+      "type": "LGA",
+      "displayOrder": 10
+    },
+    {
+      "id": "ng-niger-lapai",
+      "parentRegionId": "ng-niger",
+      "canonicalName": "Lapai",
+      "type": "LGA",
+      "displayOrder": 11
+    },
+    {
+      "id": "ng-niger-lavun",
+      "parentRegionId": "ng-niger",
+      "canonicalName": "Lavun",
+      "type": "LGA",
+      "displayOrder": 12
+    },
+    {
+      "id": "ng-niger-magama",
+      "parentRegionId": "ng-niger",
+      "canonicalName": "Magama",
+      "type": "LGA",
+      "displayOrder": 13
+    },
+    {
+      "id": "ng-niger-mariga",
+      "parentRegionId": "ng-niger",
+      "canonicalName": "Mariga",
+      "type": "LGA",
+      "displayOrder": 14
+    },
+    {
+      "id": "ng-niger-mashegu",
+      "parentRegionId": "ng-niger",
+      "canonicalName": "Mashegu",
+      "type": "LGA",
+      "displayOrder": 15
+    },
+    {
+      "id": "ng-niger-mokwa",
+      "parentRegionId": "ng-niger",
+      "canonicalName": "Mokwa",
+      "type": "LGA",
+      "displayOrder": 16
+    },
+    {
+      "id": "ng-niger-munya",
+      "parentRegionId": "ng-niger",
+      "canonicalName": "Munya",
+      "type": "LGA",
+      "displayOrder": 17
+    },
+    {
+      "id": "ng-niger-paikoro",
+      "parentRegionId": "ng-niger",
+      "canonicalName": "Paikoro",
+      "type": "LGA",
+      "displayOrder": 18
+    },
+    {
+      "id": "ng-niger-rafi",
+      "parentRegionId": "ng-niger",
+      "canonicalName": "Rafi",
+      "type": "LGA",
+      "displayOrder": 19
+    },
+    {
+      "id": "ng-niger-rijau",
+      "parentRegionId": "ng-niger",
+      "canonicalName": "Rijau",
+      "type": "LGA",
+      "displayOrder": 20
+    },
+    {
+      "id": "ng-niger-shiroro",
+      "parentRegionId": "ng-niger",
+      "canonicalName": "Shiroro",
+      "type": "LGA",
+      "displayOrder": 21
+    },
+    {
+      "id": "ng-niger-suleja",
+      "parentRegionId": "ng-niger",
+      "canonicalName": "Suleja",
+      "type": "LGA",
+      "displayOrder": 22
+    },
+    {
+      "id": "ng-niger-tafa",
+      "parentRegionId": "ng-niger",
+      "canonicalName": "Tafa",
+      "type": "LGA",
+      "displayOrder": 23
+    },
+    {
+      "id": "ng-niger-wushishi",
+      "parentRegionId": "ng-niger",
+      "canonicalName": "Wushishi",
+      "type": "LGA",
+      "displayOrder": 24
+    },
+    {
+      "id": "ng-ogun-abeokuta-north",
+      "parentRegionId": "ng-ogun",
+      "canonicalName": "Abeokuta North",
+      "type": "LGA",
+      "displayOrder": 0
+    },
+    {
+      "id": "ng-ogun-abeokuta-south",
+      "parentRegionId": "ng-ogun",
+      "canonicalName": "Abeokuta South",
+      "type": "LGA",
+      "displayOrder": 1
+    },
+    {
+      "id": "ng-ogun-ado-odo-ota",
+      "parentRegionId": "ng-ogun",
+      "canonicalName": "Ado Odo/Ota",
+      "type": "LGA",
+      "displayOrder": 2
+    },
+    {
+      "id": "ng-ogun-ewekoro",
+      "parentRegionId": "ng-ogun",
+      "canonicalName": "Ewekoro",
+      "type": "LGA",
+      "displayOrder": 3
+    },
+    {
+      "id": "ng-ogun-ifo",
+      "parentRegionId": "ng-ogun",
+      "canonicalName": "Ifo",
+      "type": "LGA",
+      "displayOrder": 4
+    },
+    {
+      "id": "ng-ogun-ijebu-east",
+      "parentRegionId": "ng-ogun",
+      "canonicalName": "Ijebu East",
+      "type": "LGA",
+      "displayOrder": 5
+    },
+    {
+      "id": "ng-ogun-ijebu-north",
+      "parentRegionId": "ng-ogun",
+      "canonicalName": "Ijebu North",
+      "type": "LGA",
+      "displayOrder": 6
+    },
+    {
+      "id": "ng-ogun-ijebu-north-east",
+      "parentRegionId": "ng-ogun",
+      "canonicalName": "Ijebu North East",
+      "type": "LGA",
+      "displayOrder": 7
+    },
+    {
+      "id": "ng-ogun-ijebu-ode",
+      "parentRegionId": "ng-ogun",
+      "canonicalName": "Ijebu Ode",
+      "type": "LGA",
+      "displayOrder": 8
+    },
+    {
+      "id": "ng-ogun-ikenne",
+      "parentRegionId": "ng-ogun",
+      "canonicalName": "Ikenne",
+      "type": "LGA",
+      "displayOrder": 9
+    },
+    {
+      "id": "ng-ogun-imeko-afon",
+      "parentRegionId": "ng-ogun",
+      "canonicalName": "Imeko/Afon",
+      "type": "LGA",
+      "displayOrder": 10
+    },
+    {
+      "id": "ng-ogun-ipokia",
+      "parentRegionId": "ng-ogun",
+      "canonicalName": "Ipokia",
+      "type": "LGA",
+      "displayOrder": 11
+    },
+    {
+      "id": "ng-ogun-obafemi-owode",
+      "parentRegionId": "ng-ogun",
+      "canonicalName": "Obafemi/Owode",
+      "type": "LGA",
+      "displayOrder": 12
+    },
+    {
+      "id": "ng-ogun-odeda",
+      "parentRegionId": "ng-ogun",
+      "canonicalName": "Odeda",
+      "type": "LGA",
+      "displayOrder": 13
+    },
+    {
+      "id": "ng-ogun-odogbolu",
+      "parentRegionId": "ng-ogun",
+      "canonicalName": "Odogbolu",
+      "type": "LGA",
+      "displayOrder": 14
+    },
+    {
+      "id": "ng-ogun-ogun-water-side",
+      "parentRegionId": "ng-ogun",
+      "canonicalName": "Ogun Water Side",
+      "type": "LGA",
+      "displayOrder": 15
+    },
+    {
+      "id": "ng-ogun-remo-north",
+      "parentRegionId": "ng-ogun",
+      "canonicalName": "Remo North",
+      "type": "LGA",
+      "displayOrder": 16
+    },
+    {
+      "id": "ng-ogun-sagamu",
+      "parentRegionId": "ng-ogun",
+      "canonicalName": "Sagamu",
+      "type": "LGA",
+      "displayOrder": 17
+    },
+    {
+      "id": "ng-ogun-yewa-north",
+      "parentRegionId": "ng-ogun",
+      "canonicalName": "Yewa North",
+      "type": "LGA",
+      "displayOrder": 18
+    },
+    {
+      "id": "ng-ogun-yewa-south",
+      "parentRegionId": "ng-ogun",
+      "canonicalName": "Yewa South",
+      "type": "LGA",
+      "displayOrder": 19
+    },
+    {
+      "id": "ng-ondo-akoko-north-east",
+      "parentRegionId": "ng-ondo",
+      "canonicalName": "Akoko North East",
+      "type": "LGA",
+      "displayOrder": 0
+    },
+    {
+      "id": "ng-ondo-akoko-north-west",
+      "parentRegionId": "ng-ondo",
+      "canonicalName": "Akoko North West",
+      "type": "LGA",
+      "displayOrder": 1
+    },
+    {
+      "id": "ng-ondo-akoko-south-east",
+      "parentRegionId": "ng-ondo",
+      "canonicalName": "Akoko South East",
+      "type": "LGA",
+      "displayOrder": 2
+    },
+    {
+      "id": "ng-ondo-akoko-south-west",
+      "parentRegionId": "ng-ondo",
+      "canonicalName": "Akoko South West",
+      "type": "LGA",
+      "displayOrder": 3
+    },
+    {
+      "id": "ng-ondo-akure-north",
+      "parentRegionId": "ng-ondo",
+      "canonicalName": "Akure North",
+      "type": "LGA",
+      "displayOrder": 4
+    },
+    {
+      "id": "ng-ondo-akure-south",
+      "parentRegionId": "ng-ondo",
+      "canonicalName": "Akure South",
+      "type": "LGA",
+      "displayOrder": 5
+    },
+    {
+      "id": "ng-ondo-ese-odo",
+      "parentRegionId": "ng-ondo",
+      "canonicalName": "Ese-Odo",
+      "type": "LGA",
+      "displayOrder": 6
+    },
+    {
+      "id": "ng-ondo-idanre",
+      "parentRegionId": "ng-ondo",
+      "canonicalName": "Idanre",
+      "type": "LGA",
+      "displayOrder": 7
+    },
+    {
+      "id": "ng-ondo-ifedore",
+      "parentRegionId": "ng-ondo",
+      "canonicalName": "Ifedore",
+      "type": "LGA",
+      "displayOrder": 8
+    },
+    {
+      "id": "ng-ondo-ilaje",
+      "parentRegionId": "ng-ondo",
+      "canonicalName": "Ilaje",
+      "type": "LGA",
+      "displayOrder": 9
+    },
+    {
+      "id": "ng-ondo-ileoluji-okeigbo",
+      "parentRegionId": "ng-ondo",
+      "canonicalName": "Ileoluji/Okeigbo",
+      "type": "LGA",
+      "displayOrder": 10
+    },
+    {
+      "id": "ng-ondo-irele",
+      "parentRegionId": "ng-ondo",
+      "canonicalName": "Irele",
+      "type": "LGA",
+      "displayOrder": 11
+    },
+    {
+      "id": "ng-ondo-odigbo",
+      "parentRegionId": "ng-ondo",
+      "canonicalName": "Odigbo",
+      "type": "LGA",
+      "displayOrder": 12
+    },
+    {
+      "id": "ng-ondo-okitipupa",
+      "parentRegionId": "ng-ondo",
+      "canonicalName": "Okitipupa",
+      "type": "LGA",
+      "displayOrder": 13
+    },
+    {
+      "id": "ng-ondo-ondo-east",
+      "parentRegionId": "ng-ondo",
+      "canonicalName": "Ondo East",
+      "type": "LGA",
+      "displayOrder": 14
+    },
+    {
+      "id": "ng-ondo-ondo-west",
+      "parentRegionId": "ng-ondo",
+      "canonicalName": "Ondo West",
+      "type": "LGA",
+      "displayOrder": 15
+    },
+    {
+      "id": "ng-ondo-ose",
+      "parentRegionId": "ng-ondo",
+      "canonicalName": "Ose",
+      "type": "LGA",
+      "displayOrder": 16
+    },
+    {
+      "id": "ng-ondo-owo",
+      "parentRegionId": "ng-ondo",
+      "canonicalName": "Owo",
+      "type": "LGA",
+      "displayOrder": 17
+    },
+    {
+      "id": "ng-osun-atakumosa-east",
+      "parentRegionId": "ng-osun",
+      "canonicalName": "Atakumosa East",
+      "type": "LGA",
+      "displayOrder": 0
+    },
+    {
+      "id": "ng-osun-atakumosa-west",
+      "parentRegionId": "ng-osun",
+      "canonicalName": "Atakumosa West",
+      "type": "LGA",
+      "displayOrder": 1
+    },
+    {
+      "id": "ng-osun-ayedaade",
+      "parentRegionId": "ng-osun",
+      "canonicalName": "Ayedaade",
+      "type": "LGA",
+      "displayOrder": 2
+    },
+    {
+      "id": "ng-osun-ayedire",
+      "parentRegionId": "ng-osun",
+      "canonicalName": "Ayedire",
+      "type": "LGA",
+      "displayOrder": 3
+    },
+    {
+      "id": "ng-osun-boluwaduro",
+      "parentRegionId": "ng-osun",
+      "canonicalName": "Boluwaduro",
+      "type": "LGA",
+      "displayOrder": 4
+    },
+    {
+      "id": "ng-osun-boripe",
+      "parentRegionId": "ng-osun",
+      "canonicalName": "Boripe",
+      "type": "LGA",
+      "displayOrder": 5
+    },
+    {
+      "id": "ng-osun-ede-north",
+      "parentRegionId": "ng-osun",
+      "canonicalName": "Ede North",
+      "type": "LGA",
+      "displayOrder": 6
+    },
+    {
+      "id": "ng-osun-ede-south",
+      "parentRegionId": "ng-osun",
+      "canonicalName": "Ede South",
+      "type": "LGA",
+      "displayOrder": 7
+    },
+    {
+      "id": "ng-osun-egbedore",
+      "parentRegionId": "ng-osun",
+      "canonicalName": "Egbedore",
+      "type": "LGA",
+      "displayOrder": 8
+    },
+    {
+      "id": "ng-osun-ejigbo",
+      "parentRegionId": "ng-osun",
+      "canonicalName": "Ejigbo",
+      "type": "LGA",
+      "displayOrder": 9
+    },
+    {
+      "id": "ng-osun-ife-central",
+      "parentRegionId": "ng-osun",
+      "canonicalName": "Ife Central",
+      "type": "LGA",
+      "displayOrder": 10
+    },
+    {
+      "id": "ng-osun-ife-east",
+      "parentRegionId": "ng-osun",
+      "canonicalName": "Ife East",
+      "type": "LGA",
+      "displayOrder": 11
+    },
+    {
+      "id": "ng-osun-ife-north",
+      "parentRegionId": "ng-osun",
+      "canonicalName": "Ife North",
+      "type": "LGA",
+      "displayOrder": 12
+    },
+    {
+      "id": "ng-osun-ife-south",
+      "parentRegionId": "ng-osun",
+      "canonicalName": "Ife South",
+      "type": "LGA",
+      "displayOrder": 13
+    },
+    {
+      "id": "ng-osun-ifedayo",
+      "parentRegionId": "ng-osun",
+      "canonicalName": "Ifedayo",
+      "type": "LGA",
+      "displayOrder": 14
+    },
+    {
+      "id": "ng-osun-ifelodun",
+      "parentRegionId": "ng-osun",
+      "canonicalName": "Ifelodun",
+      "type": "LGA",
+      "displayOrder": 15
+    },
+    {
+      "id": "ng-osun-ila",
+      "parentRegionId": "ng-osun",
+      "canonicalName": "Ila",
+      "type": "LGA",
+      "displayOrder": 16
+    },
+    {
+      "id": "ng-osun-ilesa-east",
+      "parentRegionId": "ng-osun",
+      "canonicalName": "Ilesa East",
+      "type": "LGA",
+      "displayOrder": 17
+    },
+    {
+      "id": "ng-osun-ilesa-west",
+      "parentRegionId": "ng-osun",
+      "canonicalName": "Ilesa West",
+      "type": "LGA",
+      "displayOrder": 18
+    },
+    {
+      "id": "ng-osun-irepodun",
+      "parentRegionId": "ng-osun",
+      "canonicalName": "Irepodun",
+      "type": "LGA",
+      "displayOrder": 19
+    },
+    {
+      "id": "ng-osun-irewole",
+      "parentRegionId": "ng-osun",
+      "canonicalName": "Irewole",
+      "type": "LGA",
+      "displayOrder": 20
+    },
+    {
+      "id": "ng-osun-isokan",
+      "parentRegionId": "ng-osun",
+      "canonicalName": "Isokan",
+      "type": "LGA",
+      "displayOrder": 21
+    },
+    {
+      "id": "ng-osun-iwo",
+      "parentRegionId": "ng-osun",
+      "canonicalName": "Iwo",
+      "type": "LGA",
+      "displayOrder": 22
+    },
+    {
+      "id": "ng-osun-obokun",
+      "parentRegionId": "ng-osun",
+      "canonicalName": "Obokun",
+      "type": "LGA",
+      "displayOrder": 23
+    },
+    {
+      "id": "ng-osun-odo-otin",
+      "parentRegionId": "ng-osun",
+      "canonicalName": "Odo-Otin",
+      "type": "LGA",
+      "displayOrder": 24
+    },
+    {
+      "id": "ng-osun-ola-oluwa",
+      "parentRegionId": "ng-osun",
+      "canonicalName": "Ola Oluwa",
+      "type": "LGA",
+      "displayOrder": 25
+    },
+    {
+      "id": "ng-osun-olorunda",
+      "parentRegionId": "ng-osun",
+      "canonicalName": "Olorunda",
+      "type": "LGA",
+      "displayOrder": 26
+    },
+    {
+      "id": "ng-osun-oriade",
+      "parentRegionId": "ng-osun",
+      "canonicalName": "Oriade",
+      "type": "LGA",
+      "displayOrder": 27
+    },
+    {
+      "id": "ng-osun-orolu",
+      "parentRegionId": "ng-osun",
+      "canonicalName": "Orolu",
+      "type": "LGA",
+      "displayOrder": 28
+    },
+    {
+      "id": "ng-osun-osogbo",
+      "parentRegionId": "ng-osun",
+      "canonicalName": "Osogbo",
+      "type": "LGA",
+      "displayOrder": 29
+    },
+    {
+      "id": "ng-oyo-afijio",
+      "parentRegionId": "ng-oyo",
+      "canonicalName": "Afijio",
+      "type": "LGA",
+      "displayOrder": 0
+    },
+    {
+      "id": "ng-oyo-akinyele",
+      "parentRegionId": "ng-oyo",
+      "canonicalName": "Akinyele",
+      "type": "LGA",
+      "displayOrder": 1
+    },
+    {
+      "id": "ng-oyo-atiba",
+      "parentRegionId": "ng-oyo",
+      "canonicalName": "Atiba",
+      "type": "LGA",
+      "displayOrder": 2
+    },
+    {
+      "id": "ng-oyo-atisbo",
+      "parentRegionId": "ng-oyo",
+      "canonicalName": "Atisbo",
+      "type": "LGA",
+      "displayOrder": 3
+    },
+    {
+      "id": "ng-oyo-egbeda",
+      "parentRegionId": "ng-oyo",
+      "canonicalName": "Egbeda",
+      "type": "LGA",
+      "displayOrder": 4
+    },
+    {
+      "id": "ng-oyo-ibadan-north",
+      "parentRegionId": "ng-oyo",
+      "canonicalName": "Ibadan North",
+      "type": "LGA",
+      "displayOrder": 5
+    },
+    {
+      "id": "ng-oyo-ibadan-north-east",
+      "parentRegionId": "ng-oyo",
+      "canonicalName": "Ibadan North-East",
+      "type": "LGA",
+      "displayOrder": 6
+    },
+    {
+      "id": "ng-oyo-ibadan-north-west",
+      "parentRegionId": "ng-oyo",
+      "canonicalName": "Ibadan North-West",
+      "type": "LGA",
+      "displayOrder": 7
+    },
+    {
+      "id": "ng-oyo-ibadan-south-east",
+      "parentRegionId": "ng-oyo",
+      "canonicalName": "Ibadan South East",
+      "type": "LGA",
+      "displayOrder": 8
+    },
+    {
+      "id": "ng-oyo-ibadan-south-west",
+      "parentRegionId": "ng-oyo",
+      "canonicalName": "Ibadan South-West",
+      "type": "LGA",
+      "displayOrder": 9
+    },
+    {
+      "id": "ng-oyo-ibarapa-central",
+      "parentRegionId": "ng-oyo",
+      "canonicalName": "Ibarapa Central",
+      "type": "LGA",
+      "displayOrder": 10
+    },
+    {
+      "id": "ng-oyo-ibarapa-east",
+      "parentRegionId": "ng-oyo",
+      "canonicalName": "Ibarapa East",
+      "type": "LGA",
+      "displayOrder": 11
+    },
+    {
+      "id": "ng-oyo-ibarapa-north",
+      "parentRegionId": "ng-oyo",
+      "canonicalName": "Ibarapa North",
+      "type": "LGA",
+      "displayOrder": 12
+    },
+    {
+      "id": "ng-oyo-ido",
+      "parentRegionId": "ng-oyo",
+      "canonicalName": "Ido",
+      "type": "LGA",
+      "displayOrder": 13
+    },
+    {
+      "id": "ng-oyo-irepo",
+      "parentRegionId": "ng-oyo",
+      "canonicalName": "Irepo",
+      "type": "LGA",
+      "displayOrder": 14
+    },
+    {
+      "id": "ng-oyo-iseyin",
+      "parentRegionId": "ng-oyo",
+      "canonicalName": "Iseyin",
+      "type": "LGA",
+      "displayOrder": 15
+    },
+    {
+      "id": "ng-oyo-itesiwaju",
+      "parentRegionId": "ng-oyo",
+      "canonicalName": "Itesiwaju",
+      "type": "LGA",
+      "displayOrder": 16
+    },
+    {
+      "id": "ng-oyo-iwajowa",
+      "parentRegionId": "ng-oyo",
+      "canonicalName": "Iwajowa",
+      "type": "LGA",
+      "displayOrder": 17
+    },
+    {
+      "id": "ng-oyo-kajola",
+      "parentRegionId": "ng-oyo",
+      "canonicalName": "Kajola",
+      "type": "LGA",
+      "displayOrder": 18
+    },
+    {
+      "id": "ng-oyo-lagelu",
+      "parentRegionId": "ng-oyo",
+      "canonicalName": "Lagelu",
+      "type": "LGA",
+      "displayOrder": 19
+    },
+    {
+      "id": "ng-oyo-ogbomoso-north",
+      "parentRegionId": "ng-oyo",
+      "canonicalName": "Ogbomoso North",
+      "type": "LGA",
+      "displayOrder": 20
+    },
+    {
+      "id": "ng-oyo-ogbomoso-south",
+      "parentRegionId": "ng-oyo",
+      "canonicalName": "Ogbomoso South",
+      "type": "LGA",
+      "displayOrder": 21
+    },
+    {
+      "id": "ng-oyo-ogo-oluwa",
+      "parentRegionId": "ng-oyo",
+      "canonicalName": "Ogo-Oluwa",
+      "type": "LGA",
+      "displayOrder": 22
+    },
+    {
+      "id": "ng-oyo-olorunsogo",
+      "parentRegionId": "ng-oyo",
+      "canonicalName": "Olorunsogo",
+      "type": "LGA",
+      "displayOrder": 23
+    },
+    {
+      "id": "ng-oyo-oluyole",
+      "parentRegionId": "ng-oyo",
+      "canonicalName": "Oluyole",
+      "type": "LGA",
+      "displayOrder": 24
+    },
+    {
+      "id": "ng-oyo-ona-ara",
+      "parentRegionId": "ng-oyo",
+      "canonicalName": "Ona-Ara",
+      "type": "LGA",
+      "displayOrder": 25
+    },
+    {
+      "id": "ng-oyo-oorelope",
+      "parentRegionId": "ng-oyo",
+      "canonicalName": "Oorelope",
+      "type": "LGA",
+      "displayOrder": 26
+    },
+    {
+      "id": "ng-oyo-oriire",
+      "parentRegionId": "ng-oyo",
+      "canonicalName": "Oriire",
+      "type": "LGA",
+      "displayOrder": 27
+    },
+    {
+      "id": "ng-oyo-oyo-east",
+      "parentRegionId": "ng-oyo",
+      "canonicalName": "Oyo East",
+      "type": "LGA",
+      "displayOrder": 28
+    },
+    {
+      "id": "ng-oyo-oyo-west",
+      "parentRegionId": "ng-oyo",
+      "canonicalName": "Oyo West",
+      "type": "LGA",
+      "displayOrder": 29
+    },
+    {
+      "id": "ng-oyo-saki-east",
+      "parentRegionId": "ng-oyo",
+      "canonicalName": "Saki East",
+      "type": "LGA",
+      "displayOrder": 30
+    },
+    {
+      "id": "ng-oyo-saki-west",
+      "parentRegionId": "ng-oyo",
+      "canonicalName": "Saki West",
+      "type": "LGA",
+      "displayOrder": 31
+    },
+    {
+      "id": "ng-oyo-surulere",
+      "parentRegionId": "ng-oyo",
+      "canonicalName": "Surulere",
+      "type": "LGA",
+      "displayOrder": 32
+    },
+    {
+      "id": "ng-plateau-barkin-ladi",
+      "parentRegionId": "ng-plateau",
+      "canonicalName": "Barkin Ladi",
+      "type": "LGA",
+      "displayOrder": 0
+    },
+    {
+      "id": "ng-plateau-bassa",
+      "parentRegionId": "ng-plateau",
+      "canonicalName": "Bassa",
+      "type": "LGA",
+      "displayOrder": 1
+    },
+    {
+      "id": "ng-plateau-bokkos",
+      "parentRegionId": "ng-plateau",
+      "canonicalName": "Bokkos",
+      "type": "LGA",
+      "displayOrder": 2
+    },
+    {
+      "id": "ng-plateau-jos-east",
+      "parentRegionId": "ng-plateau",
+      "canonicalName": "Jos East",
+      "type": "LGA",
+      "displayOrder": 3
+    },
+    {
+      "id": "ng-plateau-jos-north",
+      "parentRegionId": "ng-plateau",
+      "canonicalName": "Jos North",
+      "type": "LGA",
+      "displayOrder": 4
+    },
+    {
+      "id": "ng-plateau-jos-south",
+      "parentRegionId": "ng-plateau",
+      "canonicalName": "Jos South",
+      "type": "LGA",
+      "displayOrder": 5
+    },
+    {
+      "id": "ng-plateau-kanam",
+      "parentRegionId": "ng-plateau",
+      "canonicalName": "Kanam",
+      "type": "LGA",
+      "displayOrder": 6
+    },
+    {
+      "id": "ng-plateau-kanke",
+      "parentRegionId": "ng-plateau",
+      "canonicalName": "Kanke",
+      "type": "LGA",
+      "displayOrder": 7
+    },
+    {
+      "id": "ng-plateau-langtang-north",
+      "parentRegionId": "ng-plateau",
+      "canonicalName": "Langtang North",
+      "type": "LGA",
+      "displayOrder": 8
+    },
+    {
+      "id": "ng-plateau-langtang-south",
+      "parentRegionId": "ng-plateau",
+      "canonicalName": "Langtang South",
+      "type": "LGA",
+      "displayOrder": 9
+    },
+    {
+      "id": "ng-plateau-mangu",
+      "parentRegionId": "ng-plateau",
+      "canonicalName": "Mangu",
+      "type": "LGA",
+      "displayOrder": 10
+    },
+    {
+      "id": "ng-plateau-mikang",
+      "parentRegionId": "ng-plateau",
+      "canonicalName": "Mikang",
+      "type": "LGA",
+      "displayOrder": 11
+    },
+    {
+      "id": "ng-plateau-pankshin",
+      "parentRegionId": "ng-plateau",
+      "canonicalName": "Pankshin",
+      "type": "LGA",
+      "displayOrder": 12
+    },
+    {
+      "id": "ng-plateau-quaan-pan",
+      "parentRegionId": "ng-plateau",
+      "canonicalName": "Qua'an Pan",
+      "type": "LGA",
+      "displayOrder": 13,
+      "sourceId": "source-48"
+    },
+    {
+      "id": "ng-plateau-riyom",
+      "parentRegionId": "ng-plateau",
+      "canonicalName": "Riyom",
+      "type": "LGA",
+      "displayOrder": 14
+    },
+    {
+      "id": "ng-plateau-shendam",
+      "parentRegionId": "ng-plateau",
+      "canonicalName": "Shendam",
+      "type": "LGA",
+      "displayOrder": 15
+    },
+    {
+      "id": "ng-plateau-wase",
+      "parentRegionId": "ng-plateau",
+      "canonicalName": "Wase",
+      "type": "LGA",
+      "displayOrder": 16
+    },
+    {
+      "id": "ng-rivers-abua-odual",
+      "parentRegionId": "ng-rivers",
+      "canonicalName": "Abua/Odual",
+      "type": "LGA",
+      "displayOrder": 0
+    },
+    {
+      "id": "ng-rivers-ahoada-east",
+      "parentRegionId": "ng-rivers",
+      "canonicalName": "Ahoada East",
+      "type": "LGA",
+      "displayOrder": 1
+    },
+    {
+      "id": "ng-rivers-ahoada-west",
+      "parentRegionId": "ng-rivers",
+      "canonicalName": "Ahoada West",
+      "type": "LGA",
+      "displayOrder": 2
+    },
+    {
+      "id": "ng-rivers-akuku-toru",
+      "parentRegionId": "ng-rivers",
+      "canonicalName": "Akuku Toru",
+      "type": "LGA",
+      "displayOrder": 3
+    },
+    {
+      "id": "ng-rivers-andoni",
+      "parentRegionId": "ng-rivers",
+      "canonicalName": "Andoni",
+      "type": "LGA",
+      "displayOrder": 4
+    },
+    {
+      "id": "ng-rivers-asari-toru",
+      "parentRegionId": "ng-rivers",
+      "canonicalName": "Asari Toru",
+      "type": "LGA",
+      "displayOrder": 5
+    },
+    {
+      "id": "ng-rivers-bonny",
+      "parentRegionId": "ng-rivers",
+      "canonicalName": "Bonny",
+      "type": "LGA",
+      "displayOrder": 6
+    },
+    {
+      "id": "ng-rivers-degema",
+      "parentRegionId": "ng-rivers",
+      "canonicalName": "Degema",
+      "type": "LGA",
+      "displayOrder": 7
+    },
+    {
+      "id": "ng-rivers-eleme",
+      "parentRegionId": "ng-rivers",
+      "canonicalName": "Eleme",
+      "type": "LGA",
+      "displayOrder": 8
+    },
+    {
+      "id": "ng-rivers-emohua",
+      "parentRegionId": "ng-rivers",
+      "canonicalName": "Emohua",
+      "type": "LGA",
+      "displayOrder": 9
+    },
+    {
+      "id": "ng-rivers-etche",
+      "parentRegionId": "ng-rivers",
+      "canonicalName": "Etche",
+      "type": "LGA",
+      "displayOrder": 10
+    },
+    {
+      "id": "ng-rivers-gokana",
+      "parentRegionId": "ng-rivers",
+      "canonicalName": "Gokana",
+      "type": "LGA",
+      "displayOrder": 11
+    },
+    {
+      "id": "ng-rivers-ikwerre",
+      "parentRegionId": "ng-rivers",
+      "canonicalName": "Ikwerre",
+      "type": "LGA",
+      "displayOrder": 12
+    },
+    {
+      "id": "ng-rivers-khana",
+      "parentRegionId": "ng-rivers",
+      "canonicalName": "Khana",
+      "type": "LGA",
+      "displayOrder": 13
+    },
+    {
+      "id": "ng-rivers-obio-akpor",
+      "parentRegionId": "ng-rivers",
+      "canonicalName": "Obio/Akpor",
+      "type": "LGA",
+      "displayOrder": 14
+    },
+    {
+      "id": "ng-rivers-ogba-egbema-ndoni",
+      "parentRegionId": "ng-rivers",
+      "canonicalName": "Ogba/Egbema/Ndoni",
+      "type": "LGA",
+      "displayOrder": 15
+    },
+    {
+      "id": "ng-rivers-ogu-bolo",
+      "parentRegionId": "ng-rivers",
+      "canonicalName": "Ogu Bolo",
+      "type": "LGA",
+      "displayOrder": 16
+    },
+    {
+      "id": "ng-rivers-okrika",
+      "parentRegionId": "ng-rivers",
+      "canonicalName": "Okrika",
+      "type": "LGA",
+      "displayOrder": 17
+    },
+    {
+      "id": "ng-rivers-omuma",
+      "parentRegionId": "ng-rivers",
+      "canonicalName": "Omuma",
+      "type": "LGA",
+      "displayOrder": 18
+    },
+    {
+      "id": "ng-rivers-opobo-nkoro",
+      "parentRegionId": "ng-rivers",
+      "canonicalName": "Opobo/Nkoro",
+      "type": "LGA",
+      "displayOrder": 19
+    },
+    {
+      "id": "ng-rivers-oyigbo",
+      "parentRegionId": "ng-rivers",
+      "canonicalName": "Oyigbo",
+      "type": "LGA",
+      "displayOrder": 20
+    },
+    {
+      "id": "ng-rivers-port-harcourt",
+      "parentRegionId": "ng-rivers",
+      "canonicalName": "Port Harcourt",
+      "type": "LGA",
+      "displayOrder": 21
+    },
+    {
+      "id": "ng-rivers-tai",
+      "parentRegionId": "ng-rivers",
+      "canonicalName": "Tai",
+      "type": "LGA",
+      "displayOrder": 22
+    },
+    {
+      "id": "ng-sokoto-binji",
+      "parentRegionId": "ng-sokoto",
+      "canonicalName": "Binji",
+      "type": "LGA",
+      "displayOrder": 0
+    },
+    {
+      "id": "ng-sokoto-bodinga",
+      "parentRegionId": "ng-sokoto",
+      "canonicalName": "Bodinga",
+      "type": "LGA",
+      "displayOrder": 1
+    },
+    {
+      "id": "ng-sokoto-dange-shuni",
+      "parentRegionId": "ng-sokoto",
+      "canonicalName": "Dange Shuni",
+      "type": "LGA",
+      "displayOrder": 2
+    },
+    {
+      "id": "ng-sokoto-gada",
+      "parentRegionId": "ng-sokoto",
+      "canonicalName": "Gada",
+      "type": "LGA",
+      "displayOrder": 3
+    },
+    {
+      "id": "ng-sokoto-goronyo",
+      "parentRegionId": "ng-sokoto",
+      "canonicalName": "Goronyo",
+      "type": "LGA",
+      "displayOrder": 4
+    },
+    {
+      "id": "ng-sokoto-gudu",
+      "parentRegionId": "ng-sokoto",
+      "canonicalName": "Gudu",
+      "type": "LGA",
+      "displayOrder": 5
+    },
+    {
+      "id": "ng-sokoto-gwadabawa",
+      "parentRegionId": "ng-sokoto",
+      "canonicalName": "Gwadabawa",
+      "type": "LGA",
+      "displayOrder": 6
+    },
+    {
+      "id": "ng-sokoto-illela",
+      "parentRegionId": "ng-sokoto",
+      "canonicalName": "Illela",
+      "type": "LGA",
+      "displayOrder": 7
+    },
+    {
+      "id": "ng-sokoto-isa",
+      "parentRegionId": "ng-sokoto",
+      "canonicalName": "Isa",
+      "type": "LGA",
+      "displayOrder": 8
+    },
+    {
+      "id": "ng-sokoto-kebbe",
+      "parentRegionId": "ng-sokoto",
+      "canonicalName": "Kebbe",
+      "type": "LGA",
+      "displayOrder": 9
+    },
+    {
+      "id": "ng-sokoto-kware",
+      "parentRegionId": "ng-sokoto",
+      "canonicalName": "Kware",
+      "type": "LGA",
+      "displayOrder": 10
+    },
+    {
+      "id": "ng-sokoto-rabah",
+      "parentRegionId": "ng-sokoto",
+      "canonicalName": "Rabah",
+      "type": "LGA",
+      "displayOrder": 11
+    },
+    {
+      "id": "ng-sokoto-sabon-birni",
+      "parentRegionId": "ng-sokoto",
+      "canonicalName": "Sabon Birni",
+      "type": "LGA",
+      "displayOrder": 12
+    },
+    {
+      "id": "ng-sokoto-shagari",
+      "parentRegionId": "ng-sokoto",
+      "canonicalName": "Shagari",
+      "type": "LGA",
+      "displayOrder": 13
+    },
+    {
+      "id": "ng-sokoto-silame",
+      "parentRegionId": "ng-sokoto",
+      "canonicalName": "Silame",
+      "type": "LGA",
+      "displayOrder": 14
+    },
+    {
+      "id": "ng-sokoto-sokoto-north",
+      "parentRegionId": "ng-sokoto",
+      "canonicalName": "Sokoto North",
+      "type": "LGA",
+      "displayOrder": 15
+    },
+    {
+      "id": "ng-sokoto-sokoto-south",
+      "parentRegionId": "ng-sokoto",
+      "canonicalName": "Sokoto South",
+      "type": "LGA",
+      "displayOrder": 16
+    },
+    {
+      "id": "ng-sokoto-tambuwal",
+      "parentRegionId": "ng-sokoto",
+      "canonicalName": "Tambuwal",
+      "type": "LGA",
+      "displayOrder": 17
+    },
+    {
+      "id": "ng-sokoto-tangaza",
+      "parentRegionId": "ng-sokoto",
+      "canonicalName": "Tangaza",
+      "type": "LGA",
+      "displayOrder": 18
+    },
+    {
+      "id": "ng-sokoto-tureta",
+      "parentRegionId": "ng-sokoto",
+      "canonicalName": "Tureta",
+      "type": "LGA",
+      "displayOrder": 19
+    },
+    {
+      "id": "ng-sokoto-wamakko",
+      "parentRegionId": "ng-sokoto",
+      "canonicalName": "Wamakko",
+      "type": "LGA",
+      "displayOrder": 20
+    },
+    {
+      "id": "ng-sokoto-wurno",
+      "parentRegionId": "ng-sokoto",
+      "canonicalName": "Wurno",
+      "type": "LGA",
+      "displayOrder": 21
+    },
+    {
+      "id": "ng-sokoto-yabo",
+      "parentRegionId": "ng-sokoto",
+      "canonicalName": "Yabo",
+      "type": "LGA",
+      "displayOrder": 22
+    },
+    {
+      "id": "ng-taraba-ardo-kola",
+      "parentRegionId": "ng-taraba",
+      "canonicalName": "Ardo Kola",
+      "type": "LGA",
+      "displayOrder": 0
+    },
+    {
+      "id": "ng-taraba-bali",
+      "parentRegionId": "ng-taraba",
+      "canonicalName": "Bali",
+      "type": "LGA",
+      "displayOrder": 1
+    },
+    {
+      "id": "ng-taraba-donga",
+      "parentRegionId": "ng-taraba",
+      "canonicalName": "Donga",
+      "type": "LGA",
+      "displayOrder": 2
+    },
+    {
+      "id": "ng-taraba-gashaka",
+      "parentRegionId": "ng-taraba",
+      "canonicalName": "Gashaka",
+      "type": "LGA",
+      "displayOrder": 3
+    },
+    {
+      "id": "ng-taraba-gassol",
+      "parentRegionId": "ng-taraba",
+      "canonicalName": "Gassol",
+      "type": "LGA",
+      "displayOrder": 4
+    },
+    {
+      "id": "ng-taraba-ibi",
+      "parentRegionId": "ng-taraba",
+      "canonicalName": "Ibi",
+      "type": "LGA",
+      "displayOrder": 5
+    },
+    {
+      "id": "ng-taraba-jalingo",
+      "parentRegionId": "ng-taraba",
+      "canonicalName": "Jalingo",
+      "type": "LGA",
+      "displayOrder": 6
+    },
+    {
+      "id": "ng-taraba-karim-lamido",
+      "parentRegionId": "ng-taraba",
+      "canonicalName": "Karim Lamido",
+      "type": "LGA",
+      "displayOrder": 7
+    },
+    {
+      "id": "ng-taraba-kurmi",
+      "parentRegionId": "ng-taraba",
+      "canonicalName": "Kurmi",
+      "type": "LGA",
+      "displayOrder": 8
+    },
+    {
+      "id": "ng-taraba-lau",
+      "parentRegionId": "ng-taraba",
+      "canonicalName": "Lau",
+      "type": "LGA",
+      "displayOrder": 9
+    },
+    {
+      "id": "ng-taraba-sardauna",
+      "parentRegionId": "ng-taraba",
+      "canonicalName": "Sardauna",
+      "type": "LGA",
+      "displayOrder": 10
+    },
+    {
+      "id": "ng-taraba-takum",
+      "parentRegionId": "ng-taraba",
+      "canonicalName": "Takum",
+      "type": "LGA",
+      "displayOrder": 11
+    },
+    {
+      "id": "ng-taraba-ussa",
+      "parentRegionId": "ng-taraba",
+      "canonicalName": "Ussa",
+      "type": "LGA",
+      "displayOrder": 12
+    },
+    {
+      "id": "ng-taraba-wukari",
+      "parentRegionId": "ng-taraba",
+      "canonicalName": "Wukari",
+      "type": "LGA",
+      "displayOrder": 13
+    },
+    {
+      "id": "ng-taraba-yorro",
+      "parentRegionId": "ng-taraba",
+      "canonicalName": "Yorro",
+      "type": "LGA",
+      "displayOrder": 14
+    },
+    {
+      "id": "ng-taraba-zing",
+      "parentRegionId": "ng-taraba",
+      "canonicalName": "Zing",
+      "type": "LGA",
+      "displayOrder": 15
+    },
+    {
+      "id": "ng-yobe-bade",
+      "parentRegionId": "ng-yobe",
+      "canonicalName": "Bade",
+      "type": "LGA",
+      "displayOrder": 0
+    },
+    {
+      "id": "ng-yobe-bursari",
+      "parentRegionId": "ng-yobe",
+      "canonicalName": "Bursari",
+      "type": "LGA",
+      "displayOrder": 1
+    },
+    {
+      "id": "ng-yobe-damaturu",
+      "parentRegionId": "ng-yobe",
+      "canonicalName": "Damaturu",
+      "type": "LGA",
+      "displayOrder": 2
+    },
+    {
+      "id": "ng-yobe-fika",
+      "parentRegionId": "ng-yobe",
+      "canonicalName": "Fika",
+      "type": "LGA",
+      "displayOrder": 3
+    },
+    {
+      "id": "ng-yobe-fune",
+      "parentRegionId": "ng-yobe",
+      "canonicalName": "Fune",
+      "type": "LGA",
+      "displayOrder": 4
+    },
+    {
+      "id": "ng-yobe-geidam",
+      "parentRegionId": "ng-yobe",
+      "canonicalName": "Geidam",
+      "type": "LGA",
+      "displayOrder": 5
+    },
+    {
+      "id": "ng-yobe-gujba",
+      "parentRegionId": "ng-yobe",
+      "canonicalName": "Gujba",
+      "type": "LGA",
+      "displayOrder": 6
+    },
+    {
+      "id": "ng-yobe-gulani",
+      "parentRegionId": "ng-yobe",
+      "canonicalName": "Gulani",
+      "type": "LGA",
+      "displayOrder": 7
+    },
+    {
+      "id": "ng-yobe-jakusko",
+      "parentRegionId": "ng-yobe",
+      "canonicalName": "Jakusko",
+      "type": "LGA",
+      "displayOrder": 8
+    },
+    {
+      "id": "ng-yobe-karasuwa",
+      "parentRegionId": "ng-yobe",
+      "canonicalName": "Karasuwa",
+      "type": "LGA",
+      "displayOrder": 9
+    },
+    {
+      "id": "ng-yobe-machina",
+      "parentRegionId": "ng-yobe",
+      "canonicalName": "Machina",
+      "type": "LGA",
+      "displayOrder": 10
+    },
+    {
+      "id": "ng-yobe-nangere",
+      "parentRegionId": "ng-yobe",
+      "canonicalName": "Nangere",
+      "type": "LGA",
+      "displayOrder": 11
+    },
+    {
+      "id": "ng-yobe-nguru",
+      "parentRegionId": "ng-yobe",
+      "canonicalName": "Nguru",
+      "type": "LGA",
+      "displayOrder": 12
+    },
+    {
+      "id": "ng-yobe-potiskum",
+      "parentRegionId": "ng-yobe",
+      "canonicalName": "Potiskum",
+      "type": "LGA",
+      "displayOrder": 13
+    },
+    {
+      "id": "ng-yobe-tarmuwa",
+      "parentRegionId": "ng-yobe",
+      "canonicalName": "Tarmuwa",
+      "type": "LGA",
+      "displayOrder": 14
+    },
+    {
+      "id": "ng-yobe-yunusari",
+      "parentRegionId": "ng-yobe",
+      "canonicalName": "Yunusari",
+      "type": "LGA",
+      "displayOrder": 15
+    },
+    {
+      "id": "ng-yobe-yusufari",
+      "parentRegionId": "ng-yobe",
+      "canonicalName": "Yusufari",
+      "type": "LGA",
+      "displayOrder": 16
+    },
+    {
+      "id": "ng-zamfara-anka",
+      "parentRegionId": "ng-zamfara",
+      "canonicalName": "Anka",
+      "type": "LGA",
+      "displayOrder": 0
+    },
+    {
+      "id": "ng-zamfara-bakura",
+      "parentRegionId": "ng-zamfara",
+      "canonicalName": "Bakura",
+      "type": "LGA",
+      "displayOrder": 1
+    },
+    {
+      "id": "ng-zamfara-birnin-magaji",
+      "parentRegionId": "ng-zamfara",
+      "canonicalName": "Birnin Magaji",
+      "type": "LGA",
+      "displayOrder": 2
+    },
+    {
+      "id": "ng-zamfara-bukuyum",
+      "parentRegionId": "ng-zamfara",
+      "canonicalName": "Bukuyum",
+      "type": "LGA",
+      "displayOrder": 3
+    },
+    {
+      "id": "ng-zamfara-bungudu",
+      "parentRegionId": "ng-zamfara",
+      "canonicalName": "Bungudu",
+      "type": "LGA",
+      "displayOrder": 4
+    },
+    {
+      "id": "ng-zamfara-gummi",
+      "parentRegionId": "ng-zamfara",
+      "canonicalName": "Gummi",
+      "type": "LGA",
+      "displayOrder": 5
+    },
+    {
+      "id": "ng-zamfara-gusau",
+      "parentRegionId": "ng-zamfara",
+      "canonicalName": "Gusau",
+      "type": "LGA",
+      "displayOrder": 6
+    },
+    {
+      "id": "ng-zamfara-kaura-namoda",
+      "parentRegionId": "ng-zamfara",
+      "canonicalName": "Kaura Namoda",
+      "type": "LGA",
+      "displayOrder": 7
+    },
+    {
+      "id": "ng-zamfara-maradun",
+      "parentRegionId": "ng-zamfara",
+      "canonicalName": "Maradun",
+      "type": "LGA",
+      "displayOrder": 8
+    },
+    {
+      "id": "ng-zamfara-maru",
+      "parentRegionId": "ng-zamfara",
+      "canonicalName": "Maru",
+      "type": "LGA",
+      "displayOrder": 9
+    },
+    {
+      "id": "ng-zamfara-shinkafi",
+      "parentRegionId": "ng-zamfara",
+      "canonicalName": "Shinkafi",
+      "type": "LGA",
+      "displayOrder": 10
+    },
+    {
+      "id": "ng-zamfara-talata-mafara",
+      "parentRegionId": "ng-zamfara",
+      "canonicalName": "Talata Mafara",
+      "type": "LGA",
+      "displayOrder": 11
+    },
+    {
+      "id": "ng-zamfara-tsafe",
+      "parentRegionId": "ng-zamfara",
+      "canonicalName": "Tsafe",
+      "type": "LGA",
+      "displayOrder": 12
+    },
+    {
+      "id": "ng-zamfara-zurmi",
+      "parentRegionId": "ng-zamfara",
+      "canonicalName": "Zurmi",
+      "type": "LGA",
+      "displayOrder": 13
+    }
+  ],
+  "regionIndexSourceId": "source-01"
+}

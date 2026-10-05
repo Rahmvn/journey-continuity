@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Slice 2A validates the canonical asset. Slice 2B can generate SQL from this same file.
+// Generates the initial catalogue schema or a retained-version seed from a canonical asset.
 // Identity: SHA-256 of the exact committed UTF-8 JSON bytes, including whitespace/newline.
 import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -107,9 +107,8 @@ export function validate(document) {
 
 const sql = value => `'${String(value).replaceAll("'", "''")}'`;
 
-export function generateSql(document, hash) {
-  validate(document);
-  check(/^[a-f0-9]{64}$/.test(hash), 'Invalid catalogue SHA-256');
+// Shared seed emitter: retained versions add rows without changing schema or triggers.
+function snapshotInserts(document, hash) {
   const dataset = sql(document.datasetId);
   const version = sql(document.version);
   const regionRows = document.regions.map(region =>
@@ -117,6 +116,35 @@ export function generateSql(document, hash) {
   const regionsById = new Map(document.regions.map(region => [region.id, region]));
   const unitRows = document.localUnits.map(unit =>
     `(${dataset}, ${version}, ${sql(unit.id)}, ${sql(unit.parentRegionId)}, ${sql(regionsById.get(unit.parentRegionId).type)}, ${sql(unit.canonicalName)}, ${sql(unit.type)}, ${unit.displayOrder})`);
+  return `insert into public.admin_catalogue_versions
+    (dataset_id, version, snapshot_date, sha256, region_count, local_unit_count)
+values (${dataset}, ${version}, ${sql(document.snapshotDate)}, ${sql(hash)}, 37, 774);
+insert into public.admin_regions
+    (dataset_id, version, id, canonical_name, region_type, display_order)
+values
+    ${regionRows.join(',\n    ')};
+insert into public.admin_local_units
+    (dataset_id, version, id, parent_region_id, parent_region_type, canonical_name, local_unit_type, display_order)
+values
+    ${unitRows.join(',\n    ')};`;
+}
+
+export function generateVersionSql(document, hash, assetFileName) {
+  validate(document);
+  check(/^[a-f0-9]{64}$/.test(hash), 'Invalid catalogue SHA-256');
+  check(/^ng_admin_v[0-9]+\.json$/.test(assetFileName), 'Invalid catalogue asset filename');
+  return `-- GENERATED from app/src/main/assets/catalogue/${assetFileName}.
+-- SHA-256 of exact UTF-8 asset bytes (including final newline): ${hash}
+-- Retains all earlier snapshots; no Journey/schema/trigger changes.
+begin;
+${snapshotInserts(document, hash)}
+commit;
+`;
+}
+
+export function generateSql(document, hash) {
+  validate(document);
+  check(/^[a-f0-9]{64}$/.test(hash), 'Invalid catalogue SHA-256');
   return `-- GENERATED from app/src/main/assets/catalogue/ng_admin_v1.json.
 -- SHA-256 of exact UTF-8 asset bytes (including final newline): ${hash}
 -- Regenerate with: node tools/generate_nigeria_admin_sql.mjs --output supabase/migrations/20261003000200_nigeria_admin_catalogue.sql
@@ -168,17 +196,7 @@ alter table public.admin_local_units enable row level security;
 revoke all on public.admin_catalogue_versions, public.admin_regions, public.admin_local_units
     from public, anon, authenticated, service_role;
 
-insert into public.admin_catalogue_versions
-    (dataset_id, version, snapshot_date, sha256, region_count, local_unit_count)
-values (${dataset}, ${version}, ${sql(document.snapshotDate)}, ${sql(hash)}, 37, 774);
-insert into public.admin_regions
-    (dataset_id, version, id, canonical_name, region_type, display_order)
-values
-    ${regionRows.join(',\n    ')};
-insert into public.admin_local_units
-    (dataset_id, version, id, parent_region_id, parent_region_type, canonical_name, local_unit_type, display_order)
-values
-    ${unitRows.join(',\n    ')};
+${snapshotInserts(document, hash)}
 
 -- INSERT only: old-client ON CONFLICT UPDATE and historical lifecycle updates
 -- continue through the existing destination-preservation/terminal triggers.
@@ -220,32 +238,50 @@ commit;
 `;
 }
 
-export function loadCanonical() {
-  const bytes = readFileSync(asset);
+export function loadCanonical(assetPath = asset) {
+  const bytes = readFileSync(assetPath);
   const document = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
   validate(document);
   return { bytes, document, hash: createHash('sha256').update(bytes).digest('hex') };
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
-  const [mode, path] = process.argv.slice(2);
-  if (!['--validate', '--output', '--check'].includes(mode) ||
-      (mode === '--validate' ? path !== undefined : !path) || process.argv.length > (mode === '--validate' ? 3 : 4)) {
-    console.error('Usage: node tools/generate_nigeria_admin_sql.mjs --validate | --output <path> | --check <path>');
-    process.exitCode = 2;
-  } else {
+  const [mode, path, versionOutput] = process.argv.slice(2);
+  const versionMode = ['--version-output', '--version-check', '--version-validate'].includes(mode);
+  if (versionMode) {
     try {
-      const { document, hash } = loadCanonical();
-      if (mode === '--output') writeFileSync(path, generateSql(document, hash), 'utf8');
-      if (mode === '--check') check(readFileSync(path, 'utf8') === generateSql(document, hash),
-        `Generated SQL differs: ${path}`);
-      console.log(`NG_ADMIN ${document.version}: 37 regions (36 STATE, 1 FCT), ` +
-        '774 local units (768 LGA, 6 AREA_COUNCIL)');
-      console.log(`SHA-256 exact UTF-8 asset bytes: ${hash}`);
-      console.log(`Sources: ${document.sources.length}; snapshot: ${document.snapshotDate}`);
+      check(path && (mode === '--version-validate' ? !versionOutput : versionOutput) && process.argv.length <= 5,
+        'Usage: --version-output|--version-check <asset> <migration>, or --version-validate <asset>');
+      const { document, hash } = loadCanonical(path);
+      const filename = path.replaceAll('\\', '/').split('/').at(-1);
+      const generated = generateVersionSql(document, hash, filename);
+      if (mode === '--version-output') writeFileSync(versionOutput, generated, 'utf8');
+      if (mode === '--version-check') check(readFileSync(versionOutput, 'utf8') === generated,
+        `Generated SQL differs: ${versionOutput}`);
+      console.log(`${document.version}: 37 regions, 774 local units; SHA-256 exact bytes: ${hash}`);
     } catch (error) {
       console.error(`Catalogue validation failed: ${error.message}`);
       process.exitCode = 1;
+    }
+  } else {
+    if (!['--validate', '--output', '--check'].includes(mode) ||
+        (mode === '--validate' ? path !== undefined : !path) || process.argv.length > (mode === '--validate' ? 3 : 4)) {
+      console.error('Usage: node tools/generate_nigeria_admin_sql.mjs --validate | --output <path> | --check <path>');
+      process.exitCode = 2;
+    } else {
+      try {
+        const { document, hash } = loadCanonical();
+        if (mode === '--output') writeFileSync(path, generateSql(document, hash), 'utf8');
+        if (mode === '--check') check(readFileSync(path, 'utf8') === generateSql(document, hash),
+          `Generated SQL differs: ${path}`);
+        console.log(`NG_ADMIN ${document.version}: 37 regions (36 STATE, 1 FCT), ` +
+          '774 local units (768 LGA, 6 AREA_COUNCIL)');
+        console.log(`SHA-256 exact UTF-8 asset bytes: ${hash}`);
+        console.log(`Sources: ${document.sources.length}; snapshot: ${document.snapshotDate}`);
+      } catch (error) {
+        console.error(`Catalogue validation failed: ${error.message}`);
+        process.exitCode = 1;
+      }
     }
   }
 }

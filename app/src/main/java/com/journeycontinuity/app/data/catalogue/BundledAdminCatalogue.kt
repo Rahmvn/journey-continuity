@@ -30,7 +30,7 @@ class BundledAdminCatalogue(context: Context) {
     }
 
     companion object {
-        const val ASSET_PATH = "catalogue/ng_admin_v1.json"
+        const val ASSET_PATH = "catalogue/ng_admin_v2.json"
         @Volatile private var cached: AdminCatalogue? = null
     }
 }

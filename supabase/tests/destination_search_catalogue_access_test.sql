@@ -25,10 +25,10 @@ select ok((select rolbypassrls from pg_roles where rolname = 'service_role'),
 
 set local role service_role;
 select is((select count(*) from public.admin_catalogue_versions where dataset_id = 'NG_ADMIN'),
-    1::bigint, 'search service sees the current NG_ADMIN version');
-select is((select count(*) from public.admin_regions where dataset_id = 'NG_ADMIN'),
+    2::bigint, 'search service sees both retained NG_ADMIN versions');
+select is((select count(*) from public.admin_regions where dataset_id = 'NG_ADMIN' and version = 'alabarin-2026-10-05-v2'),
     37::bigint, 'search service sees 37 regions');
-select is((select count(*) from public.admin_local_units where dataset_id = 'NG_ADMIN'),
+select is((select count(*) from public.admin_local_units where dataset_id = 'NG_ADMIN' and version = 'alabarin-2026-10-05-v2'),
     774::bigint, 'search service sees 774 local units');
 reset role;
 

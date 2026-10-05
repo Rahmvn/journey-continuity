@@ -43,7 +43,7 @@ data class AdminLocalUnit(
     val aliases: List<String> = emptyList(),
 )
 
-/** The committed asset is the v1 authority; version is Alabarin's snapshot version. */
+/** Each committed asset preserves an immutable Alabarin catalogue snapshot. */
 @Serializable
 data class AdminCatalogueDocument(
     val datasetId: String,

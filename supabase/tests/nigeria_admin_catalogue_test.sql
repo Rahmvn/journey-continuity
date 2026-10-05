@@ -7,12 +7,12 @@ select is((select sha256 from public.admin_catalogue_versions
  'exact canonical asset hash');
 select is((select snapshot_date::text from public.admin_catalogue_versions
  where dataset_id = 'NG_ADMIN' and version = 'alabarin-2026-10-03-v1'), '2026-10-03', 'Alabarin snapshot date');
-select is((select count(*) from public.admin_regions), 37::bigint, '37 regions');
-select is((select count(*) from public.admin_regions where region_type = 'STATE'), 36::bigint, '36 states');
-select is((select count(*) from public.admin_regions where region_type = 'FCT'), 1::bigint, 'one FCT');
-select is((select count(*) from public.admin_local_units), 774::bigint, '774 local units');
-select is((select count(*) from public.admin_local_units where local_unit_type = 'LGA'), 768::bigint, '768 LGAs');
-select is((select count(*) from public.admin_local_units where local_unit_type = 'AREA_COUNCIL'), 6::bigint, 'six Area Councils');
+select is((select count(*) from public.admin_regions where dataset_id = 'NG_ADMIN' and version = 'alabarin-2026-10-03-v1'), 37::bigint, '37 regions');
+select is((select count(*) from public.admin_regions where dataset_id = 'NG_ADMIN' and version = 'alabarin-2026-10-03-v1' and region_type = 'STATE'), 36::bigint, '36 states');
+select is((select count(*) from public.admin_regions where dataset_id = 'NG_ADMIN' and version = 'alabarin-2026-10-03-v1' and region_type = 'FCT'), 1::bigint, 'one FCT');
+select is((select count(*) from public.admin_local_units where dataset_id = 'NG_ADMIN' and version = 'alabarin-2026-10-03-v1'), 774::bigint, '774 local units');
+select is((select count(*) from public.admin_local_units where dataset_id = 'NG_ADMIN' and version = 'alabarin-2026-10-03-v1' and local_unit_type = 'LGA'), 768::bigint, '768 LGAs');
+select is((select count(*) from public.admin_local_units where dataset_id = 'NG_ADMIN' and version = 'alabarin-2026-10-03-v1' and local_unit_type = 'AREA_COUNCIL'), 6::bigint, 'six Area Councils');
 select is((select count(*) from public.admin_local_units u left join public.admin_regions r
  on r.dataset_id = u.dataset_id and r.version = u.version and r.id = u.parent_region_id
  where r.id is null), 0::bigint, 'all local units have same-version parents');
@@ -21,11 +21,11 @@ select is((select count(*) from public.admin_local_units u join public.admin_reg
  where (r.region_type = 'STATE' and u.local_unit_type <> 'LGA') or
        (r.region_type = 'FCT' and u.local_unit_type <> 'AREA_COUNCIL')), 0::bigint,
  'all local unit types match parent types');
-select is((select count(*) from public.admin_local_units where parent_region_id = 'ng-fct'), 6::bigint,
+select is((select count(*) from public.admin_local_units where dataset_id = 'NG_ADMIN' and version = 'alabarin-2026-10-03-v1' and parent_region_id = 'ng-fct'), 6::bigint,
  'FCT has six Area Councils');
-select is((select count(*) from public.admin_local_units where parent_region_id = 'ng-kwara'), 16::bigint,
+select is((select count(*) from public.admin_local_units where dataset_id = 'NG_ADMIN' and version = 'alabarin-2026-10-03-v1' and parent_region_id = 'ng-kwara'), 16::bigint,
  'Kwara has 16 LGAs');
-select is((select canonical_name from public.admin_local_units where id = 'ng-fct-abuja-municipal'),
+select is((select canonical_name from public.admin_local_units where dataset_id = 'NG_ADMIN' and version = 'alabarin-2026-10-03-v1' and id = 'ng-fct-abuja-municipal'),
  'Abuja Municipal Area Council', 'AMAC canonical name');
 select throws_ok($$insert into public.admin_local_units
  (dataset_id, version, id, parent_region_id, parent_region_type, canonical_name, local_unit_type, display_order)

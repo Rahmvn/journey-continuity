@@ -17,8 +17,10 @@ class BundledAdminCatalogueTest {
         val parsed = AdminCatalogue.parse(bytes)
         val reader = BundledAdminCatalogue(context)
         assertEquals(parsed.metadata.sha256, reader.metadata.sha256)
-        assertEquals("e5a75f4d7f906ab3bd2d4db806bbbfa1b4c7ac2ff04f6cca3e52dd39e6b24aa4",
+        assertEquals("694a02cb25ad723429477da364f8c3bb482f3b5cb6595e1c0571d8c7e27ee911",
             reader.metadata.sha256)
+        assertEquals("alabarin-2026-10-05-v2", reader.metadata.version)
+        assertEquals("Qua'an Pan", reader.localUnit("ng-plateau-quaan-pan")?.canonicalName)
         assertEquals(37, reader.regions.size)
         assertEquals(16, reader.localUnitsFor("ng-kwara").size)
         assertEquals(6, reader.localUnitsFor("ng-fct").size)

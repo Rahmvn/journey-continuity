@@ -5,9 +5,31 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { generateSql, loadCanonical, validate } from './generate_nigeria_admin_sql.mjs';
+import { generateSql, generateVersionSql, loadCanonical, validate } from './generate_nigeria_admin_sql.mjs';
 
 const asset = fileURLToPath(new URL('../app/src/main/assets/catalogue/ng_admin_v1.json', import.meta.url));
+
+test('v2 corrects only the reviewed name and provenance, preserving every stable ID', () => {
+  const original = loadCanonical();
+  const currentAsset = fileURLToPath(new URL('../app/src/main/assets/catalogue/ng_admin_v2.json', import.meta.url));
+  const current = loadCanonical(currentAsset);
+  assert.equal(current.hash, '694a02cb25ad723429477da364f8c3bb482f3b5cb6595e1c0571d8c7e27ee911');
+  assert.deepEqual(current.document.regions, original.document.regions);
+  const expected = structuredClone(original.document.localUnits);
+  const unit = expected.find(item => item.id === 'ng-plateau-quaan-pan');
+  assert.equal(unit.canonicalName, 'Qua\u2019an Pan');
+  unit.canonicalName = "Qua'an Pan";
+  unit.sourceId = 'source-48';
+  assert.deepEqual(current.document.localUnits, expected);
+  assert.deepEqual(current.document.sources.slice(0, -1), original.document.sources);
+  const migration = fileURLToPath(new URL('../supabase/migrations/20261005000100_nigeria_admin_catalogue_v2.sql', import.meta.url));
+  const generated = generateVersionSql(current.document, current.hash, 'ng_admin_v2.json');
+  assert.equal(generated, generateVersionSql(current.document, current.hash, 'ng_admin_v2.json'));
+  assert.equal(generated, readFileSync(migration, 'utf8'));
+  assert.ok(!generated.includes('create table'));
+  assert.ok(!generated.includes('create trigger'));
+  assert.ok(generated.includes("Qua''an Pan"));
+});
 
 test('canonical sources are all referenced and an unused source is rejected', () => {
   const document = JSON.parse(readFileSync(asset, 'utf8'));

@@ -22,6 +22,23 @@ class AdminCatalogueTest {
     private val bytes: ByteArray by lazy { assetFile.readBytes() }
     private val catalogue: AdminCatalogue by lazy { AdminCatalogue.parse(bytes) }
 
+    @Test fun correctedVersionRetainsHistoricalSnapshotAndAllStableIds() {
+        val currentFile = File(assetFile.parentFile, "ng_admin_v2.json")
+        val current = AdminCatalogue.parse(currentFile.readBytes())
+        assertEquals("alabarin-2026-10-05-v2", current.metadata.version)
+        assertEquals("694a02cb25ad723429477da364f8c3bb482f3b5cb6595e1c0571d8c7e27ee911",
+            current.metadata.sha256)
+        assertEquals("Qua\u2019an Pan", catalogue.localUnit("ng-plateau-quaan-pan")?.canonicalName)
+        assertEquals("Qua'an Pan", current.localUnit("ng-plateau-quaan-pan")?.canonicalName)
+        assertEquals(catalogue.regions, current.regions)
+        assertEquals(catalogue.localUnits.map { it.id }, current.localUnits.map { it.id })
+        assertEquals(catalogue.localUnits.filter { it.id != "ng-plateau-quaan-pan" },
+            current.localUnits.filter { it.id != "ng-plateau-quaan-pan" })
+        assertEquals(774, current.localUnits.size)
+        assertEquals("ng-plateau-quaan-pan",
+            current.localUnitByName("ng-plateau", "Qua'an Pan")?.id)
+    }
+
     @Test fun canonicalAssetHasTheCompleteVersionedNigeriaHierarchy() {
         assertEquals("NG_ADMIN", catalogue.metadata.datasetId)
         assertEquals("alabarin-2026-10-03-v1", catalogue.metadata.version)
