@@ -88,6 +88,10 @@ class MainActivity : ComponentActivity() {
             app.destinationSearchGateway,
             { connectivityReader.connectivity() == ConnectivityState.NONE })
     }
+    private val destinationMapViewModel by viewModels<com.journeycontinuity.app.ui.destination.DestinationMapViewModel> {
+        com.journeycontinuity.app.ui.destination.DestinationMapViewModelFactory(app.adminCatalogue.snapshot(),
+            app.destinationMapGateway, DeviceContextReader(app.applicationContext).usableInternet())
+    }
     private val accountViewModel by viewModels<TravellerAccountViewModel> {
         TravellerAccountViewModelFactory(app.travellerAccountGateway,
             app.travellerNoActiveSignOutGateway, app.travellerActiveJourneySignOutGateway)
@@ -213,9 +217,8 @@ class MainActivity : ComponentActivity() {
                         onCancelActiveSignOutRequested = accountViewModel::cancelActiveSignOut,
                         onReauthenticateRequested = rootViewModel::reauthenticateActiveJourney,
                         destinationPickerViewModel = destinationPickerViewModel,
-                        onMapRefinementRequested = {
-                            journeyViewModel.showMessage("Map refinement is not available yet.")
-                        },
+                        onMapRefinementRequested = destinationMapViewModel::open,
+                        destinationMapViewModel = destinationMapViewModel,
                     )
                 }
             }

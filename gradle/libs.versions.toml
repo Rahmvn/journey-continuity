@@ -15,8 +15,10 @@ fragment = "1.8.9"
 supabase = "3.8.0"
 ktor = "3.5.1"
 work = "2.11.2"
+maplibre = "13.6.1"
 
 [libraries]
+maplibre-opengl = { group = "org.maplibre.gl", name = "android-sdk-opengl", version.ref = "maplibre" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }

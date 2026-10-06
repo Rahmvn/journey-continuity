@@ -290,6 +290,9 @@ class JourneyContinuityApplication : Application() {
                     destinationSearch = com.journeycontinuity.app.data.search.SupabaseDestinationSearchGateway(
                         client, identityCoordinator, configuration.url, configuration.publishableKey,
                     ),
+                    destinationMap = com.journeycontinuity.app.data.search.SupabaseDestinationMapGateway(
+                        client, identityCoordinator, configuration.url, configuration.publishableKey,
+                    ),
                     returningLogin = ReturningTravellerLoginEngine(
                         attempts = SupabaseReturningLoginAttemptFactory(configuration),
                         boundary = firstOwnerBoundary,
@@ -363,6 +366,8 @@ class JourneyContinuityApplication : Application() {
 
     val destinationSearchGateway: com.journeycontinuity.app.ui.destination.DestinationSearchGateway
         get() = cloudGateways.destinationSearch
+    val destinationMapGateway: com.journeycontinuity.app.ui.destination.DestinationMapGateway
+        get() = cloudGateways.destinationMap
 
     val travellerNoActiveSignOutGateway: TravellerNoActiveSignOutGateway?
         get() = cloudGateways.noActiveSignOut
@@ -464,6 +469,8 @@ class JourneyContinuityApplication : Application() {
         val trustedContacts: TrustedContactGateway,
         val fallbackProvisioning: AuthenticatedFallbackProvisioningGateway,
         val destinationSearch: com.journeycontinuity.app.ui.destination.DestinationSearchGateway,
+        val destinationMap: com.journeycontinuity.app.ui.destination.DestinationMapGateway =
+            com.journeycontinuity.app.data.search.UnavailableDestinationMapGateway,
         val returningLogin: ReturningTravellerLoginEngine?,
         val createAccount: TravellerCreateAccountEngine?,
     )

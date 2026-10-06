@@ -128,6 +128,7 @@ fun JourneyProductRoot(
     onReauthenticateRequested: () -> Unit = {},
     destinationPickerViewModel: DestinationPickerViewModel? = null,
     onMapRefinementRequested: (MapRefinementRequest) -> Unit = {},
+    destinationMapViewModel: com.journeycontinuity.app.ui.destination.DestinationMapViewModel? = null,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val accountState = accountViewModel?.state?.collectAsStateWithLifecycle()?.value
@@ -138,9 +139,14 @@ fun JourneyProductRoot(
     var accountOpen by remember { mutableStateOf(false) }
     val pickerState = destinationPickerViewModel?.state?.collectAsStateWithLifecycle()?.value
     val pickerOpen = pickerState?.isOpen == true
+    val mapState = destinationMapViewModel?.state?.collectAsStateWithLifecycle()?.value
+    val mapOpen = mapState != null && mapState != com.journeycontinuity.app.ui.destination.DestinationMapState.Closed
     val selectedDestinationDraft = pickerState?.selectedDraft
     LaunchedEffect(state.productRoute) {
-        if (state.productRoute != JourneyProductRoute.START) destinationPickerViewModel?.close()
+        if (state.productRoute != JourneyProductRoute.START) {
+            destinationPickerViewModel?.close()
+            destinationMapViewModel?.close()
+        }
     }
     LaunchedEffect(state.message) {
         state.message?.let { snackbar.showSnackbar(it); viewModel.clearMessage() }
@@ -162,7 +168,7 @@ fun JourneyProductRoot(
     LaunchedEffect(state.productRoute) {
         if (state.productRoute == JourneyProductRoute.RESILIENCE) onRefreshSmsFallback()
     }
-    BackHandler(!pickerOpen && state.productRoute != JourneyProductRoute.HOME &&
+    BackHandler(!pickerOpen && !mapOpen && state.productRoute != JourneyProductRoute.HOME &&
         state.productRoute != JourneyProductRoute.ACTIVE) {
         if (state.productRoute == JourneyProductRoute.CHECKPOINT) viewModel.backToStart()
         else if (state.productRoute == JourneyProductRoute.CONTACTS ||
@@ -277,7 +283,11 @@ fun JourneyProductRoot(
             }
             state.productRoute == JourneyProductRoute.START ||
                 state.productRoute == JourneyProductRoute.CHECKPOINT -> {
-                if (pickerOpen && destinationPickerViewModel != null) {
+                if (mapOpen && destinationMapViewModel != null && destinationPickerViewModel != null) {
+                    com.journeycontinuity.app.ui.destination.DestinationMapScreen(destinationMapViewModel,
+                        onBackToPicker = {}, onDraft = destinationPickerViewModel::acceptDraft,
+                        onChooseAreaAgain = destinationPickerViewModel::showRegions)
+                } else if (pickerOpen && destinationPickerViewModel != null) {
                     DestinationPickerScreen(destinationPickerViewModel,
                         onClose = destinationPickerViewModel::close,
                         onDraft = destinationPickerViewModel::acceptDraft,

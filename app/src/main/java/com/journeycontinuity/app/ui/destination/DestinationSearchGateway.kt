@@ -87,8 +87,19 @@ sealed interface DestinationDraft {
         override val displayLabel: String,
         override val destination: StructuredDestination,
         val boundaryDatasetVersion: String,
-        val attribution: ProviderAttribution,
-    ) : DestinationDraft
+        val attribution: ProviderAttribution?,
+        val boundaryDatasetId: String = OPERATIONAL_BOUNDARY_DATASET,
+        val reverseLabelEvidence: MapLabelEvidence? = null,
+    ) : DestinationDraft {
+        init {
+            require(destination.kind == DestinationKind.POINT)
+            require(CoordinateVerification(BoundaryOutcome.INSIDE, boundaryDatasetId,
+                boundaryDatasetVersion).hasBoundaryEvidence)
+            if (destination.selectionSource == DestinationSelectionSource.PLACE_SEARCH) {
+                require(attribution != null && destination.provider != null && destination.providerPlaceId != null)
+            }
+        }
+    }
 
     data class Locality(
         override val displayLabel: String,

@@ -2,3 +2,5 @@
 # The publishable key is client configuration; never place a service-role key here.
 SUPABASE_URL=https://your-project-ref.supabase.co
 SUPABASE_PUBLISHABLE_KEY=sb_publishable_your_key
+# Dedicated public map-tile project/key. APK extraction is possible; never reuse server GEOAPIFY_API_KEY.
+GEOAPIFY_MAP_TILE_KEY=

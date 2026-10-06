@@ -38,6 +38,8 @@ android {
         versionName = "1.0"
 
         buildConfigField("String", "SUPABASE_URL", configuredString("SUPABASE_URL"))
+        // Public client credential: dedicated tile project/key, never the server geocoding secret.
+        buildConfigField("String", "GEOAPIFY_MAP_TILE_KEY", configuredString("GEOAPIFY_MAP_TILE_KEY"))
         buildConfigField(
             "String",
             "SUPABASE_PUBLISHABLE_KEY",
@@ -85,6 +87,7 @@ room {
 }
 
 dependencies {
+    implementation(libs.maplibre.opengl)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.compose.material3)

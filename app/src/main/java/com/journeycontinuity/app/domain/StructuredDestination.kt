@@ -19,6 +19,7 @@ data class StructuredDestination(
     val providerPlaceId: String? = null,
     val adminDatasetVersion: String? = null,
     val customPlaceName: String? = null,
+    val localUnitType: AdminLocalUnitType? = null,
 ) {
     init {
         require(countryCode == "NG") { "Traveller v1 structured destinations must be in Nigeria." }
