@@ -9,6 +9,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -65,6 +66,46 @@ import java.io.File
 /** Exercises the real product root and JourneyLifecycle against isolated in-memory state. */
 class JourneyProductFlowTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+
+    @Test fun structuredDraftCannotEnterLegacyJourneyStartThroughProductionRoot() {
+        val repository = FakeRepository()
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val coordinator = DegradedConnectivityCoordinator(store = FakeDegradationStore(),
+            latestTelemetryReader = LatestTelemetryReader { null },
+            policy = DegradedConnectivityPolicy(DegradedConnectivityLabConfiguration.policyConfig()))
+        val picker = com.journeycontinuity.app.ui.destination.DestinationPickerViewModel(
+            com.journeycontinuity.app.data.catalogue.BundledAdminCatalogue(context).snapshot(),
+            com.journeycontinuity.app.ui.destination.DestinationSearchGateway {
+                com.journeycontinuity.app.ui.destination.DestinationSearchResponse.NoResults
+            }, { true })
+        lateinit var journey: JourneyViewModel
+        var starts = 0
+        setContent {
+            journey = remember { JourneyViewModel(repository, JourneyLifecycle(repository),
+                JourneyServiceController(context), EmptyContacts, coordinator,
+                MutableStateFlow<CurrentJourneyConnectivity?>(null)) }
+            JourneyProductRoot(journey, LocationUiState(), unavailableSms, "test@example.com",
+                onStartRequested = { _, _ -> starts++ }, onRetryMonitoring = {},
+                onOpenLocationSettings = {}, onRequestSmsPermissions = {}, onSelectSmsSubscription = {},
+                destinationPickerViewModel = picker)
+        }
+        compose.waitUntil(10_000) { !journey.uiState.value.isRestoring }
+        compose.runOnIdle {
+            journey.openStart()
+            journey.updateDestination("Legacy text that would otherwise be ready")
+            journey.updateExpectedArrival(System.currentTimeMillis() + 7_200_000)
+            picker.selectRegion("ng-kwara"); picker.selectUnit("ng-kwara-offa")
+            picker.acceptDraft(picker.selectLocality()!!.value)
+        }
+        compose.onNodeWithTag("choose_structured_destination").assertIsDisplayed()
+        compose.onNodeWithText("Offa").assertIsDisplayed()
+        compose.onNodeWithTag("journey_primary_action").assertIsNotEnabled().performClick()
+        compose.runOnIdle {
+            assertEquals(0, starts)
+            assertEquals(null, repository.active.value)
+            assertEquals(JourneyProductRoute.START, journey.uiState.value.productRoute)
+        }
+    }
 
     @Test fun accountOpensAsSheetOverHomeAndSignOutIsCallbackOnly() {
         val gateway = FakeAccountGateway()

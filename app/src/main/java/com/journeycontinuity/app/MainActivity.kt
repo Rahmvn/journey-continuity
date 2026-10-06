@@ -41,6 +41,10 @@ import com.journeycontinuity.app.ui.TravellerAccountViewModelFactory
 import com.journeycontinuity.app.ui.AccountSignOutStatus
 import com.journeycontinuity.app.ui.TravellerMonitoringStoppedResult
 import com.journeycontinuity.app.ui.LocationUiState
+import com.journeycontinuity.app.ui.destination.DestinationPickerViewModel
+import com.journeycontinuity.app.ui.destination.DestinationPickerViewModelFactory
+import com.journeycontinuity.app.telemetry.DeviceContextReader
+import com.journeycontinuity.app.domain.ConnectivityState
 import com.journeycontinuity.app.ui.theme.JourneyContinuityTheme
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
@@ -76,6 +80,13 @@ class MainActivity : ComponentActivity() {
         ActivityResultContracts.RequestMultiplePermissions(),
     ) {
         refreshSmsFallbackState()
+    }
+    private val destinationPickerViewModel by viewModels<DestinationPickerViewModel> {
+        // The retained ViewModel captures only this application-context reader, not the Activity.
+        val connectivityReader = DeviceContextReader(app.applicationContext)
+        DestinationPickerViewModelFactory(app.adminCatalogue.snapshot(),
+            app.destinationSearchGateway,
+            { connectivityReader.connectivity() == ConnectivityState.NONE })
     }
     private val accountViewModel by viewModels<TravellerAccountViewModel> {
         TravellerAccountViewModelFactory(app.travellerAccountGateway,
@@ -201,6 +212,10 @@ class MainActivity : ComponentActivity() {
                         },
                         onCancelActiveSignOutRequested = accountViewModel::cancelActiveSignOut,
                         onReauthenticateRequested = rootViewModel::reauthenticateActiveJourney,
+                        destinationPickerViewModel = destinationPickerViewModel,
+                        onMapRefinementRequested = {
+                            journeyViewModel.showMessage("Map refinement is not available yet.")
+                        },
                     )
                 }
             }

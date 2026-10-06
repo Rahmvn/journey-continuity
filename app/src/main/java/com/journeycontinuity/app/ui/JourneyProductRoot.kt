@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
@@ -71,6 +72,10 @@ import com.journeycontinuity.app.degraded.SmsFallbackStatus
 import com.journeycontinuity.app.domain.Journey
 import com.journeycontinuity.app.telemetry.ForegroundLocationAccess
 import com.journeycontinuity.app.trusted.TrustedContactStatus
+import com.journeycontinuity.app.ui.destination.DestinationDraft
+import com.journeycontinuity.app.ui.destination.DestinationPickerScreen
+import com.journeycontinuity.app.ui.destination.DestinationPickerViewModel
+import com.journeycontinuity.app.ui.destination.MapRefinementRequest
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
@@ -121,6 +126,8 @@ fun JourneyProductRoot(
     onConfirmActiveSignOutRequested: () -> Unit = {},
     onCancelActiveSignOutRequested: () -> Unit = {},
     onReauthenticateRequested: () -> Unit = {},
+    destinationPickerViewModel: DestinationPickerViewModel? = null,
+    onMapRefinementRequested: (MapRefinementRequest) -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val accountState = accountViewModel?.state?.collectAsStateWithLifecycle()?.value
@@ -129,6 +136,12 @@ fun JourneyProductRoot(
     val journeySheetHeight = LocalConfiguration.current.screenHeightDp.dp * 0.84f
     val snackbar = remember { SnackbarHostState() }
     var accountOpen by remember { mutableStateOf(false) }
+    val pickerState = destinationPickerViewModel?.state?.collectAsStateWithLifecycle()?.value
+    val pickerOpen = pickerState?.isOpen == true
+    val selectedDestinationDraft = pickerState?.selectedDraft
+    LaunchedEffect(state.productRoute) {
+        if (state.productRoute != JourneyProductRoute.START) destinationPickerViewModel?.close()
+    }
     LaunchedEffect(state.message) {
         state.message?.let { snackbar.showSnackbar(it); viewModel.clearMessage() }
     }
@@ -149,7 +162,7 @@ fun JourneyProductRoot(
     LaunchedEffect(state.productRoute) {
         if (state.productRoute == JourneyProductRoute.RESILIENCE) onRefreshSmsFallback()
     }
-    BackHandler(state.productRoute != JourneyProductRoute.HOME &&
+    BackHandler(!pickerOpen && state.productRoute != JourneyProductRoute.HOME &&
         state.productRoute != JourneyProductRoute.ACTIVE) {
         if (state.productRoute == JourneyProductRoute.CHECKPOINT) viewModel.backToStart()
         else if (state.productRoute == JourneyProductRoute.CONTACTS ||
@@ -264,14 +277,27 @@ fun JourneyProductRoot(
             }
             state.productRoute == JourneyProductRoute.START ||
                 state.productRoute == JourneyProductRoute.CHECKPOINT -> {
-                JourneyStartScreen(
-                    state = state,
-                    onDestinationChange = viewModel::updateDestination,
-                    onArrivalChange = viewModel::updateExpectedArrival,
-                    onBack = viewModel::backToHome,
-                    onStart = { viewModel.requestStart(smsFallbackStatus.ready, onStartRequested) },
-                )
-                if (state.productRoute == JourneyProductRoute.CHECKPOINT) {
+                if (pickerOpen && destinationPickerViewModel != null) {
+                    DestinationPickerScreen(destinationPickerViewModel,
+                        onClose = destinationPickerViewModel::close,
+                        onDraft = destinationPickerViewModel::acceptDraft,
+                        onMapRequest = onMapRefinementRequested)
+                } else {
+                    JourneyStartScreen(
+                        state = state,
+                        onDestinationChange = viewModel::updateDestination,
+                        onArrivalChange = viewModel::updateExpectedArrival,
+                        onBack = viewModel::backToHome,
+                        onStart = { if (destinationPickerViewModel == null)
+                            viewModel.requestStart(smsFallbackStatus.ready, onStartRequested) },
+                        structuredDraft = selectedDestinationDraft,
+                        onChooseDestination = destinationPickerViewModel?.let { picker ->
+                            { picker.open() }
+                        },
+                    )
+                }
+                if (state.productRoute == JourneyProductRoute.CHECKPOINT &&
+                    destinationPickerViewModel == null) {
                     val accepted = state.trustedContacts.any {
                         it.status == TrustedContactStatus.ACCEPTED
                     }
@@ -446,12 +472,15 @@ internal fun JourneyStartScreen(
     onArrivalChange: (Long) -> Unit,
     onBack: () -> Unit,
     onStart: () -> Unit,
+    structuredDraft: DestinationDraft? = null,
+    onChooseDestination: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val zone = ZoneId.systemDefault()
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) { while (true) { delay(30_000); now = System.currentTimeMillis() } }
-    val ready = canSubmitJourneyStart(state.draftDestination, state.draftExpectedArrivalAt, now)
+    val ready = onChooseDestination == null &&
+        canSubmitJourneyStart(state.draftDestination, state.draftExpectedArrivalAt, now)
     Column(Modifier.fillMaxSize().padding(start = 24.dp, end = 24.dp, top = 28.dp, bottom = 24.dp)) {
         Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
             JourneyHeader("Start Journey", onBack)
@@ -459,7 +488,27 @@ internal fun JourneyStartScreen(
             Text("Where are you going?", color = Heading,
                 style = textStyle(16, 22, FontWeight.Medium))
             Spacer(Modifier.height(8.dp))
-            JourneyInput(state.draftDestination, "e.g. Ilorin", onDestinationChange)
+            if (onChooseDestination == null) {
+                JourneyInput(state.draftDestination, "e.g. Ilorin", onDestinationChange)
+            } else {
+                Row(Modifier.fillMaxWidth().heightIn(min = 58.dp)
+                    .border(1.dp, Color(0xBF676F74), RoundedCornerShape(4.dp))
+                    .clickable(role = Role.Button, onClick = onChooseDestination)
+                    .testTag("choose_structured_destination")
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Text(structuredDraft?.displayLabel ?: "Choose destination",
+                        color = if (structuredDraft == null) Body else Heading,
+                        style = textStyle(15, 21), modifier = Modifier.weight(1f),
+                        maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text("›", color = Body, style = textStyle(24, 24))
+                }
+                if (structuredDraft != null) {
+                    Text("Destination selected. Journey start is not available yet.",
+                        color = Body, style = textStyle(13, 18),
+                        modifier = Modifier.padding(top = 8.dp))
+                }
+            }
             Spacer(Modifier.height(24.dp))
             Text("When do you expect to arrive?", color = Heading,
                 style = textStyle(16, 22, FontWeight.Medium))

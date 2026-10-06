@@ -287,6 +287,9 @@ class JourneyContinuityApplication : Application() {
                         supabaseUrl = configuration.url,
                         publishableKey = configuration.publishableKey,
                     ),
+                    destinationSearch = com.journeycontinuity.app.data.search.SupabaseDestinationSearchGateway(
+                        client, identityCoordinator, configuration.url, configuration.publishableKey,
+                    ),
                     returningLogin = ReturningTravellerLoginEngine(
                         attempts = SupabaseReturningLoginAttemptFactory(configuration),
                         boundary = firstOwnerBoundary,
@@ -353,6 +356,13 @@ class JourneyContinuityApplication : Application() {
 
     val travellerAccountGateway: com.journeycontinuity.app.auth.TravellerAccountGateway
         get() = cloudGateways.account
+
+    val adminCatalogue by lazy {
+        com.journeycontinuity.app.data.catalogue.BundledAdminCatalogue(applicationContext)
+    }
+
+    val destinationSearchGateway: com.journeycontinuity.app.ui.destination.DestinationSearchGateway
+        get() = cloudGateways.destinationSearch
 
     val travellerNoActiveSignOutGateway: TravellerNoActiveSignOutGateway?
         get() = cloudGateways.noActiveSignOut
@@ -423,6 +433,10 @@ class JourneyContinuityApplication : Application() {
             fallbackProvisioning = AuthenticatedFallbackProvisioningGateway { _, _ ->
                 throw CloudSyncException(SyncFailureKind.PERMANENT, safeError)
             },
+            destinationSearch = com.journeycontinuity.app.ui.destination.DestinationSearchGateway {
+                throw com.journeycontinuity.app.ui.destination.DestinationSearchException(
+                    com.journeycontinuity.app.ui.destination.DestinationSearchFailure.UNAVAILABLE)
+            },
             returningLogin = null,
             createAccount = null,
         )
@@ -449,6 +463,7 @@ class JourneyContinuityApplication : Application() {
         val heartbeat: HeartbeatGateway,
         val trustedContacts: TrustedContactGateway,
         val fallbackProvisioning: AuthenticatedFallbackProvisioningGateway,
+        val destinationSearch: com.journeycontinuity.app.ui.destination.DestinationSearchGateway,
         val returningLogin: ReturningTravellerLoginEngine?,
         val createAccount: TravellerCreateAccountEngine?,
     )

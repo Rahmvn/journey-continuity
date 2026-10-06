@@ -12,6 +12,7 @@ class BundledAdminCatalogue(context: Context) {
 
     val metadata: AdminCatalogueMetadata get() = catalogue().metadata
     val regions: List<AdminRegion> get() = catalogue().regions
+    fun snapshot(): AdminCatalogue = catalogue()
 
     fun region(id: String): AdminRegion? = catalogue().region(id)
     fun localUnit(id: String): AdminLocalUnit? = catalogue().localUnit(id)
