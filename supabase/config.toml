@@ -407,6 +407,11 @@ enabled = true
 verify_jwt = true
 entrypoint = "./functions/destination-search/index.ts"
 
+[functions.destination-map-label]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/destination-map-label/index.ts"
+
 [functions.africastalking-inbound]
 enabled = true
 verify_jwt = false
