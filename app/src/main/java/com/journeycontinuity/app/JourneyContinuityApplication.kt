@@ -16,7 +16,9 @@ import com.journeycontinuity.app.data.local.MIGRATION_10_11
 import com.journeycontinuity.app.data.local.MIGRATION_11_12
 import com.journeycontinuity.app.data.local.MIGRATION_12_13
 import com.journeycontinuity.app.data.local.MIGRATION_13_14
+import com.journeycontinuity.app.data.local.MIGRATION_14_15
 import com.journeycontinuity.app.data.repository.RoomProbableEndGuardStore
+import com.journeycontinuity.app.data.repository.RoomProbableEndPresentationCoordinator
 import com.journeycontinuity.app.domain.probableend.*
 import com.journeycontinuity.app.data.probableend.SupabaseProbableEndVerificationGuardGateway
 import com.journeycontinuity.app.data.repository.RoomProbableEndStore
@@ -119,6 +121,7 @@ class JourneyContinuityApplication : Application() {
             MIGRATION_11_12,
             MIGRATION_12_13,
             MIGRATION_13_14,
+            MIGRATION_14_15,
         ).addCallback(FALLBACK_ATTEMPT_INVARIANT_CALLBACK).build()
     }
 
@@ -187,6 +190,18 @@ class JourneyContinuityApplication : Application() {
     private val probableEndGuardCoordinator by lazy {
         ProbableEndGuardCoordinator(RoomProbableEndGuardStore(database), cloudGateways.verificationGuard)
     }
+    private val probableEndPresentationCoordinator by lazy {
+        RoomProbableEndPresentationCoordinator(database, RoomProbableEndGuardStore(database),
+            cloudGateways.verificationGuard)
+    }
+    val probableEndProvenCandidateId by lazy { database.probableEndPresentationDao().observeProvenCandidateId() }
+    val probableEndPresentationEpisode by lazy { database.probableEndPresentationDao().observeActionableLocalEpisode() }
+
+    suspend fun recheckProbableEndForForeground(journeyId: String, candidateId: String): String? =
+        probableEndPresentationCoordinator.recheckAndPromote(journeyId, candidateId)
+
+    suspend fun recordProbableEndForegroundOpportunity(journeyId: String, episodeId: String): Boolean =
+        probableEndPresentationCoordinator.recordForegroundOpportunity(journeyId, episodeId)
     // Service identity/display needs no structured-destination decoding. No fallback Journey is fabricated.
     internal val activeMonitoringJourney by lazy { database.journeyDao().observeActive() }
     private val localInferenceScope = kotlinx.coroutines.CoroutineScope(

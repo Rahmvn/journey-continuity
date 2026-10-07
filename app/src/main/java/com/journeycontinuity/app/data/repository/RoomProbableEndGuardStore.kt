@@ -6,6 +6,7 @@ import com.journeycontinuity.app.domain.JourneyClock
 import com.journeycontinuity.app.domain.JourneyStatus
 import com.journeycontinuity.app.domain.probableend.*
 import com.journeycontinuity.app.heartbeat.HeartbeatConfiguration
+import java.util.UUID
 
 /** Engineering retry throttle, not an evidence or verification threshold. */
 internal const val PROBABLE_END_GUARD_RETRY_SPACING_MILLIS = 5 * HeartbeatConfiguration.INTERVAL_MILLIS
@@ -19,6 +20,7 @@ data class ProbableEndGuardRequest internal constructor(
     val binding: ProbableEndGuardBindingEntity?,
     val continuity: ProbableEndCandidateContinuityEntity?,
     val requestedAtMillis: Long,
+    val trigger: GuardReconciliationTrigger,
 ) { override fun toString() = "ProbableEndGuardRequest(redacted)" }
 
 /** Network-free short transactions. No presentation/terminal permissions are produced. */
@@ -49,10 +51,14 @@ class RoomProbableEndGuardStore(
                 it.status != ProbableEndContinuityStatus.INVALIDATED.name)
             if (trigger == GuardReconciliationTrigger.NEW_CANDIDATE && it.attemptedAtMillis != null) return@withTransaction null
         }
+        if (trigger == GuardReconciliationTrigger.FOREGROUND_PRESENTATION &&
+            (candidate == null || attachment?.status != ProbableEndContinuityStatus.CONTINUITY_PROVEN.name)) return@withTransaction null
         // A genuinely new candidate gets its first check promptly. Existing candidates and
         // blocked baselines use heartbeat as a retry opportunity, never as a per-beat poll.
         val lastAttempt = attachment?.attemptedAtMillis ?: if (attachment == null) binding?.lastAttemptAtMillis else null
-        if (lastAttempt != null && (now < lastAttempt || now - lastAttempt < PROBABLE_END_GUARD_RETRY_SPACING_MILLIS))
+        if (lastAttempt != null && (now < lastAttempt ||
+                trigger != GuardReconciliationTrigger.FOREGROUND_PRESENTATION &&
+                now - lastAttempt < PROBABLE_END_GUARD_RETRY_SPACING_MILLIS))
             return@withTransaction null
         binding = binding?.copy(revision = Math.addExact(binding.revision, 1), lastAttemptAtMillis = now)?.also {
             db.probableEndGuardDao().save(it)
@@ -60,7 +66,7 @@ class RoomProbableEndGuardStore(
         attachment = attachment?.copy(requestRevision = Math.addExact(attachment.requestRevision, 1), attemptedAtMillis = now)?.also {
             db.probableEndGuardDao().save(it)
         }
-        ProbableEndGuardRequest(journeyId, journey.startedAt, row.generation, row.revision, binding, attachment, now)
+        ProbableEndGuardRequest(journeyId, journey.startedAt, row.generation, row.revision, binding, attachment, now, trigger)
     }
 
     override suspend fun apply(request: ProbableEndGuardRequest, read: VerificationGuardRead): GuardReconciliationDecision? = db.withTransaction {
@@ -79,6 +85,7 @@ class RoomProbableEndGuardStore(
         if (journey.status != JourneyStatus.ACTIVE || journey.activeSlot != 1 || journey.probableEndInput().ineligibleReason != null) {
             dao.closeUnclosed(journey.id, LocalProbableEndLifecycle.INVALIDATED.name, now, "GUARD_JOURNEY_INELIGIBLE")
             guards.invalidate(journey.id)
+            db.probableEndPresentationDao().invalidate(journey.id, now, "JOURNEY_INELIGIBLE")
             return@withTransaction GuardReconciliationDecision.BLOCKED
         }
         candidate?.let {
@@ -136,6 +143,7 @@ class RoomProbableEndGuardStore(
                     requiresReliableExit = row.requiresReliableExit, revision = Math.addExact(row.revision, 1), lastEvaluationAtMillis = now)
                 dao.closeUnclosed(journey.id, LocalProbableEndLifecycle.INVALIDATED.name, now,
                     if (decision == GuardReconciliationDecision.BLOCKED) "GUARD_BLOCKED" else "GUARD_NEW_BASELINE")
+                db.probableEndPresentationDao().invalidate(journey.id, now, "GUARD_INVALIDATED")
                 request.continuity?.let { guards.save(it.copy(status = ProbableEndContinuityStatus.INVALIDATED.name,
                     checkedHistoryBaselineAtMillis = guard.historyBaselineAtMillis, checkedGuardVersion = guard.version,
                     checkedServerAtMillis = guard.evaluatedAtMillis, lastUnavailableReason = null)) }
@@ -159,6 +167,29 @@ class RoomProbableEndGuardStore(
                 request.continuity?.let { guards.save(it.copy(status = ProbableEndContinuityStatus.CONTINUITY_PROVEN.name,
                     checkedHistoryBaselineAtMillis = guard.historyBaselineAtMillis, checkedGuardVersion = guard.version,
                     checkedServerAtMillis = guard.evaluatedAtMillis, lastUnavailableReason = null)) }
+                // A presentation check is a separate fresh network read. Its exact request,
+                // guard reconciliation and episode promotion commit in this one transaction.
+                if (request.trigger == GuardReconciliationTrigger.FOREGROUND_PRESENTATION &&
+                    request.continuity?.status == ProbableEndContinuityStatus.CONTINUITY_PROVEN.name &&
+                    candidate != null && guard.freshUntilMillis != null && guard.freshUntilMillis > now &&
+                    guard.evaluatedAtMillis <= now + ProbableEndPolicy.MAX_FUTURE_SKEW_MILLIS &&
+                    row.proximity?.firstSequence == candidate.first.telemetrySequence &&
+                    row.proximity.latestTime >= now - ProbableEndPolicy.MAX_OBSERVATION_AGE_MILLIS &&
+                    row.proximity.latestTime <= now + ProbableEndPolicy.MAX_FUTURE_SKEW_MILLIS) {
+                    val presentations = db.probableEndPresentationDao()
+                    val live = presentations.live(journey.id)
+                    if (live == null) {
+                        val id = UUID.nameUUIDFromBytes("probable-end-presentation:${candidate.id}:${candidate.generation}"
+                            .toByteArray(Charsets.UTF_8)).toString()
+                        presentations.insert(ProbableEndPresentationEntity(id, journey.id, candidate.id,
+                            candidate.generation, candidate.policyVersion, guard.historyBaselineAtMillis,
+                            guard.version, createdAtMillis = now))
+                    } else {
+                        live.validate()
+                        require(live.candidateEpisodeId == candidate.id && live.generation == candidate.generation &&
+                            live.historyBaselineAtMillis == guard.historyBaselineAtMillis && live.guardVersion == guard.version)
+                    }
+                }
             }
         }
         decision

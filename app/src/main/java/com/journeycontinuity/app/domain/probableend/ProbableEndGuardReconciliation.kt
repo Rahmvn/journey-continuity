@@ -2,7 +2,7 @@ package com.journeycontinuity.app.domain.probableend
 
 /** These are history decisions only. None authorizes presentation or a terminal action. */
 enum class GuardReconciliationDecision { UNKNOWN, BLOCKED, REBASE, REFRESH, PROVE_CONTINUITY }
-enum class GuardReconciliationTrigger { NEW_CANDIDATE, RESTORE, HEARTBEAT_SUCCEEDED }
+enum class GuardReconciliationTrigger { NEW_CANDIDATE, RESTORE, HEARTBEAT_SUCCEEDED, FOREGROUND_PRESENTATION }
 
 object ProbableEndGuardReconciliation {
     fun decide(journeyId: String, previous: AuthoritativeVerificationGuard?, baselineUsable: Boolean,

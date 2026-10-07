@@ -3,6 +3,8 @@ package com.journeycontinuity.app.ui
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
 import android.content.Intent
+import android.view.View
+import android.view.ViewTreeObserver
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -43,16 +45,24 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.findRootCoordinates
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextStyle
@@ -70,6 +80,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.journeycontinuity.app.R
 import com.journeycontinuity.app.degraded.SmsFallbackStatus
 import com.journeycontinuity.app.domain.Journey
+import com.journeycontinuity.app.data.local.ProbableEndPresentationEntity
 import com.journeycontinuity.app.telemetry.ForegroundLocationAccess
 import com.journeycontinuity.app.trusted.TrustedContactStatus
 import com.journeycontinuity.app.ui.destination.DestinationDraft
@@ -131,6 +142,11 @@ fun JourneyProductRoot(
     onMapRefinementRequested: (MapRefinementRequest) -> Unit = {},
     destinationMapViewModel: com.journeycontinuity.app.ui.destination.DestinationMapViewModel? = null,
     onStructuredStartRequested: (com.journeycontinuity.app.domain.JourneyStartRequest) -> Unit = {},
+    probableEndPresentation: ProbableEndPresentationEntity? = null,
+    probableEndForegroundEpisodeId: String? = null,
+    onProbableEndRendered: (String, String, View) -> Unit = { _, _, _ -> },
+    onProbableEndDismissed: () -> Unit = {},
+    onProbableEndReopen: (String, String) -> Unit = { _, _ -> },
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val accountState = accountViewModel?.state?.collectAsStateWithLifecycle()?.value
@@ -139,6 +155,13 @@ fun JourneyProductRoot(
     val journeySheetHeight = LocalConfiguration.current.screenHeightDp.dp * 0.84f
     val snackbar = remember { SnackbarHostState() }
     var accountOpen by remember { mutableStateOf(false) }
+    var dismissedProbableEndId by remember { mutableStateOf<String?>(null) }
+    val showProbableEnd = probableEndPresentation != null &&
+        probableEndPresentation.journeyId == state.activeJourney?.id &&
+        probableEndPresentation.id == probableEndForegroundEpisodeId &&
+        dismissedProbableEndId != probableEndPresentation.id &&
+        !accountOpen &&
+        state.productRoute in setOf(JourneyProductRoute.HOME, JourneyProductRoute.ACTIVE)
     val pickerState = destinationPickerViewModel?.state?.collectAsStateWithLifecycle()?.value
     val pickerOpen = pickerState?.isOpen == true
     val mapState = destinationMapViewModel?.state?.collectAsStateWithLifecycle()?.value
@@ -204,7 +227,15 @@ fun JourneyProductRoot(
                     } ?: accountEmail,
                     resilienceSummary = resilience.homeSummary,
                     onPrimary = {
-                        if (state.activeJourney == null) viewModel.openStart() else viewModel.openActive()
+                        val active = state.activeJourney
+                        if (active == null) viewModel.openStart()
+                        else {
+                            if (dismissedProbableEndId != null && probableEndPresentation != null &&
+                                probableEndPresentation.journeyId == active.id)
+                                onProbableEndReopen(active.id, probableEndPresentation.candidateEpisodeId)
+                            dismissedProbableEndId = null
+                            viewModel.openActive()
+                        }
                     },
                     onContacts = viewModel::openContacts,
                     onResilience = viewModel::openResilience,
@@ -213,11 +244,17 @@ fun JourneyProductRoot(
                         accountViewModel?.load()
                     },
                 )
-                if (state.productRoute == JourneyProductRoute.ACTIVE) {
+                if (state.productRoute == JourneyProductRoute.ACTIVE || showProbableEnd) {
                     state.activeJourney?.let { journey ->
                         ModalBottomSheet(
-                            onDismissRequest = viewModel::backToHome,
-                            modifier = Modifier.testTag("journey_sheet"),
+                            onDismissRequest = {
+                                if (showProbableEnd) {
+                                    dismissedProbableEndId = probableEndPresentation.id
+                                    onProbableEndDismissed()
+                                }
+                                viewModel.backToHome()
+                            },
+                            modifier = Modifier.testTag(if (showProbableEnd) "probable_end_sheet" else "journey_sheet"),
                             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
                             containerColor = Background,
                             shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
@@ -228,9 +265,17 @@ fun JourneyProductRoot(
                                 state = state,
                                 locationUiState = locationUiState,
                                 smsFallbackStatus = smsFallbackStatus,
-                                onBack = viewModel::backToHome,
+                                onBack = {
+                                    if (showProbableEnd) {
+                                        dismissedProbableEndId = probableEndPresentation.id
+                                        onProbableEndDismissed()
+                                    }
+                                    viewModel.backToHome()
+                                },
                                 onRetry = onRetryMonitoring,
                                 onEndCompleted = viewModel::endJourney,
+                                probableEnd = if (showProbableEnd) probableEndPresentation else null,
+                                onProbableEndRendered = onProbableEndRendered,
                                 // Material 3 measures the handle and bottom inset outside this content.
                                 modifier = Modifier.fillMaxWidth().height(journeySheetHeight - 40.dp),
                             )
@@ -621,9 +666,41 @@ internal fun JourneyActiveScreen(
     onBack: () -> Unit,
     onRetry: () -> Unit,
     onEndCompleted: () -> Unit,
+    probableEnd: ProbableEndPresentationEntity? = null,
+    onProbableEndRendered: (String, String, View) -> Unit = { _, _, _ -> },
     modifier: Modifier = Modifier,
 ) {
     var confirmCompletion by remember { mutableStateOf(false) }
+    val sheetView = LocalView.current
+    val scrollState = rememberScrollState()
+    var promptLaidOut by remember(probableEnd?.id) { mutableStateOf(false) }
+    DisposableEffect(probableEnd?.id, promptLaidOut, sheetView) {
+        val episode = probableEnd
+        val observer = sheetView.viewTreeObserver
+        val listener = ViewTreeObserver.OnWindowFocusChangeListener { focused ->
+            if (focused && sheetView.isShown && episode != null && promptLaidOut)
+                onProbableEndRendered(episode.journeyId, episode.id, sheetView)
+        }
+        if (episode != null && promptLaidOut) observer.addOnWindowFocusChangeListener(listener)
+        onDispose {
+            if (episode != null && promptLaidOut && observer.isAlive)
+                observer.removeOnWindowFocusChangeListener(listener)
+        }
+    }
+    LaunchedEffect(probableEnd?.id, scrollState.maxValue) {
+        // Preserve the Figma Journey context when it fits. Extra monitoring rows may
+        // make the sheet scroll; bring the whole question and both actions into view.
+        if (probableEnd != null && scrollState.maxValue in 1 until Int.MAX_VALUE)
+            scrollState.scrollTo(scrollState.maxValue)
+    }
+    LaunchedEffect(probableEnd?.id, promptLaidOut) {
+        val episode = probableEnd ?: return@LaunchedEffect
+        if (promptLaidOut) {
+            withFrameNanos { }
+            if (sheetView.isShown && sheetView.hasWindowFocus())
+                onProbableEndRendered(episode.journeyId, episode.id, sheetView)
+        }
+    }
     val monitoringReady = backgroundMonitoringReady(journey, state.monitoringJourneyId) &&
         locationUiState.access != ForegroundLocationAccess.NONE &&
         locationUiState.locationServicesEnabled
@@ -632,7 +709,7 @@ internal fun JourneyActiveScreen(
         journey.id, state.degradation, state.currentConnectivity, smsFallbackStatus, accepted,
     )
     Column(modifier.fillMaxSize().padding(start = 24.dp, end = 24.dp, bottom = 24.dp)) {
-        Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
+        Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(scrollState)) {
             BackIcon(onBack)
             Spacer(Modifier.height(22.dp))
             Text(journey.destination, color = Heading, style = textStyle(40, 46, FontWeight.Bold),
@@ -683,13 +760,45 @@ internal fun JourneyActiveScreen(
                     }
                 }
             }
+            if (probableEnd != null) {
+                Spacer(Modifier.height(38.dp))
+                Column(Modifier.fillMaxWidth().onGloballyPositioned { coordinates ->
+                    val rect = coordinates.boundsInRoot()
+                    val rootHeight = coordinates.findRootCoordinates().size.height
+                    promptLaidOut = rootHeight > 0 && rect.width > 0f && rect.height > 0f &&
+                        rect.top >= 0f && rect.bottom <= rootHeight.toFloat()
+                }.testTag("probable_end_prompt")) {
+                    Text("Has this Journey ended?", color = Heading,
+                        style = textStyle(24, 30, FontWeight.Bold),
+                        modifier = Modifier.semantics { heading() }.testTag("probable_end_title"))
+                    Spacer(Modifier.height(30.dp))
+                    Text("Alabarin detected signs that this Journey may have ended. If you don’t respond, monitoring may stop automatically after 30 minutes.",
+                        color = Body, style = textStyle(15, 21), modifier = Modifier.testTag("probable_end_body"))
+                    Spacer(Modifier.height(57.dp))
+                    // Responses are deliberately disabled until Slice 4B.
+                    Box(Modifier.fillMaxWidth().height(56.dp).clip(RoundedCornerShape(18.dp))
+                        .background(Brand).alpha(0.55f).semantics { role = Role.Button; disabled() }
+                        .testTag("probable_end_completed_disabled"), contentAlignment = Alignment.Center) {
+                        Text("Journey completed", color = Color.White, style = textStyle(16, 22, FontWeight.Bold))
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    Box(Modifier.fillMaxWidth().height(52.dp).clip(RoundedCornerShape(16.dp))
+                        .border(1.dp, Border, RoundedCornerShape(16.dp)).alpha(0.55f)
+                        .semantics { role = Role.Button; disabled() }
+                        .testTag("probable_end_keep_monitoring_disabled"), contentAlignment = Alignment.Center) {
+                        Text("Keep monitoring", color = Heading, style = textStyle(16, 22, FontWeight.Medium))
+                    }
+                }
+            }
         }
         Spacer(Modifier.height(8.dp))
-        Box(Modifier.fillMaxWidth().height(1.dp).background(Border))
-        Box(Modifier.fillMaxWidth().height(52.dp)
-            .clickable(role = Role.Button) { confirmCompletion = true },
-            contentAlignment = Alignment.Center) {
-            Text("End Journey", color = Heading, style = textStyle(16, 22, FontWeight.Medium))
+        if (probableEnd == null) {
+            Box(Modifier.fillMaxWidth().height(1.dp).background(Border))
+            Box(Modifier.fillMaxWidth().height(52.dp)
+                .clickable(role = Role.Button) { confirmCompletion = true },
+                contentAlignment = Alignment.Center) {
+                Text("End Journey", color = Heading, style = textStyle(16, 22, FontWeight.Medium))
+            }
         }
     }
     if (confirmCompletion) AlertDialog(

@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Intent
 import android.os.Bundle
 import android.provider.Settings
+import android.view.View
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -47,6 +48,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
@@ -67,6 +69,10 @@ class MainActivity : ComponentActivity() {
     }
 
     private var notificationsVisible by mutableStateOf(true)
+    private var probableEndForegroundEpisodeId by mutableStateOf<String?>(null)
+    private var renderedProbableEndJourneyId: String? = null
+    private var renderedProbableEndEpisodeId: String? = null
+    private var renderedProbableEndWindowView: View? = null
     private var locationUiState by mutableStateOf(LocationUiState())
     private val pendingStart get() = journeyViewModel.pendingStartRequest
     private lateinit var startPermissions: com.journeycontinuity.app.ui.JourneyStartPermissions
@@ -130,10 +136,37 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                try {
+                    combine(rootViewModel.state.map { it.route },
+                        journeyViewModel.uiState.map { it.activeJourney?.id },
+                        app.probableEndProvenCandidateId) { route, journeyId, candidateId ->
+                        Triple(route, journeyId, candidateId)
+                    }.distinctUntilChanged().collectLatest { (route, journeyId, candidateId) ->
+                        probableEndForegroundEpisodeId = null
+                        renderedProbableEndJourneyId = null
+                        renderedProbableEndEpisodeId = null
+                        renderedProbableEndWindowView = null
+                        if (route in setOf(TravellerRootRoute.ADMITTED_EXISTING,
+                                TravellerRootRoute.ADMITTED_NEW) && journeyId != null && candidateId != null &&
+                            accountViewModel.state.value.monitoringStoppedJourney == null) {
+                            probableEndForegroundEpisodeId = app.recheckProbableEndForForeground(journeyId, candidateId)
+                        }
+                    }
+                } finally {
+                    probableEndForegroundEpisodeId = null
+                    renderedProbableEndJourneyId = null
+                    renderedProbableEndEpisodeId = null
+                    renderedProbableEndWindowView = null
+                }
+            }
+        }
         setContent {
             JourneyContinuityTheme {
                 val rootState by rootViewModel.state.collectAsStateWithLifecycle()
                 val accountState by accountViewModel.state.collectAsStateWithLifecycle()
+                val probableEndEpisode by app.probableEndPresentationEpisode.collectAsStateWithLifecycle(initialValue = null)
                 val stopped = accountState.monitoringStoppedJourney
                 if (accountState.restoringMonitoringStoppedResult) {
                     Box(Modifier.fillMaxSize().background(Color(0xFFFBFBF8)),
@@ -185,6 +218,29 @@ class MainActivity : ComponentActivity() {
                         destinationPickerViewModel = destinationPickerViewModel,
                         onMapRefinementRequested = destinationMapViewModel::open,
                         destinationMapViewModel = destinationMapViewModel,
+                        probableEndPresentation = probableEndEpisode,
+                        probableEndForegroundEpisodeId = probableEndForegroundEpisodeId,
+                        onProbableEndDismissed = {
+                            probableEndForegroundEpisodeId = null
+                            renderedProbableEndJourneyId = null
+                            renderedProbableEndEpisodeId = null
+                            renderedProbableEndWindowView = null
+                        },
+                        onProbableEndReopen = { journeyId, candidateId ->
+                            lifecycleScope.launch {
+                                if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) && isAdmitted())
+                                    probableEndForegroundEpisodeId =
+                                        app.recheckProbableEndForForeground(journeyId, candidateId)
+                            }
+                        },
+                        onProbableEndRendered = { journeyId, episodeId, sheetView ->
+                            if (probableEndForegroundEpisodeId == episodeId) {
+                                renderedProbableEndJourneyId = journeyId
+                                renderedProbableEndEpisodeId = episodeId
+                                renderedProbableEndWindowView = sheetView
+                                recordVisibleProbableEndOpportunity()
+                            }
+                        },
                     )
                 }
             }
@@ -203,6 +259,27 @@ class MainActivity : ComponentActivity() {
             startPermissions.resume()
         } else {
             startServiceForActiveJourneyIfReady()
+        }
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) recordVisibleProbableEndOpportunity()
+    }
+
+    private fun recordVisibleProbableEndOpportunity() {
+        val journeyId = renderedProbableEndJourneyId ?: return
+        val episodeId = renderedProbableEndEpisodeId ?: return
+        val sheetView = renderedProbableEndWindowView ?: return
+        if (!lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) ||
+            !sheetView.isAttachedToWindow || !sheetView.isShown || !sheetView.hasWindowFocus() ||
+            probableEndForegroundEpisodeId != episodeId ||
+            journeyViewModel.uiState.value.activeJourney?.id != journeyId) return
+        lifecycleScope.launch {
+            if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) &&
+                sheetView.isAttachedToWindow && sheetView.isShown && sheetView.hasWindowFocus() &&
+                probableEndForegroundEpisodeId == episodeId && renderedProbableEndEpisodeId == episodeId)
+                app.recordProbableEndForegroundOpportunity(journeyId, episodeId)
         }
     }
 

@@ -17,8 +17,9 @@ import androidx.room.TypeConverters
         ProbableEndEpisodeEntity::class,
         ProbableEndGuardBindingEntity::class,
         ProbableEndCandidateContinuityEntity::class,
+        ProbableEndPresentationEntity::class,
     ],
-    version = 14,
+    version = 15,
     exportSchema = true,
 )
 @TypeConverters(
@@ -38,4 +39,5 @@ abstract class JourneyDatabase : RoomDatabase() {
     abstract fun ownerAdoptionStateDao(): OwnerAdoptionStateDao
     abstract fun probableEndDao(): ProbableEndDao
     abstract fun probableEndGuardDao(): ProbableEndGuardDao
+    abstract fun probableEndPresentationDao(): ProbableEndPresentationDao
 }

@@ -102,6 +102,7 @@ class RoomProbableEndStore(
                     is ProbableEndResult.ReliableDeparture -> if (candidate != null || current.requiresReliableExit) {
                         dao.closeUnclosed(journeyId, LocalProbableEndLifecycle.INVALIDATED.name, now, "RELIABLE_DEPARTURE")
                         database.probableEndGuardDao().invalidate(journeyId)
+                        database.probableEndPresentationDao().invalidate(journeyId, now, "RELIABLE_DEPARTURE")
                         current = rebase(current, current.consumedSequence, telemetry.eventTime, now, false)
                         candidate = null
                     }
@@ -137,6 +138,7 @@ class RoomProbableEndStore(
             require(row.consumedSequence <= tail)
             dao.closeUnclosed(journeyId, LocalProbableEndLifecycle.SUPPRESSED.name, acceptedBoundaryMillis, "LOCAL_SUPPRESSION")
             database.probableEndGuardDao().invalidate(journeyId)
+            database.probableEndPresentationDao().invalidate(journeyId, now, "LOCAL_SUPPRESSION")
             dao.save(rebase(row, maxOf(tail, row.consumedSequence), maxOf(acceptedBoundaryMillis,
                 dao.maximumObservedTime(journeyId, latestPermittedTime(now))), now, true))
             LocalProbableEndRun(LocalProbableEndRunStatus.PROGRESSED)
@@ -150,6 +152,7 @@ class RoomProbableEndStore(
         }
         dao.closeUnclosed(journey.id, LocalProbableEndLifecycle.INVALIDATED.name, now, reason)
         database.probableEndGuardDao().invalidate(journey.id)
+        database.probableEndPresentationDao().invalidate(journey.id, now, reason)
         return ProbableEndDetectorEntity(journey.id, journey.startedAt,
             generation = Math.addExact(maxOf(row?.generation ?: -1, dao.highestGeneration(journey.id), 0), 1),
             // Quarantine the existing prefix, not future arrivals. Rejected far-future telemetry

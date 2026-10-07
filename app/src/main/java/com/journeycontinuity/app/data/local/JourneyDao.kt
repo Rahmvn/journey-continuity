@@ -76,6 +76,11 @@ abstract class JourneyDao {
     )
     protected abstract suspend fun supersedeUnsentFallback(journeyId: String, endedAt: Long)
 
+    @Query("""UPDATE probable_end_presentations SET status = 'INVALIDATED', liveSlot = NULL,
+        closedAtMillis = :endedAt, closureReason = 'JOURNEY_TERMINAL', revision = revision + 1
+        WHERE journeyId = :journeyId AND liveSlot = 1""")
+    protected abstract suspend fun closeProbableEndPresentation(journeyId: String, endedAt: Long)
+
     @Transaction
     open suspend fun insertIfNoActive(journey: JourneyEntity): Boolean {
         if (getActive() != null) return false
@@ -89,6 +94,7 @@ abstract class JourneyDao {
     open suspend fun completeActive(completedAt: Long): JourneyEntity? {
         val active = getActive() ?: return null
         if (markCompleted(active.id, completedAt, JourneyStatus.COMPLETED) != 1) return null
+        closeProbableEndPresentation(active.id, completedAt)
         markSyncPending(active.id)
         return active.copy(
             status = JourneyStatus.COMPLETED,
@@ -102,6 +108,7 @@ abstract class JourneyDao {
         val active = getActive() ?: return null
         if (active.id != journeyId) return null
         if (markMonitoringStopped(active.id, endedAt) != 1) return null
+        closeProbableEndPresentation(active.id, endedAt)
         deactivateFallback(active.id)
         supersedeUnsentFallback(active.id, endedAt)
         markSyncPending(active.id)
