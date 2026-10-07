@@ -13,8 +13,10 @@ import androidx.room.TypeConverters
         JourneyDegradationStateEntity::class,
         JourneyFallbackBindingEntity::class,
         FallbackAttemptEntity::class,
+        ProbableEndDetectorEntity::class,
+        ProbableEndEpisodeEntity::class,
     ],
-    version = 12,
+    version = 13,
     exportSchema = true,
 )
 @TypeConverters(
@@ -32,4 +34,5 @@ abstract class JourneyDatabase : RoomDatabase() {
     abstract fun degradedConnectivityDao(): DegradedConnectivityDao
     abstract fun fallbackAttemptDao(): FallbackAttemptDao
     abstract fun ownerAdoptionStateDao(): OwnerAdoptionStateDao
+    abstract fun probableEndDao(): ProbableEndDao
 }

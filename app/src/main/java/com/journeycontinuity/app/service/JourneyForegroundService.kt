@@ -124,7 +124,7 @@ class JourneyForegroundService : Service() {
 
         if (activeJourneyJob == null) {
             activeJourneyJob = serviceScope.launch {
-                repository.activeJourney.collectLatest { journey ->
+                (application as JourneyContinuityApplication).activeMonitoringJourney.collectLatest { journey ->
                     if (journey == null) {
                         currentDestination = null
                         stopServiceCompletely()
@@ -144,6 +144,10 @@ class JourneyForegroundService : Service() {
         val registration = runtimeSignals.begin(journeyId)
         val channel = Channel<Location>(Channel.UNLIMITED)
         locationChannel = channel
+        // Historical catch-up must not sit ahead of fresh telemetry on the persistence channel.
+        serviceScope.launch(Dispatchers.IO) {
+            (application as JourneyContinuityApplication).resumeLocalProbableEnd(journeyId, drain = true)
+        }
         persistenceJob = serviceScope.launch {
             for (location in channel) {
                 val battery = deviceContextReader.battery()

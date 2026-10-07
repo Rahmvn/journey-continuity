@@ -31,6 +31,7 @@ class RoomJourneyRepository(
     private val degradedConnectivityCoordinator: DegradedConnectivityCoordinator,
     private val admissionGate: OwnerAdmissionGate = OwnerAdmissionGate(),
     private val terminalHandoffGate: JourneyTerminalHandoffGate = JourneyTerminalHandoffGate(),
+    private val probableEndObserver: suspend (String) -> Unit = {},
 ) : JourneyRepository {
     override val activeJourney: Flow<Journey?> =
         journeyDao.observeActive().map { it?.toDomain() }
@@ -72,6 +73,10 @@ class RoomJourneyRepository(
         telemetryDao.insertForActiveJourney(sample)?.toDomain()?.also {
             runCatching { degradedConnectivityCoordinator.telemetryObserved(it) }
             scheduleSyncWithoutAffectingLocalWrite(SyncRequestUrgency.ROUTINE)
+            // Telemetry and its sync request committed before optional inference starts.
+            try { probableEndObserver(it.journeyId) }
+            catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (_: Exception) { /* Optional inference unavailable; preserve primary monitoring. */ }
         }
 
     override fun observeSyncState(journeyId: String): Flow<JourneySyncState?> =

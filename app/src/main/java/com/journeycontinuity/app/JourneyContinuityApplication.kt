@@ -14,6 +14,8 @@ import com.journeycontinuity.app.data.local.MIGRATION_8_9
 import com.journeycontinuity.app.data.local.MIGRATION_9_10
 import com.journeycontinuity.app.data.local.MIGRATION_10_11
 import com.journeycontinuity.app.data.local.MIGRATION_11_12
+import com.journeycontinuity.app.data.local.MIGRATION_12_13
+import com.journeycontinuity.app.data.repository.RoomProbableEndStore
 import com.journeycontinuity.app.data.local.FALLBACK_ATTEMPT_INVARIANT_CALLBACK
 import com.journeycontinuity.app.data.repository.JourneyRepository
 import com.journeycontinuity.app.data.repository.RoomJourneyRepository
@@ -89,6 +91,7 @@ import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.auth.status.SessionStatus
 import io.github.jan.supabase.createSupabaseClient
 import io.github.jan.supabase.postgrest.Postgrest
+import kotlinx.coroutines.launch
 
 class JourneyContinuityApplication : Application() {
     private val ownerAdmissionGate = OwnerAdmissionGate()
@@ -110,6 +113,7 @@ class JourneyContinuityApplication : Application() {
             MIGRATION_9_10,
             MIGRATION_10_11,
             MIGRATION_11_12,
+            MIGRATION_12_13,
         ).addCallback(FALLBACK_ATTEMPT_INVARIANT_CALLBACK).build()
     }
 
@@ -174,6 +178,12 @@ class JourneyContinuityApplication : Application() {
 
     val syncScheduler by lazy { WorkManagerSyncScheduler(applicationContext) }
 
+    private val probableEndStore by lazy { RoomProbableEndStore(database) }
+    // Service identity/display needs no structured-destination decoding. No fallback Journey is fabricated.
+    internal val activeMonitoringJourney by lazy { database.journeyDao().observeActive() }
+    private val localInferenceScope = kotlinx.coroutines.CoroutineScope(
+        kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
+
     val journeyRepository: JourneyRepository by lazy {
         RoomJourneyRepository(
             journeyDao = database.journeyDao(),
@@ -184,6 +194,7 @@ class JourneyContinuityApplication : Application() {
             degradedConnectivityCoordinator = degradedConnectivityCoordinator,
             admissionGate = ownerAdmissionGate,
             terminalHandoffGate = terminalHandoffGate,
+            probableEndObserver = { resumeLocalProbableEnd(it) },
         )
     }
 
@@ -399,6 +410,20 @@ class JourneyContinuityApplication : Application() {
         // Re-evaluate durable requested state after process restart. An urgent wake can
         // bypass a legacy/retrying worker without cancelling work that is already running.
         runCatching { syncScheduler.schedule(SyncRequestUrgency.URGENT) }
+        localInferenceScope.launch { resumeLocalProbableEnd() }
+    }
+
+    /** Also isolates lazy store initialization; only optional inference failures are contained here. */
+    internal suspend fun resumeLocalProbableEnd(journeyId: String? = null, drain: Boolean = false) {
+        try {
+            when {
+                journeyId == null -> probableEndStore.resumeActive()
+                drain -> probableEndStore.resume(journeyId)
+                else -> probableEndStore.consumePending(journeyId)
+            }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (_: Exception) { /* Optional local inference unavailable. */ }
     }
 
     private inner class ConfigurationFailureCloudGateway(
