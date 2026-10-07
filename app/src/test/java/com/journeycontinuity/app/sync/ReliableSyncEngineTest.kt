@@ -12,9 +12,36 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class ReliableSyncEngineTest {
+    @Test fun structuredOfflineRetryPreservesUuidEvidenceAndActiveStatus() = runBlocking {
+        val original = journey("structured").copy(structuredDestination =
+            com.journeycontinuity.app.domain.DestinationEvidenceFixtures.mapPin())
+        val local = FakeLocalSyncStore(original)
+        assertEquals(SyncRunResult.Retry, engine(local, FakeCloudGateway(upsertFailure =
+            CloudSyncException(SyncFailureKind.TRANSIENT, "Cloud unavailable"))).synchronize())
+        assertEquals(original, local.journey(original.id))
+        assertFalse(local.noWorkRequested(original.id))
+        val remote = FakeCloudGateway()
+        assertEquals(SyncRunResult.Success, engine(local, remote).synchronize())
+        assertEquals(original, remote.cloudJourneys.getValue(original.id))
+        assertEquals(original, local.journey(original.id))
+    }
+
+    @Test fun permanentStructuredCloudRejectionNeverDowngradesOrReplacesLocalJourney() = runBlocking {
+        val original = journey("structured-rejected").copy(structuredDestination =
+            com.journeycontinuity.app.domain.DestinationEvidenceFixtures.placeSearch())
+        val local = FakeLocalSyncStore(original)
+        val remote = FakeCloudGateway(upsertFailure = CloudSyncException(SyncFailureKind.PERMANENT,
+            "Destination admission rejected"))
+        engine(local, remote).synchronize()
+        assertEquals(original, local.journey(original.id))
+        assertEquals(JourneyStatus.ACTIVE, local.journey(original.id)!!.status)
+        assertNull(local.nextCandidate())
+        assertTrue(remote.cloudJourneys.isEmpty())
+    }
     @Test
     fun pendingBackgroundSyncOnCleanInstallCannotBootstrapAnOwner() = runBlocking {
         var anonymousSignIns = 0
@@ -608,6 +635,7 @@ class ReliableSyncEngineTest {
         private val verifiedOwner: Boolean = false,
         private val lookupFailure: CloudSyncException? = null,
         private val lookupOwner: String = "owner",
+        private val upsertFailure: CloudSyncException? = null,
     ) : CloudSyncGateway {
         val cloudJourneys = linkedMapOf<String, Journey>()
         val cloudTelemetry = linkedMapOf<Pair<String, Long>, TelemetryObservation>()
@@ -630,6 +658,7 @@ class ReliableSyncEngineTest {
         }
 
         override suspend fun upsertJourney(journey: Journey, ownerId: String) {
+            upsertFailure?.let { throw it }
             cloudJourneys[journey.id] = journey
             journeyUpserts++
             if (journeyUpserts == 1) afterFirstJourneyUpsert?.invoke()

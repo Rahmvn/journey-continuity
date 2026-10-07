@@ -4,17 +4,22 @@ import android.content.Context
 import android.content.Intent
 import androidx.core.content.ContextCompat
 
+interface JourneyMonitoringController {
+    fun start()
+    fun stop()
+}
+
 class JourneyServiceController(
     private val context: Context,
-) {
-    fun start() {
+) : JourneyMonitoringController {
+    override fun start() {
         ContextCompat.startForegroundService(
             context,
             Intent(context, JourneyForegroundService::class.java),
         )
     }
 
-    fun stop() {
+    override fun stop() {
         context.stopService(Intent(context, JourneyForegroundService::class.java))
     }
 }

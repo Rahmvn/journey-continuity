@@ -24,6 +24,28 @@ class JourneyLifecycleTest {
         idGenerator = JourneyIdGenerator { "journey-${++nextId}" },
     )
 
+    @Test fun structuredAdmissionPreservesExactFrozenDestinationAndLabel() = runBlocking {
+        val evidence = DestinationEvidenceFixtures.mapPinWithProvider("retained-place-id")
+        val result = lifecycle.start(JourneyStartRequest("Frozen place, Offa", evidence, 5_000L))
+        val admitted = (result as StartJourneyResult.Started).journey
+        assertTrue(admitted.structuredDestination === evidence)
+        assertEquals("Frozen place, Offa", admitted.destination)
+    }
+
+    @Test fun structuredAdmissionChecksEtaAtFinalCreation() = runBlocking {
+        val request = JourneyStartRequest("Offa, Kwara", DestinationEvidenceFixtures.locality(), 5_000L)
+        assertEquals(JourneyInputValidation.Valid, lifecycle.validate(request))
+        clock.now = 5_000L
+        assertEquals(StartJourneyResult.ExpectedArrivalNotFuture, lifecycle.start(request))
+        assertNull(repository.currentActive())
+    }
+
+    @Test fun structuredCompatibilityOverloadCannotPersistContradictoryLabel() = runBlocking {
+        assertEquals(StartJourneyResult.InvalidStructuredDestination,
+            lifecycle.start("Unrelated label", 5_000L, DestinationEvidenceFixtures.locality()))
+        assertNull(repository.currentActive())
+    }
+
     @Test
     fun blankDestinationIsRejected() = runBlocking {
         assertEquals(StartJourneyResult.BlankDestination, lifecycle.start("   ", 2_000L))

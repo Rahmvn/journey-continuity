@@ -40,9 +40,10 @@ class RoomJourneyRepository(
             journeyDao.insertIfNoActive(journey.toEntity()).also { created ->
                 if (created) scheduleSyncWithoutAffectingLocalWrite(SyncRequestUrgency.URGENT)
             }
-        } catch (_: SQLiteConstraintException) {
-            // The unique active slot closes the race between concurrent transactions.
-            false
+        } catch (error: SQLiteConstraintException) {
+            // Only an actual active Journey is a duplicate admission. Other constraint
+            // failures rolled the transaction back and must reach the generic failure UI.
+            if (journeyDao.getActive() != null) false else throw error
         }
     }
 

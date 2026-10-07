@@ -16,6 +16,7 @@ sealed interface StartJourneyResult {
     data object BlankDestination : StartJourneyResult
     data object ExpectedArrivalNotFuture : StartJourneyResult
     data object ActiveJourneyAlreadyExists : StartJourneyResult
+    data object InvalidStructuredDestination : StartJourneyResult
 }
 
 sealed interface CompleteJourneyResult {
@@ -32,13 +33,29 @@ sealed interface JourneyInputValidation {
     data object Valid : JourneyInputValidation
     data object BlankDestination : JourneyInputValidation
     data object ExpectedArrivalNotFuture : JourneyInputValidation
+    data object InvalidStructuredDestination : JourneyInputValidation
 }
 
 class JourneyLifecycle(
     private val repository: JourneyRepository,
     private val clock: JourneyClock = JourneyClock(System::currentTimeMillis),
     private val idGenerator: JourneyIdGenerator = JourneyIdGenerator { UUID.randomUUID().toString() },
+    private val catalogue: AdminCatalogue? = null,
 ) {
+    fun validate(request: JourneyStartRequest): JourneyInputValidation {
+        if (runCatching { request.validateDestination(catalogue) }.isFailure) {
+            return JourneyInputValidation.InvalidStructuredDestination
+        }
+        return validate(request.displayLabel, request.expectedArrivalAt)
+    }
+
+    suspend fun start(request: JourneyStartRequest): StartJourneyResult {
+        if (validate(request) == JourneyInputValidation.InvalidStructuredDestination) {
+            return StartJourneyResult.InvalidStructuredDestination
+        }
+        return start(request.displayLabel, request.expectedArrivalAt, request.destination)
+    }
+
     fun validate(destination: String, expectedArrivalAt: Long): JourneyInputValidation {
         if (destination.trim().isEmpty()) return JourneyInputValidation.BlankDestination
         if (expectedArrivalAt <= clock.nowMillis()) {
@@ -52,15 +69,21 @@ class JourneyLifecycle(
         expectedArrivalAt: Long,
         structuredDestination: StructuredDestination? = null,
     ): StartJourneyResult {
+        if (structuredDestination != null && runCatching {
+                JourneyStartRequest(destination, structuredDestination, expectedArrivalAt)
+                    .validateDestination(catalogue)
+            }.isFailure) return StartJourneyResult.InvalidStructuredDestination
         val normalizedDestination = destination.trim()
         when (validate(normalizedDestination, expectedArrivalAt)) {
             JourneyInputValidation.BlankDestination -> return StartJourneyResult.BlankDestination
             JourneyInputValidation.ExpectedArrivalNotFuture ->
                 return StartJourneyResult.ExpectedArrivalNotFuture
             JourneyInputValidation.Valid -> Unit
+            JourneyInputValidation.InvalidStructuredDestination -> return StartJourneyResult.InvalidStructuredDestination
         }
 
         val startedAt = clock.nowMillis()
+        if (expectedArrivalAt <= startedAt) return StartJourneyResult.ExpectedArrivalNotFuture
 
         val journey = Journey(
             id = idGenerator.newId(),

@@ -21,7 +21,9 @@ import com.journeycontinuity.app.degraded.ConnectivityPhase
 import com.journeycontinuity.app.degraded.FallbackDisposition
 import java.io.IOException
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.async
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -562,6 +564,67 @@ class JourneyDatabaseTest {
                 else assertEquals(facts.providerAttribution, kotlinx.serialization.json.Json.decodeFromString<DestinationProviderAttribution>(row.getString(3)))
             }
         }
+    }
+
+    @Test fun structuredAdmissionRollsBackJourneyAndSyncWhenHeartbeatInsertFails() = runBlocking {
+        val db = createInMemoryDatabase()
+        db.openHelper.writableDatabase.execSQL("""CREATE TRIGGER reject_heartbeat_test
+            BEFORE INSERT ON journey_heartbeat_states
+            BEGIN SELECT RAISE(ABORT, 'test heartbeat insert failure'); END""")
+        try {
+            db.journeyDao().insertIfNoActive(journey("rolled-back").copy(structuredDestination = evidencePoint()).toEntity())
+            fail("Admission must fail atomically")
+        } catch (_: android.database.sqlite.SQLiteException) { }
+        assertNull(db.journeyDao().getById("rolled-back"))
+        assertNull(db.syncStateDao().get("rolled-back"))
+        assertNull(db.heartbeatDao().observe("rolled-back").first())
+        assertNull(db.journeyDao().getActive())
+    }
+
+    @Test fun concurrentStructuredAdmissionsCreateOnlyOneCompleteActiveJourney() = runBlocking {
+        val db = createInMemoryDatabase()
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val attempts = (1..8).map { index ->
+            async(kotlinx.coroutines.Dispatchers.Default) {
+                gate.await()
+                val id = "concurrent-structured-$index"
+                id to db.journeyDao().insertIfNoActive(journey(id).copy(structuredDestination = evidencePoint()).toEntity())
+            }
+        }
+        gate.complete(Unit)
+        val results = attempts.map { it.await() }
+        assertEquals(1, results.count { it.second })
+        val winner = results.single { it.second }.first
+        assertEquals(winner, db.journeyDao().getActive()!!.id)
+        for ((id, accepted) in results) {
+            assertEquals(accepted, db.journeyDao().getById(id) != null)
+            assertEquals(accepted, db.syncStateDao().get(id) != null)
+            assertEquals(accepted, db.heartbeatDao().observe(id).first() != null)
+        }
+    }
+
+    @Test fun structuredAdmissionCreatesJourneySyncAndHeartbeatTogether() = runBlocking {
+        val db = createInMemoryDatabase()
+        val evidence = evidencePoint()
+        val admitted = com.journeycontinuity.app.domain.JourneyLifecycle(
+            object : com.journeycontinuity.app.data.repository.JourneyRepository {
+                override val activeJourney = db.journeyDao().observeActive().let { flow ->
+                    flow.map { it?.toDomain() }
+                }
+                override suspend fun createIfNoActive(journey: Journey) = db.journeyDao().insertIfNoActive(journey.toEntity())
+                override suspend fun completeActive(completedAt: Long) = db.journeyDao().completeActive(completedAt)?.toDomain()
+                override suspend fun stopMonitoringActive(journeyId: String, endedAt: Long): Journey? = null
+                override fun observeTelemetry(journeyId: String) = kotlinx.coroutines.flow.flowOf(com.journeycontinuity.app.domain.TelemetrySummary())
+                override suspend fun recordTelemetry(sample: TelemetrySample): com.journeycontinuity.app.domain.TelemetryObservation? = null
+                override fun observeSyncState(journeyId: String) = kotlinx.coroutines.flow.flowOf<com.journeycontinuity.app.domain.JourneySyncState?>(null)
+                override fun observeMonitoringState(journeyId: String) = kotlinx.coroutines.flow.flowOf<com.journeycontinuity.app.domain.CloudMonitoringState?>(null)
+            }, com.journeycontinuity.app.domain.JourneyClock { 1_000 },
+            com.journeycontinuity.app.domain.JourneyIdGenerator { "atomic-admission" })
+            .start(com.journeycontinuity.app.domain.JourneyStartRequest("Frozen pin, Offa", evidence, 5_000))
+        assertEquals(true, admitted is com.journeycontinuity.app.domain.StartJourneyResult.Started)
+        assertEquals(evidence, db.journeyDao().getActive()!!.toDomain().structuredDestination)
+        assertNotNull(db.syncStateDao().get("atomic-admission"))
+        assertNotNull(db.heartbeatDao().observe("atomic-admission").first())
     }
 
     @Test fun everyNewEvidenceFieldIsImmutableIncludingNullProviderEvidence() = runBlocking {

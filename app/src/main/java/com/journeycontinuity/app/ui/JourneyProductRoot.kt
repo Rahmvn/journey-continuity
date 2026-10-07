@@ -112,7 +112,8 @@ fun JourneyProductRoot(
     locationUiState: LocationUiState,
     smsFallbackStatus: SmsFallbackStatus,
     accountEmail: String?,
-    onStartRequested: (String, Long) -> Unit,
+    // Compatibility hosts only. MainActivity supplies the structured callback and picker.
+    onStartRequested: (String, Long) -> Unit = { _, _ -> },
     onRetryMonitoring: () -> Unit,
     onOpenLocationSettings: () -> Unit,
     onRequestSmsPermissions: () -> Unit,
@@ -129,6 +130,7 @@ fun JourneyProductRoot(
     destinationPickerViewModel: DestinationPickerViewModel? = null,
     onMapRefinementRequested: (MapRefinementRequest) -> Unit = {},
     destinationMapViewModel: com.journeycontinuity.app.ui.destination.DestinationMapViewModel? = null,
+    onStructuredStartRequested: (com.journeycontinuity.app.domain.JourneyStartRequest) -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val accountState = accountViewModel?.state?.collectAsStateWithLifecycle()?.value
@@ -142,6 +144,9 @@ fun JourneyProductRoot(
     val mapState = destinationMapViewModel?.state?.collectAsStateWithLifecycle()?.value
     val mapOpen = mapState != null && mapState != com.journeycontinuity.app.ui.destination.DestinationMapState.Closed
     val selectedDestinationDraft = pickerState?.selectedDraft
+    LaunchedEffect(state.activeJourney?.id) {
+        if (state.activeJourney != null) destinationPickerViewModel?.clearAdmittedDraft()
+    }
     LaunchedEffect(state.productRoute) {
         if (state.productRoute != JourneyProductRoute.START) {
             destinationPickerViewModel?.close()
@@ -298,16 +303,19 @@ fun JourneyProductRoot(
                         onDestinationChange = viewModel::updateDestination,
                         onArrivalChange = viewModel::updateExpectedArrival,
                         onBack = viewModel::backToHome,
-                        onStart = { if (destinationPickerViewModel == null)
-                            viewModel.requestStart(smsFallbackStatus.ready, onStartRequested) },
+                        onStart = {
+                            if (destinationPickerViewModel != null) viewModel.requestStructuredStart(
+                                destinationPickerViewModel.state.value.selectedDraft,
+                                smsFallbackStatus.ready, onStructuredStartRequested)
+                            else viewModel.requestStart(smsFallbackStatus.ready, onStartRequested)
+                        },
                         structuredDraft = selectedDestinationDraft,
                         onChooseDestination = destinationPickerViewModel?.let { picker ->
                             { picker.open() }
                         },
                     )
                 }
-                if (state.productRoute == JourneyProductRoute.CHECKPOINT &&
-                    destinationPickerViewModel == null) {
+                if (state.productRoute == JourneyProductRoute.CHECKPOINT) {
                     val accepted = state.trustedContacts.any {
                         it.status == TrustedContactStatus.ACCEPTED
                     }
@@ -318,7 +326,11 @@ fun JourneyProductRoot(
                     ) {
                         JourneyCheckpoint(
                             acceptedContact = accepted,
-                            onStartAnyway = { viewModel.startAnyway(onStartRequested) },
+                            onStartAnyway = {
+                                if (destinationPickerViewModel != null)
+                                    viewModel.startStructuredAnyway(onStructuredStartRequested)
+                                else viewModel.startAnyway(onStartRequested)
+                            },
                             onSetup = {
                                 if (accepted) viewModel.openResilience()
                                 else viewModel.openContacts()
@@ -489,8 +501,9 @@ internal fun JourneyStartScreen(
     val zone = ZoneId.systemDefault()
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) { while (true) { delay(30_000); now = System.currentTimeMillis() } }
-    val ready = onChooseDestination == null &&
-        canSubmitJourneyStart(state.draftDestination, state.draftExpectedArrivalAt, now)
+    val ready = if (onChooseDestination != null)
+        canSubmitStructuredJourneyStart(structuredDraft, state.draftExpectedArrivalAt, now)
+    else canSubmitJourneyStart(state.draftDestination, state.draftExpectedArrivalAt, now)
     Column(Modifier.fillMaxSize().padding(start = 24.dp, end = 24.dp, top = 28.dp, bottom = 24.dp)) {
         Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
             JourneyHeader("Start Journey", onBack)
@@ -503,7 +516,7 @@ internal fun JourneyStartScreen(
             } else {
                 Row(Modifier.fillMaxWidth().heightIn(min = 58.dp)
                     .border(1.dp, Color(0xBF676F74), RoundedCornerShape(4.dp))
-                    .clickable(role = Role.Button, onClick = onChooseDestination)
+                    .clickable(enabled = !state.isActionInProgress, role = Role.Button, onClick = onChooseDestination)
                     .testTag("choose_structured_destination")
                     .padding(horizontal = 16.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically) {
@@ -513,11 +526,6 @@ internal fun JourneyStartScreen(
                         maxLines = 2, overflow = TextOverflow.Ellipsis)
                     Text("›", color = Body, style = textStyle(24, 24))
                 }
-                if (structuredDraft != null) {
-                    Text("Destination selected. Journey start is not available yet.",
-                        color = Body, style = textStyle(13, 18),
-                        modifier = Modifier.padding(top = 8.dp))
-                }
             }
             Spacer(Modifier.height(24.dp))
             Text("When do you expect to arrive?", color = Heading,
@@ -525,7 +533,7 @@ internal fun JourneyStartScreen(
             Spacer(Modifier.height(8.dp))
             Row(Modifier.fillMaxWidth().height(58.dp)
                 .border(1.dp, Color(0xBF676F74), RoundedCornerShape(4.dp))
-                .clickable(role = Role.Button) {
+                .clickable(enabled = !state.isActionInProgress, role = Role.Button) {
                     val suggested = Instant.ofEpochMilli(state.draftExpectedArrivalAt ?: now + 3_600_000L)
                         .atZone(zone)
                     DatePickerDialog(context, { _, year, month, day ->

@@ -188,7 +188,7 @@ class JourneyContinuityApplication : Application() {
     }
 
     val journeyLifecycle: JourneyLifecycle by lazy {
-        JourneyLifecycle(journeyRepository)
+        JourneyLifecycle(journeyRepository, catalogue = adminCatalogue.snapshot())
     }
 
     private val monitoringStoppedResultStore by lazy {

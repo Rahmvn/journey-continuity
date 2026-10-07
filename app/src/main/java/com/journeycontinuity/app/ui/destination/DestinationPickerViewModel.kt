@@ -74,6 +74,12 @@ class DestinationPickerViewModel(
         mutableState.value = mutableState.value.copy(isOpen = false)
     }
 
+    /** Clear only after durable admission succeeds; failed prerequisites retain the selection. */
+    fun clearAdmittedDraft() {
+        cancelSearch()
+        mutableState.value = DestinationPickerState(regions = catalogue.regions)
+    }
+
     fun acceptDraft(draft: DestinationDraft) {
         val current = mutableState.value
         if (draft.destination.stateId != current.region?.id ||

@@ -5,6 +5,12 @@ import com.journeycontinuity.app.degraded.DegradedConnectivityState
 import com.journeycontinuity.app.degraded.SmsFallbackStatus
 import com.journeycontinuity.app.domain.Journey
 import com.journeycontinuity.app.service.CurrentJourneyConnectivity
+import com.journeycontinuity.app.ui.destination.DestinationDraft
+import com.journeycontinuity.app.ui.destination.toJourneyStartRequest
+
+internal fun canSubmitStructuredJourneyStart(draft: DestinationDraft?, arrivalAt: Long?, now: Long): Boolean =
+    arrivalAt != null && arrivalAt > now && draft != null &&
+        runCatching { draft.toJourneyStartRequest(arrivalAt) }.isSuccess
 
 internal fun canSubmitJourneyStart(destination: String, arrivalAt: Long?, now: Long): Boolean =
     destination.isNotBlank() && arrivalAt != null && arrivalAt > now

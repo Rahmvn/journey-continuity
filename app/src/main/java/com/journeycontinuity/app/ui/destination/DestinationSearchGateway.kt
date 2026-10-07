@@ -101,6 +101,7 @@ sealed interface DestinationDraft {
                 require(attribution != null && destination.provider != null && destination.providerPlaceId != null)
             }
         }
+        override fun toString() = "DestinationDraft.ExactPoint(redacted)"
     }
 
     data class Locality(
@@ -108,7 +109,29 @@ sealed interface DestinationDraft {
         override val destination: StructuredDestination,
     ) : DestinationDraft {
         init { require(destination.kind == DestinationKind.LOCALITY) }
+        override fun toString() = "DestinationDraft.Locality(redacted)"
     }
+}
+
+/** The sole draft-to-admission conversion. No network call, normalization or evidence regeneration. */
+fun DestinationDraft.toJourneyStartRequest(expectedArrivalAt: Long): com.journeycontinuity.app.domain.JourneyStartRequest {
+    when (this) {
+        is DestinationDraft.Locality -> require(destination.kind == DestinationKind.LOCALITY)
+        is DestinationDraft.ExactPoint -> {
+            require(destination.kind == DestinationKind.POINT &&
+                boundaryDatasetId == destination.boundaryDatasetId &&
+                boundaryDatasetVersion == destination.boundaryDatasetVersion &&
+                attribution == destination.providerAttribution) { "Destination draft evidence is inconsistent." }
+            require(reverseLabelEvidence == null ||
+                (destination.selectionSource == DestinationSelectionSource.MAP_PIN &&
+                    reverseLabelEvidence.provider == destination.provider &&
+                    reverseLabelEvidence.providerPlaceId == destination.providerPlaceId &&
+                    reverseLabelEvidence.attribution == destination.providerAttribution)) {
+                "Destination draft provenance is inconsistent."
+            }
+        }
+    }
+    return com.journeycontinuity.app.domain.JourneyStartRequest(displayLabel, destination, expectedArrivalAt)
 }
 
 data class MapRefinementRequest(

@@ -11,10 +11,13 @@ import com.journeycontinuity.app.domain.JourneyLifecycle
 import com.journeycontinuity.app.domain.JourneyInputValidation
 import com.journeycontinuity.app.domain.JourneySyncState
 import com.journeycontinuity.app.domain.StartJourneyResult
+import com.journeycontinuity.app.domain.JourneyStartRequest
+import com.journeycontinuity.app.ui.destination.DestinationDraft
+import com.journeycontinuity.app.ui.destination.toJourneyStartRequest
 import com.journeycontinuity.app.domain.TelemetryObservation
 import com.journeycontinuity.app.degraded.DegradedConnectivityCoordinator
 import com.journeycontinuity.app.degraded.DegradedConnectivityState
-import com.journeycontinuity.app.service.JourneyServiceController
+import com.journeycontinuity.app.service.JourneyMonitoringController
 import com.journeycontinuity.app.service.JourneyForegroundService
 import com.journeycontinuity.app.service.CurrentJourneyConnectivity
 import com.journeycontinuity.app.sync.CloudSyncException
@@ -133,7 +136,7 @@ internal fun JourneyUiState.withTrustedContactsSnapshot(
 class JourneyViewModel(
     repository: JourneyRepository,
     private val lifecycle: JourneyLifecycle,
-    private val serviceController: JourneyServiceController,
+    private val serviceController: JourneyMonitoringController,
     private val trustedContactGateway: TrustedContactGateway,
     private val degradedConnectivityCoordinator: DegradedConnectivityCoordinator,
     currentConnectivity: StateFlow<CurrentJourneyConnectivity?> =
@@ -143,6 +146,11 @@ class JourneyViewModel(
     val uiState: StateFlow<JourneyUiState> = _uiState.asStateFlow()
     private val trustedContactRequests = Mutex()
     private var trustedRefreshInFlight = false
+    private var checkpointRequest: JourneyStartRequest? = null
+    var pendingStartRequest: JourneyStartRequest? = null
+        private set
+    private var admissionInProgress = false
+    val startPermissionState = JourneyStartPermissionState()
 
     init {
         refreshTrustedContacts()
@@ -181,10 +189,13 @@ class JourneyViewModel(
                 }
                 .catch { error ->
                     _uiState.update {
-                        it.copy(isRestoring = false, message = "Could not read saved journey: ${error.message}")
+                        it.copy(isRestoring = false, message = "Could not read saved journey.")
                     }
                 }
                 .collect { activeData ->
+                    // A concurrently admitted Journey consumes eligibility for a pending Start.
+                    if (activeData.journey != null && !admissionInProgress &&
+                        (pendingStartRequest != null || checkpointRequest != null)) cancelPendingStart()
                     _uiState.update {
                         it.copy(
                             isRestoring = false,
@@ -210,6 +221,7 @@ class JourneyViewModel(
     }
 
     fun openContacts() {
+        cancelPendingStart()
         _uiState.update {
             val pendingResult = it.trustedContactsPage == TrustedContactsPage.READY &&
                 it.invitationShareUrl != null
@@ -242,6 +254,7 @@ class JourneyViewModel(
     }
 
     fun openResilience() {
+        cancelPendingStart()
         _uiState.update {
             it.copy(productRoute = JourneyProductRoute.RESILIENCE,
                 resiliencePage = ResiliencePage.STATUS,
@@ -269,9 +282,99 @@ class JourneyViewModel(
             invitationShareUrl = null)
     }
 
-    fun backToHome() = _uiState.update { it.copy(productRoute = JourneyProductRoute.HOME) }
+    fun backToHome() {
+        cancelPendingStart()
+        _uiState.update { it.copy(productRoute = JourneyProductRoute.HOME) }
+    }
 
-    fun backToStart() = _uiState.update { it.copy(productRoute = JourneyProductRoute.START) }
+    fun backToStart() {
+        cancelPendingStart()
+        _uiState.update { it.copy(productRoute = JourneyProductRoute.START) }
+    }
+
+    fun cancelPendingStart() {
+        if (admissionInProgress) return
+        val waitingForPrerequisites = pendingStartRequest != null
+        checkpointRequest = null
+        pendingStartRequest = null
+        if (waitingForPrerequisites) _uiState.update { it.copy(isActionInProgress = false) }
+    }
+
+    /** Freeze once, before checkpoint and permissions. UI readiness is never admission authority. */
+    fun requestStructuredStart(draft: DestinationDraft?, smsFallbackReady: Boolean,
+        begin: (JourneyStartRequest) -> Unit) {
+        val state = _uiState.value
+        if (state.isRestoring || state.isActionInProgress || state.activeJourney != null ||
+            checkpointRequest != null) return
+        val arrival = state.draftExpectedArrivalAt ?: return
+        val request = runCatching { requireNotNull(draft).toJourneyStartRequest(arrival) }.getOrNull()
+        if (request == null) {
+            setMessage("Choose a valid destination.")
+            return
+        }
+        if (!validateStart(request)) return
+        val accepted = state.trustedContacts.any { it.status == TrustedContactStatus.ACCEPTED }
+        if (needsResilienceCheckpoint(accepted, smsFallbackReady)) {
+            checkpointRequest = request
+            _uiState.update { it.copy(productRoute = JourneyProductRoute.CHECKPOINT) }
+        } else continueStructuredStart(request, begin)
+    }
+
+    fun startStructuredAnyway(begin: (JourneyStartRequest) -> Unit) {
+        if (_uiState.value.productRoute != JourneyProductRoute.CHECKPOINT ||
+            _uiState.value.isActionInProgress || _uiState.value.activeJourney != null) return
+        val request = checkpointRequest ?: return
+        checkpointRequest = null
+        continueStructuredStart(request, begin)
+    }
+
+    private fun continueStructuredStart(request: JourneyStartRequest, begin: (JourneyStartRequest) -> Unit) {
+        if (!validateStart(request)) {
+            backToStart()
+            return
+        }
+        pendingStartRequest = request
+        _uiState.update { it.copy(productRoute = JourneyProductRoute.START,
+            isActionInProgress = true, message = null) }
+        begin(request)
+    }
+
+    fun validateStart(request: JourneyStartRequest): Boolean = presentValidation(lifecycle.validate(request))
+
+    /** Consumes exactly the request sent to prerequisites; late/replayed callbacks are inert. */
+    fun startJourney(request: JourneyStartRequest) {
+        if (pendingStartRequest !== request || admissionInProgress) return
+        if (_uiState.value.activeJourney != null) {
+            cancelPendingStart()
+            return
+        }
+        pendingStartRequest = null
+        admissionInProgress = true
+        viewModelScope.launch {
+            try {
+                when (val result = lifecycle.start(request)) {
+                    is StartJourneyResult.Started -> _uiState.update { it.copy(
+                        activeJourney = result.journey,
+                        productRoute = JourneyProductRoute.HOME,
+                        draftDestination = "", draftExpectedArrivalAt = null,
+                    ) }
+                    StartJourneyResult.BlankDestination, StartJourneyResult.InvalidStructuredDestination ->
+                        setMessage("Choose a valid destination.")
+                    StartJourneyResult.ExpectedArrivalNotFuture -> setMessage("Expected arrival must be in the future.")
+                    StartJourneyResult.ActiveJourneyAlreadyExists -> setMessage("A journey is already active.")
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                setMessage("Could not start journey. Try again.")
+            } finally {
+                admissionInProgress = false
+                _uiState.update { it.copy(isActionInProgress = false,
+                    productRoute = if (it.activeJourney == null && it.productRoute == JourneyProductRoute.CHECKPOINT)
+                        JourneyProductRoute.START else it.productRoute) }
+            }
+        }
+    }
 
     fun updateDestination(value: String) = _uiState.update { it.copy(draftDestination = value) }
 
@@ -301,7 +404,10 @@ class JourneyViewModel(
     }
 
     fun validateStart(destination: String, expectedArrivalAt: Long): Boolean =
-        when (lifecycle.validate(destination, expectedArrivalAt)) {
+        presentValidation(lifecycle.validate(destination, expectedArrivalAt))
+
+    private fun presentValidation(validation: JourneyInputValidation): Boolean =
+        when (validation) {
             JourneyInputValidation.Valid -> true
             JourneyInputValidation.BlankDestination -> {
                 setMessage("Enter a destination.")
@@ -309,6 +415,10 @@ class JourneyViewModel(
             }
             JourneyInputValidation.ExpectedArrivalNotFuture -> {
                 setMessage("Expected arrival must be in the future.")
+                false
+            }
+            JourneyInputValidation.InvalidStructuredDestination -> {
+                setMessage("Choose a valid destination.")
                 false
             }
         }
@@ -328,9 +438,10 @@ class JourneyViewModel(
                         StartJourneyResult.BlankDestination -> setMessage("Enter a destination.")
                         StartJourneyResult.ExpectedArrivalNotFuture -> setMessage("Expected arrival must be in the future.")
                         StartJourneyResult.ActiveJourneyAlreadyExists -> setMessage("A journey is already active.")
+                        StartJourneyResult.InvalidStructuredDestination -> setMessage("Choose a valid destination.")
                     }
                 },
-                onFailure = { setMessage("Could not start journey: ${it.message}") },
+                onFailure = { setMessage("Could not start journey. Try again.") },
             )
             _uiState.update { it.copy(isActionInProgress = false) }
         }
@@ -487,7 +598,7 @@ private data class ActiveJourneyUiData(
 class JourneyViewModelFactory(
     private val repository: JourneyRepository,
     private val lifecycle: JourneyLifecycle,
-    private val serviceController: JourneyServiceController,
+    private val serviceController: JourneyMonitoringController,
     private val trustedContactGateway: TrustedContactGateway,
     private val degradedConnectivityCoordinator: DegradedConnectivityCoordinator,
 ) : ViewModelProvider.Factory {

@@ -2,8 +2,6 @@ package com.journeycontinuity.app
 
 import android.Manifest
 import android.content.Intent
-import android.content.pm.PackageManager
-import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import androidx.activity.ComponentActivity
@@ -22,7 +20,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.core.app.NotificationManagerCompat
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -71,7 +68,8 @@ class MainActivity : ComponentActivity() {
 
     private var notificationsVisible by mutableStateOf(true)
     private var locationUiState by mutableStateOf(LocationUiState())
-    private var pendingStart: Pair<String, Long>? = null
+    private val pendingStart get() = journeyViewModel.pendingStartRequest
+    private lateinit var startPermissions: com.journeycontinuity.app.ui.JourneyStartPermissions
     private var smsFallbackStatus by mutableStateOf(
         SmsFallbackStatus(false, false, false, emptyList(), null, false, false, "Checking SMS fallback capability."),
     )
@@ -97,44 +95,12 @@ class MainActivity : ComponentActivity() {
             app.travellerNoActiveSignOutGateway, app.travellerActiveJourneySignOutGateway)
     }
 
-    private val locationPermissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions(),
-    ) { permissions ->
-        refreshPrerequisiteState()
-        if (!isAdmitted()) return@registerForActivityResult
-        val hasFine = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true
-        val hasCoarse = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
-        when {
-            hasFine -> continueAfterLocationPermission()
-            hasCoarse -> {
-                journeyViewModel.showMessage(
-                    "Approximate location granted. Journey evidence will have reduced precision.",
-                )
-                continueAfterLocationPermission()
-            }
-            else -> {
-                pendingStart = null
-                journeyViewModel.showMessage(
-                    "Journey monitoring requires location access. Tap Start Journey to retry.",
-                )
-            }
-        }
-    }
-
-    private fun continueAfterLocationPermission() {
-        if (pendingStart != null) continuePendingStart() else startServiceForActiveJourneyIfReady()
-    }
-
-    private val notificationPermissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestPermission(),
-    ) {
-        refreshPrerequisiteState()
-        if (!isAdmitted()) return@registerForActivityResult
-        beginPendingJourney()
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        startPermissions = com.journeycontinuity.app.ui.JourneyStartPermissions(
+            this, { journeyViewModel }, { !signOutBlocksJourneyStart() },
+            ::refreshPrerequisiteState, ::startServiceForActiveJourneyIfReady,
+        )
         enableEdgeToEdge()
         refreshPrerequisiteState()
         lifecycleScope.launch {
@@ -193,7 +159,7 @@ class MainActivity : ComponentActivity() {
                             TravellerRootRoute.ACTIVE_AUTH_PENDING -> "Checking account connection"
                             else -> app.currentAccountEmail
                         },
-                        onStartRequested = ::startAfterPrerequisites,
+                        onStructuredStartRequested = startPermissions::begin,
                         onRetryMonitoring = ::retryMonitoringPrerequisites,
                         onOpenLocationSettings = ::openLocationSettings,
                         smsFallbackStatus = smsFallbackStatus,
@@ -233,66 +199,17 @@ class MainActivity : ComponentActivity() {
             resumeEstablishedLocalMonitoring()
             return
         }
-        if (pendingStart != null && locationUiState.locationServicesEnabled) {
-            continuePendingStart()
+        if (pendingStart != null) {
+            startPermissions.resume()
         } else {
             startServiceForActiveJourneyIfReady()
         }
     }
 
-    private fun startAfterPrerequisites(destination: String, eta: Long) {
-        if (signOutBlocksJourneyStart()) return
-        if (!journeyViewModel.validateStart(destination, eta)) return
-        pendingStart = destination to eta
-        continuePendingStart()
-    }
-
-    private fun continuePendingStart() {
-        if (signOutBlocksJourneyStart()) return
-        if (pendingStart == null) return
-        refreshPrerequisiteState()
-        if (locationUiState.access == ForegroundLocationAccess.NONE) {
-            locationPermissionLauncher.launch(
-                arrayOf(
-                    Manifest.permission.ACCESS_FINE_LOCATION,
-                    Manifest.permission.ACCESS_COARSE_LOCATION,
-                ),
-            )
-            return
-        }
-        if (!locationUiState.locationServicesEnabled) {
-            journeyViewModel.showMessage(
-                "Turn on device Location Services before starting monitoring.",
-            )
-            return
-        }
-        if (
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
-            PackageManager.PERMISSION_GRANTED
-        ) {
-            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-            return
-        }
-        beginPendingJourney()
-    }
-
-    private fun beginPendingJourney() {
-        if (signOutBlocksJourneyStart()) return
-        val (destination, eta) = pendingStart ?: return
-        pendingStart = null
-        journeyViewModel.startJourney(destination, eta)
-    }
-
     private fun retryMonitoringPrerequisites() {
         refreshPrerequisiteState()
         if (locationUiState.access == ForegroundLocationAccess.NONE) {
-            locationPermissionLauncher.launch(
-                arrayOf(
-                    Manifest.permission.ACCESS_FINE_LOCATION,
-                    Manifest.permission.ACCESS_COARSE_LOCATION,
-                ),
-            )
+            startPermissions.retryMonitoringLocation()
         } else if (!locationUiState.locationServicesEnabled) {
             openLocationSettings()
         } else {
@@ -315,7 +232,7 @@ class MainActivity : ComponentActivity() {
                     .activeRuntimeJourneyId.value == journeyViewModel.uiState.value.activeJourney?.id) return
             runCatching { app.journeyServiceController.start() }
                 .onFailure {
-                    journeyViewModel.showMessage("Could not start location monitoring: ${it.message}")
+                    journeyViewModel.showMessage("Could not start location monitoring. Retry monitoring.")
                 }
         }
     }

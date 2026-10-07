@@ -10,13 +10,21 @@ class IsolatedTestRunner : AndroidJUnitRunner() {
         cl: ClassLoader?,
         className: String?,
         context: Context?,
-    ): Application = super.newApplication(
+    ): Application {
+        if (context?.packageName == "com.journeycontinuity.app.structuredadmissionaudit") {
+            check(BuildConfig.SUPABASE_URL.isEmpty() && BuildConfig.SUPABASE_PUBLISHABLE_KEY.isEmpty()) {
+                "Structured admission device acceptance requires a credential-free isolated build."
+            }
+        }
+        return super.newApplication(
         cl,
-        if (context?.packageName == "com.journeycontinuity.app.m6isolation") {
+        if (context?.packageName in setOf("com.journeycontinuity.app.m6isolation",
+                "com.journeycontinuity.app.structuredadmissionaudit")) {
             JourneyContinuityApplication::class.java.name
         } else {
             Application::class.java.name
         },
         context,
-    )
+        )
+    }
 }
