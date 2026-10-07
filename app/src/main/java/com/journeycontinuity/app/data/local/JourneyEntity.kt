@@ -8,6 +8,10 @@ import com.journeycontinuity.app.domain.JourneyStatus
 import com.journeycontinuity.app.domain.DestinationKind
 import com.journeycontinuity.app.domain.DestinationSelectionSource
 import com.journeycontinuity.app.domain.StructuredDestination
+import com.journeycontinuity.app.domain.AdminLocalUnitType
+import com.journeycontinuity.app.domain.DestinationProviderAttribution
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 
 @Entity(
     tableName = "journeys",
@@ -36,6 +40,10 @@ data class JourneyEntity(
     val destinationProviderPlaceId: String? = null,
     val destinationAdminDatasetVersion: String? = null,
     val destinationCustomPlaceName: String? = null,
+    val destinationLocalUnitType: String? = null,
+    val destinationBoundaryDatasetId: String? = null,
+    val destinationBoundaryDatasetVersion: String? = null,
+    val destinationProviderAttribution: String? = null,
 ) {
     override fun toString(): String = "JourneyEntity(id=$id, status=$status, destinationFacts=redacted)"
 }
@@ -45,7 +53,8 @@ private fun JourneyEntity.toStructuredDestination(): StructuredDestination? {
         check(listOf(destinationCountryCode, destinationStateId, destinationStateName,
             destinationLgaId, destinationLgaName, destinationSelectionSource, destinationProvider,
             destinationProviderPlaceId, destinationAdminDatasetVersion,
-            destinationCustomPlaceName).all { it == null } &&
+            destinationCustomPlaceName, destinationLocalUnitType, destinationBoundaryDatasetId,
+            destinationBoundaryDatasetVersion, destinationProviderAttribution).all { it == null } &&
             destinationLatitude == null && destinationLongitude == null) {
             "A text-only Journey cannot contain partial destination facts."
         }
@@ -65,6 +74,13 @@ private fun JourneyEntity.toStructuredDestination(): StructuredDestination? {
         providerPlaceId = destinationProviderPlaceId,
         adminDatasetVersion = destinationAdminDatasetVersion,
         customPlaceName = destinationCustomPlaceName,
+        localUnitType = AdminLocalUnitType.valueOf(requireNotNull(destinationLocalUnitType)),
+        boundaryDatasetId = destinationBoundaryDatasetId,
+        boundaryDatasetVersion = destinationBoundaryDatasetVersion,
+        providerAttribution = destinationProviderAttribution?.let {
+            try { Json.decodeFromString<DestinationProviderAttribution>(it) }
+            catch (_: Exception) { throw IllegalArgumentException("Invalid persisted destination attribution.") }
+        },
     )
 }
 
@@ -103,5 +119,9 @@ fun Journey.toEntity(): JourneyEntity {
         destinationProviderPlaceId = structured?.providerPlaceId,
         destinationAdminDatasetVersion = structured?.adminDatasetVersion,
         destinationCustomPlaceName = structured?.customPlaceName,
+        destinationLocalUnitType = structured?.localUnitType?.name,
+        destinationBoundaryDatasetId = structured?.boundaryDatasetId,
+        destinationBoundaryDatasetVersion = structured?.boundaryDatasetVersion,
+        destinationProviderAttribution = structured?.providerAttribution?.let { Json.encodeToString(it) },
     )
 }

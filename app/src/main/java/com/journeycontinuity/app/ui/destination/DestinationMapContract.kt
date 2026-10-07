@@ -147,5 +147,7 @@ internal fun mapPointDraft(state: DestinationMapState.Naming): DestinationDraft.
             selectionSource = com.journeycontinuity.app.domain.DestinationSelectionSource.MAP_PIN,
             adminDatasetVersion = point.area.catalogueVersion, customPlaceName = custom,
             provider = evidence?.provider, providerPlaceId = evidence?.providerPlaceId,
+            boundaryDatasetId = point.datasetId, boundaryDatasetVersion = point.datasetVersion,
+            providerAttribution = evidence?.attribution,
         ), point.datasetVersion, evidence?.attribution, point.datasetId, evidence)
 }

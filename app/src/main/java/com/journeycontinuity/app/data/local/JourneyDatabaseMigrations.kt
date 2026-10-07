@@ -316,21 +316,46 @@ val MIGRATION_10_11 = object : Migration(10, 11) {
     }
 }
 
+/** Nullable additions preserve historical Journeys without invented evidence. */
+val MIGRATION_11_12 = object : Migration(11, 12) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        listOf("destinationLocalUnitType", "destinationBoundaryDatasetId",
+            "destinationBoundaryDatasetVersion", "destinationProviderAttribution").forEach {
+            db.execSQL("ALTER TABLE `journeys` ADD COLUMN `$it` TEXT")
+        }
+        createJourneyDestinationInvariantTriggers(db, includeEvidence = true)
+    }
+}
+
 val FALLBACK_ATTEMPT_INVARIANT_CALLBACK = object : RoomDatabase.Callback() {
     override fun onOpen(db: SupportSQLiteDatabase) {
         super.onOpen(db)
         createFallbackAttemptInvariantTriggers(db)
-        createJourneyDestinationInvariantTriggers(db)
+        createJourneyDestinationInvariantTriggers(db, includeEvidence = true)
     }
 }
 
-private fun createJourneyDestinationInvariantTriggers(db: SupportSQLiteDatabase) {
+private fun createJourneyDestinationInvariantTriggers(db: SupportSQLiteDatabase, includeEvidence: Boolean = false) {
+    // Room migrations already own a transaction; onOpen does not. A failed or
+    // interrupted recreation must leave the previous protections intact.
+    val ownsTransaction = !db.inTransaction()
+    if (ownsTransaction) db.beginTransaction()
+    try {
+        replaceJourneyDestinationInvariantTriggers(db, includeEvidence)
+        if (ownsTransaction) db.setTransactionSuccessful()
+    } finally {
+        if (ownsTransaction) db.endTransaction()
+    }
+}
+
+private fun replaceJourneyDestinationInvariantTriggers(db: SupportSQLiteDatabase, includeEvidence: Boolean) {
     val columns = listOf(
         "destination", "destinationCountryCode", "destinationStateId", "destinationStateName",
         "destinationLgaId", "destinationLgaName", "destinationKind", "destinationLatitude",
         "destinationLongitude", "destinationSelectionSource", "destinationProvider",
         "destinationProviderPlaceId", "destinationAdminDatasetVersion", "destinationCustomPlaceName",
-    )
+    ) + if (includeEvidence) listOf("destinationLocalUnitType", "destinationBoundaryDatasetId",
+        "destinationBoundaryDatasetVersion", "destinationProviderAttribution") else emptyList()
     db.execSQL("DROP TRIGGER IF EXISTS `journeys_destination_immutable`")
     val facts = columns.drop(1)
     val textFacts = listOf(
@@ -340,7 +365,7 @@ private fun createJourneyDestinationInvariantTriggers(db: SupportSQLiteDatabase)
         "destinationProvider", "destinationProviderPlaceId", "destinationAdminDatasetVersion",
         "destinationCustomPlaceName",
     )
-    val complete = listOf(
+    val complete = (listOf(
         "NEW.destinationCountryCode = 'NG'",
         *textFacts.map { "NEW.`$it` IS NOT NULL AND NEW.`$it` = trim(NEW.`$it`) AND length(NEW.`$it`) > 0" }.toTypedArray(),
         "NEW.destinationKind IN ('POINT', 'LOCALITY')",
@@ -354,7 +379,31 @@ private fun createJourneyDestinationInvariantTriggers(db: SupportSQLiteDatabase)
         "(NEW.destinationProviderPlaceId IS NULL OR NEW.destinationProvider IS NOT NULL)",
         "(NEW.destinationCustomPlaceName IS NULL OR NEW.destinationSelectionSource = 'MAP_PIN')",
         *optionalText.map { "(NEW.`$it` IS NULL OR (NEW.`$it` = trim(NEW.`$it`) AND length(NEW.`$it`) > 0))" }.toTypedArray(),
-    ).joinToString(" AND ")
+    ) + if (includeEvidence) listOf(
+        "NEW.destinationAdminDatasetVersion IS NOT NULL",
+        "NEW.destinationLocalUnitType IN ('LGA', 'AREA_COUNCIL')",
+        "((NEW.destinationStateId = 'ng-fct' AND NEW.destinationLocalUnitType = 'AREA_COUNCIL') OR " +
+            "(NEW.destinationStateId <> 'ng-fct' AND NEW.destinationLocalUnitType = 'LGA'))",
+        "(NEW.destinationBoundaryDatasetId IS NULL OR NEW.destinationBoundaryDatasetId = 'NG_OPERATIONAL_BOUNDARIES')",
+        "(NEW.destinationBoundaryDatasetVersion IS NULL OR " +
+            "(length(trim(NEW.destinationBoundaryDatasetVersion)) > 0 AND " +
+            "NEW.destinationBoundaryDatasetVersion = trim(NEW.destinationBoundaryDatasetVersion)))",
+        // Attribution JSON is decoded strictly by the domain mapper. Do not depend on
+        // SQLite JSON1 availability across all supported Android versions.
+        "(NEW.destinationProviderAttribution IS NULL OR length(trim(NEW.destinationProviderAttribution)) > 0)",
+        "((NEW.destinationKind = 'LOCALITY' AND NEW.destinationBoundaryDatasetId IS NULL AND " +
+            "NEW.destinationBoundaryDatasetVersion IS NULL AND NEW.destinationProvider IS NULL AND " +
+            "NEW.destinationProviderPlaceId IS NULL AND NEW.destinationProviderAttribution IS NULL AND " +
+            "NEW.destinationCustomPlaceName IS NULL) OR " +
+            "(NEW.destinationKind = 'POINT' AND NEW.destinationBoundaryDatasetId IS NOT NULL AND " +
+            "NEW.destinationBoundaryDatasetVersion IS NOT NULL AND " +
+            "((NEW.destinationSelectionSource = 'PLACE_SEARCH' AND NEW.destinationProvider IS NOT NULL AND " +
+            "NEW.destinationProviderPlaceId IS NOT NULL AND NEW.destinationProviderAttribution IS NOT NULL) OR " +
+            "(NEW.destinationSelectionSource = 'MAP_PIN' AND " +
+            "((NEW.destinationProvider IS NULL AND NEW.destinationProviderPlaceId IS NULL AND " +
+            "NEW.destinationProviderAttribution IS NULL) OR " +
+            "(NEW.destinationProvider = 'GEOAPIFY' AND NEW.destinationProviderAttribution IS NOT NULL))))))",
+    ) else emptyList()).joinToString(" AND ")
     val valid = "(${facts.joinToString(" AND ") { "NEW.`$it` IS NULL" }}) OR coalesce(($complete), 0)"
     listOf("INSERT", "UPDATE").forEach { event ->
         val name = "journeys_destination_validate_${event.lowercase()}"

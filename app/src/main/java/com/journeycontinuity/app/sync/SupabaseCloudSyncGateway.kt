@@ -159,6 +159,11 @@ internal data class CloudJourneyRow(
     @SerialName("destination_provider_place_id") val destinationProviderPlaceId: String?,
     @SerialName("destination_admin_dataset_version") val destinationAdminDatasetVersion: String?,
     @SerialName("destination_custom_place_name") val destinationCustomPlaceName: String?,
+    @SerialName("destination_local_unit_type") val destinationLocalUnitType: String?,
+    @SerialName("destination_boundary_dataset_id") val destinationBoundaryDatasetId: String?,
+    @SerialName("destination_boundary_dataset_version") val destinationBoundaryDatasetVersion: String?,
+    @SerialName("destination_provider_attribution")
+    val destinationProviderAttribution: com.journeycontinuity.app.domain.DestinationProviderAttribution?,
 ) {
     override fun toString(): String = "CloudJourneyRow(redacted)"
 }
@@ -198,6 +203,10 @@ internal fun Journey.toCloudRow(ownerId: String) = CloudJourneyRow(
     destinationProviderPlaceId = structuredDestination?.providerPlaceId,
     destinationAdminDatasetVersion = structuredDestination?.adminDatasetVersion,
     destinationCustomPlaceName = structuredDestination?.customPlaceName,
+    destinationLocalUnitType = structuredDestination?.localUnitType?.name,
+    destinationBoundaryDatasetId = structuredDestination?.boundaryDatasetId,
+    destinationBoundaryDatasetVersion = structuredDestination?.boundaryDatasetVersion,
+    destinationProviderAttribution = structuredDestination?.providerAttribution,
 )
 
 private fun TelemetryObservation.toCloudRow() = CloudTelemetryRow(

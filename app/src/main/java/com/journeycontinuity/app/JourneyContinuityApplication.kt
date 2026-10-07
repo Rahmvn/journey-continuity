@@ -13,6 +13,7 @@ import com.journeycontinuity.app.data.local.MIGRATION_7_8
 import com.journeycontinuity.app.data.local.MIGRATION_8_9
 import com.journeycontinuity.app.data.local.MIGRATION_9_10
 import com.journeycontinuity.app.data.local.MIGRATION_10_11
+import com.journeycontinuity.app.data.local.MIGRATION_11_12
 import com.journeycontinuity.app.data.local.FALLBACK_ATTEMPT_INVARIANT_CALLBACK
 import com.journeycontinuity.app.data.repository.JourneyRepository
 import com.journeycontinuity.app.data.repository.RoomJourneyRepository
@@ -108,6 +109,7 @@ class JourneyContinuityApplication : Application() {
             MIGRATION_8_9,
             MIGRATION_9_10,
             MIGRATION_10_11,
+            MIGRATION_11_12,
         ).addCallback(FALLBACK_ATTEMPT_INVARIANT_CALLBACK).build()
     }
 

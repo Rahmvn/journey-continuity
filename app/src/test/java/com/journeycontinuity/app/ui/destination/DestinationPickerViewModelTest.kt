@@ -46,6 +46,24 @@ class DestinationPickerViewModelTest {
         ProviderAttribution("OpenStreetMap", "© OpenStreetMap contributors", "ODbL", "https://www.openstreetmap.org"),
     )
 
+    @Test fun localityLabelUsesCanonicalUnitAndRegionAndCarriesType() = pickerTest {
+        val vm = DestinationPickerViewModel(catalogue, DestinationSearchGateway {
+            DestinationSearchResponse.NoResults
+        }, { false })
+        listOf("ng-kwara" to "ng-kwara-offa", "ng-fct" to "ng-fct-abuja-municipal").forEach { (regionId, unitId) ->
+            vm.selectRegion(regionId); vm.selectUnit(unitId)
+            val draft = vm.selectLocality()!!.value
+            val region = catalogue.region(regionId)!!
+            val unit = catalogue.localUnit(unitId)!!
+            assertEquals("${unit.canonicalName}, ${region.canonicalName}", draft.displayLabel)
+            assertEquals(unit.type, draft.destination.localUnitType)
+            assertNull(draft.destination.latitude)
+            assertNull(draft.destination.boundaryDatasetId)
+            assertNull(draft.destination.providerAttribution)
+            com.journeycontinuity.app.domain.StructuredDestinationValidator.validate(draft.destination, catalogue)
+        }
+    }
+
     @Test fun catalogueDrivesRegionListFctTerminologyAndCanonicalChildren() = pickerTest {
         val vm = DestinationPickerViewModel(catalogue, DestinationSearchGateway {
             DestinationSearchResponse.NoResults
@@ -163,7 +181,7 @@ class DestinationPickerViewModelTest {
         vm.updateQuery("hospital"); advanceTimeBy(400); runCurrent()
         assertEquals(DestinationSearchState.VERIFICATION_UNAVAILABLE, vm.state.value.searchState)
         assertTrue(vm.state.value.results.isEmpty())
-        assertEquals("Abuja Municipal Area Council", vm.selectLocality()!!.value.displayLabel)
+        assertEquals("Abuja Municipal Area Council, Federal Capital Territory", vm.selectLocality()!!.value.displayLabel)
         assertNull(vm.requestMap())
     }
 
@@ -313,7 +331,7 @@ class DestinationPickerViewModelTest {
         assertSame(vm, recreated)
         assertEquals(true, recreated.state.value.isOpen)
         assertEquals(DestinationPickerPage.LOCAL_UNITS, recreated.state.value.page)
-        assertEquals("Abuja Municipal Area Council", recreated.state.value.selectedDraft?.displayLabel)
+        assertEquals("Abuja Municipal Area Council, Federal Capital Territory", recreated.state.value.selectedDraft?.displayLabel)
         store.clear()
         val fresh = ViewModelProvider(owner(), factory)[DestinationPickerViewModel::class.java]
         assertNull(fresh.state.value.selectedDraft)

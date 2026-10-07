@@ -14,12 +14,7 @@ enum class BoundaryOutcome {
 enum class AdminTextMatch { MATCH, UNKNOWN, CONTRADICTION }
 enum class SearchResultType { PLACE, ROAD, LOCALITY, UNKNOWN }
 
-data class ProviderAttribution(
-    val sourceName: String,
-    val attribution: String,
-    val license: String,
-    val sourceUrl: String,
-)
+typealias ProviderAttribution = com.journeycontinuity.app.domain.DestinationProviderAttribution
 
 /** The server decides suitability; Android does not infer containment from provider text. */
 data class PlaceSearchResult(
@@ -95,6 +90,13 @@ sealed interface DestinationDraft {
             require(destination.kind == DestinationKind.POINT)
             require(CoordinateVerification(BoundaryOutcome.INSIDE, boundaryDatasetId,
                 boundaryDatasetVersion).hasBoundaryEvidence)
+            require(boundaryDatasetId == destination.boundaryDatasetId &&
+                boundaryDatasetVersion == destination.boundaryDatasetVersion &&
+                attribution == destination.providerAttribution)
+            require(reverseLabelEvidence == null || (destination.selectionSource == DestinationSelectionSource.MAP_PIN &&
+                reverseLabelEvidence.provider == destination.provider &&
+                reverseLabelEvidence.providerPlaceId == destination.providerPlaceId &&
+                reverseLabelEvidence.attribution == attribution))
             if (destination.selectionSource == DestinationSelectionSource.PLACE_SEARCH) {
                 require(attribution != null && destination.provider != null && destination.providerPlaceId != null)
             }
@@ -104,7 +106,9 @@ sealed interface DestinationDraft {
     data class Locality(
         override val displayLabel: String,
         override val destination: StructuredDestination,
-    ) : DestinationDraft
+    ) : DestinationDraft {
+        init { require(destination.kind == DestinationKind.LOCALITY) }
+    }
 }
 
 data class MapRefinementRequest(
@@ -115,13 +119,14 @@ data class MapRefinementRequest(
 
 internal fun localityDraft(region: AdminRegion, unit: AdminLocalUnit, catalogueVersion: String) =
     DestinationDraft.Locality(
-        displayLabel = unit.canonicalName,
+        displayLabel = "${unit.canonicalName}, ${region.canonicalName}",
         destination = StructuredDestination(
             countryCode = "NG", stateId = region.id, stateName = region.canonicalName,
             localUnitId = unit.id, localUnitName = unit.canonicalName,
             kind = DestinationKind.LOCALITY, latitude = null, longitude = null,
             selectionSource = DestinationSelectionSource.LOCALITY_SELECTION,
             adminDatasetVersion = catalogueVersion,
+            localUnitType = unit.type,
         ),
     )
 
@@ -150,6 +155,10 @@ internal fun exactPointDraft(
             provider = result.provider,
             providerPlaceId = requireNotNull(result.providerPlaceId),
             adminDatasetVersion = catalogueVersion,
+            localUnitType = unit.type,
+            boundaryDatasetId = OPERATIONAL_BOUNDARY_DATASET,
+            boundaryDatasetVersion = version,
+            providerAttribution = attribution,
         ),
         boundaryDatasetVersion = version,
         attribution = attribution,

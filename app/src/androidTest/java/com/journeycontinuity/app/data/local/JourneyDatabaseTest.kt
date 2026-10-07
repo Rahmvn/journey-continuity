@@ -14,6 +14,8 @@ import com.journeycontinuity.app.domain.JourneyStatus
 import com.journeycontinuity.app.domain.DestinationKind
 import com.journeycontinuity.app.domain.DestinationSelectionSource
 import com.journeycontinuity.app.domain.StructuredDestination
+import com.journeycontinuity.app.domain.AdminLocalUnitType
+import com.journeycontinuity.app.domain.DestinationProviderAttribution
 import com.journeycontinuity.app.domain.TelemetrySample
 import com.journeycontinuity.app.degraded.ConnectivityPhase
 import com.journeycontinuity.app.degraded.FallbackDisposition
@@ -54,6 +56,7 @@ class JourneyDatabaseTest {
             TEST_DATABASE_6_7,
             TEST_DATABASE_9_10,
             TEST_DATABASE_10_11,
+            TEST_DATABASE_11_12,
         ).forEach(context::deleteDatabase)
     }
 
@@ -457,12 +460,140 @@ class JourneyDatabaseTest {
         }
     }
 
+    @Test fun migrationFrom11To12PreservesLegacyAndAllUnknownFacts() {
+        var originalLabelBytes: String? = null
+        var originalIndexes: Map<String, String> = emptyMap()
+        migrationHelper.createDatabase(TEST_DATABASE_11_12, 11).use { db ->
+            db.execSQL("""INSERT INTO journeys
+                (id, destination, expectedArrivalAt, startedAt, status, completedAt, activeSlot, endedAt)
+                VALUES ('legacy-12', '  Ilorin  ', 5000, 1000, 'ACTIVE', NULL, 1, NULL)""")
+            db.query("SELECT hex(CAST(destination AS BLOB)) FROM journeys WHERE id = 'legacy-12'").use { row ->
+                check(row.moveToFirst()); originalLabelBytes = row.getString(0)
+            }
+            originalIndexes = databaseDefinitions(db, "index")
+            db.execSQL("""CREATE TRIGGER migration_canary BEFORE UPDATE OF id ON journeys
+                BEGIN SELECT RAISE(ABORT, 'preserved trigger'); END""")
+        }
+        migrationHelper.runMigrationsAndValidate(TEST_DATABASE_11_12, 12, true, MIGRATION_11_12).use { db ->
+            assertEquals(originalIndexes, databaseDefinitions(db, "index"))
+            assertEquals(true, databaseDefinitions(db, "trigger").containsKey("migration_canary"))
+            db.query("SELECT hex(CAST(destination AS BLOB)) FROM journeys WHERE id = 'legacy-12'").use { row ->
+                check(row.moveToFirst()); assertEquals(originalLabelBytes, row.getString(0))
+            }
+            val destinationTriggers = databaseDefinitions(db, "trigger").filterKeys { it.startsWith("journeys_destination_") }
+            assertEquals(3, destinationTriggers.size)
+            listOf("destinationLocalUnitType", "destinationBoundaryDatasetId",
+                "destinationBoundaryDatasetVersion", "destinationProviderAttribution").forEach { field ->
+                destinationTriggers.values.forEach { sql -> assertEquals("Trigger must retain $field", true, sql.contains(field)) }
+            }
+            db.query("SELECT * FROM journeys WHERE id = 'legacy-12'").use { row ->
+                assertEquals(true, row.moveToFirst())
+                assertEquals("  Ilorin  ", row.getString(row.getColumnIndexOrThrow("destination")))
+                assertEquals(5000L, row.getLong(row.getColumnIndexOrThrow("expectedArrivalAt")))
+                assertEquals(1000L, row.getLong(row.getColumnIndexOrThrow("startedAt")))
+                row.columnNames.filter { it.startsWith("destination") && it != "destination" }.forEach {
+                    assertEquals("No invented $it", true, row.isNull(row.getColumnIndexOrThrow(it)))
+                }
+            }
+            db.execSQL("UPDATE journeys SET status = 'CANCELLED', endedAt = 4000, activeSlot = NULL WHERE id = 'legacy-12'")
+            db.query("SELECT destination, status, endedAt FROM journeys WHERE id = 'legacy-12'").use { row ->
+                assertEquals(true, row.moveToFirst())
+                assertEquals("  Ilorin  ", row.getString(0))
+                assertEquals("CANCELLED", row.getString(1))
+                assertEquals(4000L, row.getLong(2))
+            }
+        }
+    }
+
+    @Test fun destinationTriggerRecreationRollsBackOnFailure() = runBlocking {
+        val db = createInMemoryDatabase()
+        val sqlite = db.openHelper.writableDatabase
+        assertEquals(true, db.journeyDao().insertIfNoActive(journey("atomic-triggers").copy(structuredDestination = evidencePoint()).toEntity()))
+        val before = databaseDefinitions(sqlite, "trigger").filterKeys { it.startsWith("journeys_destination_") }
+        val failing = object : androidx.sqlite.db.SupportSQLiteDatabase by sqlite {
+            override fun execSQL(sql: String) {
+                if (sql.startsWith("CREATE TRIGGER `journeys_destination_validate_update`")) {
+                    throw android.database.sqlite.SQLiteException("Simulated trigger recreation failure")
+                }
+                sqlite.execSQL(sql)
+            }
+        }
+        try { FALLBACK_ATTEMPT_INVARIANT_CALLBACK.onOpen(failing); fail("Expected simulated recreation failure") }
+        catch (error: android.database.sqlite.SQLiteException) {
+            assertEquals("Simulated trigger recreation failure", error.message)
+        }
+        assertEquals(false, sqlite.inTransaction())
+        assertEquals(before, databaseDefinitions(sqlite, "trigger").filterKeys { it.startsWith("journeys_destination_") })
+        try {
+            sqlite.execSQL("UPDATE journeys SET destinationBoundaryDatasetVersion = 'changed' WHERE id = 'atomic-triggers'")
+            fail("Original destination protection must survive rollback")
+        } catch (_: android.database.sqlite.SQLiteException) { /* protection survived */ }
+        assertNotNull(db.journeyDao().completeActive(2000))
+        FALLBACK_ATTEMPT_INVARIANT_CALLBACK.onOpen(sqlite)
+        assertEquals(before, databaseDefinitions(sqlite, "trigger").filterKeys { it.startsWith("journeys_destination_") })
+    }
+
+    private fun databaseDefinitions(db: androidx.sqlite.db.SupportSQLiteDatabase, type: String): Map<String, String> =
+        buildMap {
+            db.query("SELECT name, sql FROM sqlite_master WHERE type = ? AND sql IS NOT NULL ORDER BY name", arrayOf(type)).use { rows ->
+                while (rows.moveToNext()) put(rows.getString(0), rows.getString(1))
+            }
+        }
+
+    @Test fun everySubtypeRoundTripsNewEvidenceAndLifecycleUpdates() = runBlocking {
+        val db = createInMemoryDatabase()
+        val attribution = DestinationProviderAttribution("OpenStreetMap", "? OpenStreetMap contributors", "ODbL", "https://www.openstreetmap.org/copyright")
+        val reverse = evidencePoint().copy(provider = "GEOAPIFY", providerAttribution = attribution)
+        listOf(evidencePoint(), reverse, reverse.copy(providerPlaceId = "reverse-id"),
+            reverse.copy(selectionSource = DestinationSelectionSource.PLACE_SEARCH, providerPlaceId = "place-id"),
+            evidenceLocality(), evidenceLocality().copy(stateId = "ng-fct", stateName = "Federal Capital Territory",
+                localUnitId = "ng-fct-abuja-municipal", localUnitName = "Abuja Municipal Area Council",
+                localUnitType = AdminLocalUnitType.AREA_COUNCIL)).forEachIndexed { index, facts ->
+            val id = "evidence-$index"
+            assertEquals(true, db.journeyDao().insertIfNoActive(journey(id).copy(structuredDestination = facts).toEntity()))
+            assertEquals(facts, db.journeyDao().getActive()?.toDomain()?.structuredDestination)
+            assertNotNull(db.journeyDao().completeActive(2000))
+            db.openHelper.readableDatabase.query("SELECT destinationLocalUnitType, destinationBoundaryDatasetId, destinationBoundaryDatasetVersion, destinationProviderAttribution FROM journeys WHERE id = ?", arrayOf(id)).use { row ->
+                assertEquals(true, row.moveToFirst())
+                assertEquals(facts.localUnitType?.name, row.getString(0))
+                assertEquals(facts.boundaryDatasetId, if (row.isNull(1)) null else row.getString(1))
+                assertEquals(facts.boundaryDatasetVersion, if (row.isNull(2)) null else row.getString(2))
+                if (facts.providerAttribution == null) assertEquals(true, row.isNull(3))
+                else assertEquals(facts.providerAttribution, kotlinx.serialization.json.Json.decodeFromString<DestinationProviderAttribution>(row.getString(3)))
+            }
+        }
+    }
+
+    @Test fun everyNewEvidenceFieldIsImmutableIncludingNullProviderEvidence() = runBlocking {
+        val db = createInMemoryDatabase()
+        assertEquals(true, db.journeyDao().insertIfNoActive(journey("frozen").copy(structuredDestination = evidencePoint()).toEntity()))
+        listOf("destinationLocalUnitType = 'AREA_COUNCIL'", "destinationBoundaryDatasetId = 'other'",
+            "destinationBoundaryDatasetVersion = 'other'", "destinationProviderAttribution = '{}'",
+            "destinationProvider = 'GEOAPIFY'", "destinationProviderPlaceId = 'enriched'").forEach { mutation ->
+            try {
+                db.openHelper.writableDatabase.execSQL("UPDATE journeys SET $mutation WHERE id = 'frozen'")
+                fail("Frozen evidence changed: $mutation")
+            } catch (error: android.database.sqlite.SQLiteException) {
+                assertEquals(true, error.message?.contains("Journey destination is immutable"))
+            }
+        }
+        assertEquals(evidencePoint(), db.journeyDao().getActive()?.toDomain()?.structuredDestination)
+        assertNotNull(db.journeyDao().completeActive(2000))
+    }
+
+    private fun evidencePoint() = StructuredDestination("NG", "ng-kwara", "Kwara", "ng-kwara-offa", "Offa",
+        DestinationKind.POINT, 8.1560008, 4.7227435, DestinationSelectionSource.MAP_PIN,
+        adminDatasetVersion = "alabarin-2026-10-05-v2", localUnitType = AdminLocalUnitType.LGA,
+        boundaryDatasetId = "NG_OPERATIONAL_BOUNDARIES", boundaryDatasetVersion = "alabarin-2026-10-03-v1")
+
+    private fun evidenceLocality() = StructuredDestination("NG", "ng-kwara", "Kwara", "ng-kwara-offa", "Offa",
+        DestinationKind.LOCALITY, null, null, DestinationSelectionSource.LOCALITY_SELECTION,
+        adminDatasetVersion = "alabarin-2026-10-05-v2", localUnitType = AdminLocalUnitType.LGA)
+
     @Test fun structuredPointAndLocalityRoundTripAndRemainImmutable() = runBlocking {
         val db = createInMemoryDatabase()
         val dao = db.journeyDao()
-        val point = StructuredDestination("NG", "NG-KW", "Kwara", "NG-KW-OFFA", "Offa",
-            DestinationKind.POINT, 8.49, 4.56, DestinationSelectionSource.MAP_PIN,
-            customPlaceName = "Grandma's house")
+        val point = evidencePoint().copy(customPlaceName = "Grandma's house")
         assertEquals(true, dao.insertIfNoActive(journey("point").copy(
             destination = "Grandma's house", structuredDestination = point).toEntity()))
         assertEquals(point, dao.getActive()?.toDomain()?.structuredDestination)
@@ -473,8 +604,7 @@ class JourneyDatabaseTest {
         }
         assertEquals(false, dao.insertIfNoActive(journey("blocked").toEntity()))
         assertNotNull(dao.completeActive(2_000))
-        val locality = StructuredDestination("NG", "NG-KW", "Kwara", "NG-KW-OFFA", "Offa",
-            DestinationKind.LOCALITY, null, null, DestinationSelectionSource.LOCALITY_SELECTION)
+        val locality = evidenceLocality()
         assertEquals(true, dao.insertIfNoActive(journey("locality").copy(
             destination = "Offa", structuredDestination = locality).toEntity()))
         assertEquals(locality, dao.getActive()?.toDomain()?.structuredDestination)
@@ -641,5 +771,6 @@ class JourneyDatabaseTest {
         const val TEST_DATABASE_6_7 = "journey-migration-6-7-test"
         const val TEST_DATABASE_9_10 = "journey-migration-9-10-test"
         const val TEST_DATABASE_10_11 = "journey-migration-10-11-test"
+        const val TEST_DATABASE_11_12 = "journey-migration-11-12-test"
     }
 }

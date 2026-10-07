@@ -43,11 +43,11 @@ begin
  (id, owner_id, destination, expected_arrival_at, started_at, status,
  destination_country_code, destination_state_id, destination_state_name,
  destination_lga_id, destination_lga_name, destination_kind, destination_selection_source,
- destination_admin_dataset_version)
+ destination_admin_dataset_version, destination_local_unit_type)
  values (('41000000-0000-4000-8000-' || lpad(p_number::text, 12, '0'))::uuid,
  '10000000-0000-4000-8000-0000000000c1', p_name, now() + interval '1 hour', now(), 'ACTIVE',
  'NG', 'ng-plateau', 'Plateau', 'ng-plateau-quaan-pan', p_name,
- 'LOCALITY', 'LOCALITY_SELECTION', p_version);
+ 'LOCALITY', 'LOCALITY_SELECTION', p_version, 'LGA');
 end;
 $$;
 

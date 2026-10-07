@@ -55,13 +55,13 @@ begin
  (id, owner_id, destination, expected_arrival_at, started_at, status,
   destination_country_code, destination_state_id, destination_state_name,
   destination_lga_id, destination_lga_name, destination_kind,
-  destination_latitude, destination_longitude, destination_selection_source,
-  destination_admin_dataset_version)
+  destination_selection_source,
+  destination_admin_dataset_version, destination_local_unit_type)
  values (('40000000-0000-4000-8000-' || lpad(p_number::text, 12, '0'))::uuid,
   '10000000-0000-4000-8000-0000000000b1', 'Selected destination',
   now() + interval '1 hour', now(), 'ACTIVE', 'NG',
   p_region_id, p_region_name, p_unit_id, p_unit_name,
-  'POINT', 8.49, 4.56, 'MAP_PIN', p_version);
+  'LOCALITY', 'LOCALITY_SELECTION', p_version, case when p_region_id = 'ng-fct' then 'AREA_COUNCIL' else 'LGA' end);
 end;
 $$;
 
@@ -117,25 +117,23 @@ where id = '40000000-0000-4000-8000-000000000010';
 select ok((select status = 'COMPLETED' from public.journeys where id =
  '40000000-0000-4000-8000-000000000010'), 'historical text-only lifecycle update');
 
--- Simulate a row persisted by the foundation before this migration, then restore trigger.
-alter table public.journeys disable trigger journeys_catalogue_destination_validate_insert;
-select pg_temp.insert_catalogue_journey(11, null, 'legacy-region', 'Legacy', 'legacy-unit', 'Legacy Unit');
-alter table public.journeys enable trigger journeys_catalogue_destination_validate_insert;
+-- Legacy production history has all structured facts NULL, never invented versionless structure.
+insert into public.journeys (id, owner_id, destination, expected_arrival_at, started_at, status)
+values ('40000000-0000-4000-8000-000000000011', '10000000-0000-4000-8000-0000000000b1',
+ 'Legacy Unit', now() + interval '1 hour', now(), 'ACTIVE');
 update public.journeys set status = 'COMPLETED', completed_at = now()
 where id = '40000000-0000-4000-8000-000000000011';
 select ok((select status = 'COMPLETED' and destination_admin_dataset_version is null
- from public.journeys where id = '40000000-0000-4000-8000-000000000011'),
- 'previously stored versionless structured row remains lifecycle-updateable');
+ and destination_local_unit_type is null from public.journeys where id = '40000000-0000-4000-8000-000000000011'),
+ 'previously stored legacy text remains lifecycle-updateable without invented evidence');
 
 -- Same-value current upsert, then old-client omitted-field and explicit-null conflict shapes.
 insert into public.journeys (id, owner_id, destination, expected_arrival_at, started_at, status,
  destination_country_code, destination_state_id, destination_state_name,
- destination_lga_id, destination_lga_name, destination_kind, destination_latitude,
- destination_longitude, destination_selection_source, destination_admin_dataset_version)
+ destination_lga_id, destination_lga_name, destination_kind, destination_selection_source, destination_admin_dataset_version, destination_local_unit_type)
 select id, owner_id, destination, expected_arrival_at, started_at, status,
  destination_country_code, destination_state_id, destination_state_name,
- destination_lga_id, destination_lga_name, destination_kind, destination_latitude,
- destination_longitude, destination_selection_source, destination_admin_dataset_version
+ destination_lga_id, destination_lga_name, destination_kind, destination_selection_source, destination_admin_dataset_version, destination_local_unit_type
 from public.journeys where id = '40000000-0000-4000-8000-000000000001'
 on conflict (id) do update set destination = excluded.destination,
  destination_kind = excluded.destination_kind,
@@ -150,21 +148,21 @@ on conflict (id) do update set destination_kind = excluded.destination_kind,
  destination_state_id = excluded.destination_state_id,
  destination_lga_id = excluded.destination_lga_id,
  destination_admin_dataset_version = excluded.destination_admin_dataset_version;
-select ok((select destination_kind = 'POINT' and destination_state_id = 'ng-kwara' and
+select ok((select destination_kind = 'LOCALITY' and destination_state_id = 'ng-kwara' and
  destination_lga_id = 'ng-kwara-offa' and
  destination_admin_dataset_version = 'alabarin-2026-10-03-v1'
  from public.journeys where id = '40000000-0000-4000-8000-000000000001'),
  'old-client omitted fields cannot erase catalogue facts');
 insert into public.journeys
  (id, owner_id, destination, expected_arrival_at, started_at, status,
-  destination_kind, destination_state_id, destination_admin_dataset_version)
+  destination_kind, destination_state_id, destination_admin_dataset_version, destination_local_unit_type)
 select id, owner_id, destination, expected_arrival_at, started_at, status,
- null, null, null from public.journeys
+ null, null, null, null from public.journeys
 where id = '40000000-0000-4000-8000-000000000001'
 on conflict (id) do update set destination_kind = excluded.destination_kind,
  destination_state_id = excluded.destination_state_id,
  destination_admin_dataset_version = excluded.destination_admin_dataset_version;
-select ok((select destination_kind = 'POINT' and destination_state_id = 'ng-kwara' and
+select ok((select destination_kind = 'LOCALITY' and destination_state_id = 'ng-kwara' and
  destination_admin_dataset_version = 'alabarin-2026-10-03-v1'
  from public.journeys where id = '40000000-0000-4000-8000-000000000001'),
  'explicit null compatibility cannot erase catalogue facts');
@@ -228,12 +226,12 @@ insert into public.journeys
  (id, owner_id, destination, expected_arrival_at, started_at, status,
   destination_country_code, destination_state_id, destination_state_name,
   destination_lga_id, destination_lga_name, destination_kind,
-  destination_latitude, destination_longitude, destination_selection_source,
-  destination_admin_dataset_version)
+  destination_selection_source,
+  destination_admin_dataset_version, destination_local_unit_type)
 values ('40000000-0000-4000-8000-000000000012', '10000000-0000-4000-8000-0000000000b1',
  'Authenticated selection', now() + interval '1 hour', now(), 'ACTIVE',
- 'NG', 'ng-kwara', 'Kwara', 'ng-kwara-offa', 'Offa', 'POINT', 8.49, 4.56, 'MAP_PIN',
- 'alabarin-2026-10-03-v1');
+ 'NG', 'ng-kwara', 'Kwara', 'ng-kwara-offa', 'Offa', 'LOCALITY', 'LOCALITY_SELECTION',
+ 'alabarin-2026-10-03-v1', 'LGA');
 select ok((select count(*) = 1 from public.journeys where id =
  '40000000-0000-4000-8000-000000000012'),
  'authenticated owner can insert through catalogue validator without catalogue SELECT');
@@ -241,12 +239,12 @@ select throws_ok($$insert into public.journeys
  (id, owner_id, destination, expected_arrival_at, started_at, status,
   destination_country_code, destination_state_id, destination_state_name,
   destination_lga_id, destination_lga_name, destination_kind,
-  destination_latitude, destination_longitude, destination_selection_source,
-  destination_admin_dataset_version)
+  destination_selection_source,
+  destination_admin_dataset_version, destination_local_unit_type)
  values ('40000000-0000-4000-8000-000000000014', '10000000-0000-4000-8000-0000000000b1',
  'Wrong canonical name', now() + interval '1 hour', now(), 'ACTIVE',
- 'NG', 'ng-kwara', 'Lagos', 'ng-kwara-offa', 'Offa', 'POINT', 8.49, 4.56, 'MAP_PIN',
- 'alabarin-2026-10-03-v1')$$,
+ 'NG', 'ng-kwara', 'Lagos', 'ng-kwara-offa', 'Offa', 'LOCALITY', 'LOCALITY_SELECTION',
+ 'alabarin-2026-10-03-v1', 'LGA')$$,
  '22023', 'Journey destination does not match catalogue snapshot',
  'authenticated owner gets catalogue error for wrong canonical name');
 
@@ -257,12 +255,12 @@ select throws_ok($$insert into public.journeys
  (id, owner_id, destination, expected_arrival_at, started_at, status,
   destination_country_code, destination_state_id, destination_state_name,
   destination_lga_id, destination_lga_name, destination_kind,
-  destination_latitude, destination_longitude, destination_selection_source,
-  destination_admin_dataset_version)
+  destination_selection_source,
+  destination_admin_dataset_version, destination_local_unit_type)
  values ('40000000-0000-4000-8000-000000000015', '10000000-0000-4000-8000-0000000000b1',
  'Wrong owner', now() + interval '1 hour', now(), 'ACTIVE',
- 'NG', 'ng-kwara', 'Kwara', 'ng-kwara-offa', 'Offa', 'POINT', 8.49, 4.56, 'MAP_PIN',
- 'alabarin-2026-10-03-v1')$$,
+ 'NG', 'ng-kwara', 'Kwara', 'ng-kwara-offa', 'Offa', 'LOCALITY', 'LOCALITY_SELECTION',
+ 'alabarin-2026-10-03-v1', 'LGA')$$,
  '42501', null, 'authenticated user B cannot insert a Journey owned by A');
 with changed as (
  update public.journeys set status = 'COMPLETED', completed_at = now()
