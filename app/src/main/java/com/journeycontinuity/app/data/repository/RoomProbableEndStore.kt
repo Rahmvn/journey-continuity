@@ -96,9 +96,12 @@ class RoomProbableEndStore(
                             finalDistanceMeters = evidence.finalDistanceMeters, finalAccuracyMeters = evidence.finalAccuracyMeters,
                             destinationSlot = evidence.destination.slot)
                         dao.insert(requireNotNull(candidate))
+                        database.probableEndGuardDao().save(requireNotNull(candidate).continuity(
+                            database.probableEndGuardDao().binding(journeyId)))
                     }
                     is ProbableEndResult.ReliableDeparture -> if (candidate != null || current.requiresReliableExit) {
                         dao.closeUnclosed(journeyId, LocalProbableEndLifecycle.INVALIDATED.name, now, "RELIABLE_DEPARTURE")
+                        database.probableEndGuardDao().invalidate(journeyId)
                         current = rebase(current, current.consumedSequence, telemetry.eventTime, now, false)
                         candidate = null
                     }
@@ -133,6 +136,7 @@ class RoomProbableEndStore(
             val tail = database.telemetryDao().getLatest(journeyId)?.sequence ?: row.consumedSequence
             require(row.consumedSequence <= tail)
             dao.closeUnclosed(journeyId, LocalProbableEndLifecycle.SUPPRESSED.name, acceptedBoundaryMillis, "LOCAL_SUPPRESSION")
+            database.probableEndGuardDao().invalidate(journeyId)
             dao.save(rebase(row, maxOf(tail, row.consumedSequence), maxOf(acceptedBoundaryMillis,
                 dao.maximumObservedTime(journeyId, latestPermittedTime(now))), now, true))
             LocalProbableEndRun(LocalProbableEndRunStatus.PROGRESSED)
@@ -145,6 +149,7 @@ class RoomProbableEndStore(
             runCatching { it.restore(); require(it.journeyStartedAtMillis == journey.startedAt) }.isSuccess
         }
         dao.closeUnclosed(journey.id, LocalProbableEndLifecycle.INVALIDATED.name, now, reason)
+        database.probableEndGuardDao().invalidate(journey.id)
         return ProbableEndDetectorEntity(journey.id, journey.startedAt,
             generation = Math.addExact(maxOf(row?.generation ?: -1, dao.highestGeneration(journey.id), 0), 1),
             // Quarantine the existing prefix, not future arrivals. Rejected far-future telemetry

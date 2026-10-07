@@ -15,6 +15,10 @@ import com.journeycontinuity.app.data.local.MIGRATION_9_10
 import com.journeycontinuity.app.data.local.MIGRATION_10_11
 import com.journeycontinuity.app.data.local.MIGRATION_11_12
 import com.journeycontinuity.app.data.local.MIGRATION_12_13
+import com.journeycontinuity.app.data.local.MIGRATION_13_14
+import com.journeycontinuity.app.data.repository.RoomProbableEndGuardStore
+import com.journeycontinuity.app.domain.probableend.*
+import com.journeycontinuity.app.data.probableend.SupabaseProbableEndVerificationGuardGateway
 import com.journeycontinuity.app.data.repository.RoomProbableEndStore
 import com.journeycontinuity.app.data.local.FALLBACK_ATTEMPT_INVARIANT_CALLBACK
 import com.journeycontinuity.app.data.repository.JourneyRepository
@@ -114,6 +118,7 @@ class JourneyContinuityApplication : Application() {
             MIGRATION_10_11,
             MIGRATION_11_12,
             MIGRATION_12_13,
+            MIGRATION_13_14,
         ).addCallback(FALLBACK_ATTEMPT_INVARIANT_CALLBACK).build()
     }
 
@@ -179,6 +184,9 @@ class JourneyContinuityApplication : Application() {
     val syncScheduler by lazy { WorkManagerSyncScheduler(applicationContext) }
 
     private val probableEndStore by lazy { RoomProbableEndStore(database) }
+    private val probableEndGuardCoordinator by lazy {
+        ProbableEndGuardCoordinator(RoomProbableEndGuardStore(database), cloudGateways.verificationGuard)
+    }
     // Service identity/display needs no structured-destination decoding. No fallback Journey is fabricated.
     internal val activeMonitoringJourney by lazy { database.journeyDao().observeActive() }
     private val localInferenceScope = kotlinx.coroutines.CoroutineScope(
@@ -288,6 +296,7 @@ class JourneyContinuityApplication : Application() {
                     ),
                     sync = SupabaseCloudSyncGateway(client, identityCoordinator, logger),
                     heartbeat = SupabaseHeartbeatGateway(client, identityCoordinator, logger),
+                    verificationGuard = SupabaseProbableEndVerificationGuardGateway(client, identityCoordinator),
                     trustedContacts = SupabaseTrustedContactGateway(
                         client = client,
                         identityCoordinator = identityCoordinator,
@@ -421,9 +430,21 @@ class JourneyContinuityApplication : Application() {
                 drain -> probableEndStore.resume(journeyId)
                 else -> probableEndStore.consumePending(journeyId)
             }
+            val exactJourneyId = journeyId ?: database.journeyDao().getActive()?.id
+            if (exactJourneyId != null) requestProbableEndGuard(exactJourneyId,
+                if (journeyId == null || drain) GuardReconciliationTrigger.RESTORE else GuardReconciliationTrigger.NEW_CANDIDATE)
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
             throw cancelled
         } catch (_: Exception) { /* Optional local inference unavailable. */ }
+    }
+
+    /** Launch outside telemetry/heartbeat persistence; no guard read blocks primary monitoring. */
+    internal fun requestProbableEndGuard(journeyId: String, trigger: GuardReconciliationTrigger) {
+        localInferenceScope.launch {
+            try { probableEndGuardCoordinator.reconcile(journeyId, trigger) }
+            catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (_: Exception) { /* Includes optional lazy gateway/database initialization. */ }
+        }
     }
 
     private inner class ConfigurationFailureCloudGateway(
@@ -493,6 +514,10 @@ class JourneyContinuityApplication : Application() {
         val activeSignOut: TravellerActiveJourneySignOutGateway? = null,
         val sync: CloudSyncGateway,
         val heartbeat: HeartbeatGateway,
+        val verificationGuard: ProbableEndVerificationGuardGateway = object : ProbableEndVerificationGuardGateway {
+            override suspend fun read(journeyId: String, previous: AuthoritativeVerificationGuard?) =
+                VerificationGuardRead.Unknown(VerificationGuardUnavailableReason.UNAVAILABLE)
+        },
         val trustedContacts: TrustedContactGateway,
         val fallbackProvisioning: AuthenticatedFallbackProvisioningGateway,
         val destinationSearch: com.journeycontinuity.app.ui.destination.DestinationSearchGateway,

@@ -26,6 +26,7 @@ import com.journeycontinuity.app.R
 import com.journeycontinuity.app.domain.TelemetrySample
 import com.journeycontinuity.app.heartbeat.HeartbeatConfiguration
 import com.journeycontinuity.app.heartbeat.HeartbeatAttemptResult
+import com.journeycontinuity.app.domain.probableend.GuardReconciliationTrigger
 import com.journeycontinuity.app.sync.AndroidSyncDiagnosticLogger
 import com.journeycontinuity.app.sync.SyncRequestUrgency
 import com.journeycontinuity.app.telemetry.DeviceContextReader
@@ -220,8 +221,11 @@ class JourneyForegroundService : Service() {
                     connectivity = deviceContextReader.connectivity(),
                     networkUsable = deviceContextReader.usableInternet(),
                 )) {
-                    HeartbeatAttemptResult.Sent ->
+                    HeartbeatAttemptResult.Sent -> {
                         degradedConnectivityCoordinator.freshHeartbeatSucceeded(journeyId, heartbeatStartedAt)
+                        (application as JourneyContinuityApplication).requestProbableEndGuard(
+                            journeyId, GuardReconciliationTrigger.HEARTBEAT_SUCCEEDED)
+                    }
                     HeartbeatAttemptResult.RetryableFailure -> {
                         runtimeSignals.connectivityReconciled(registration, journeyId, false)
                         degradedConnectivityCoordinator.retryableCloudFailure(journeyId)
