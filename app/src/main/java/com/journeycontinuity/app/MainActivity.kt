@@ -38,6 +38,10 @@ import com.journeycontinuity.app.ui.TravellerAccountViewModel
 import com.journeycontinuity.app.ui.TravellerAccountViewModelFactory
 import com.journeycontinuity.app.ui.AccountSignOutStatus
 import com.journeycontinuity.app.ui.TravellerMonitoringStoppedResult
+import com.journeycontinuity.app.ui.ProbableEndCompletedResultScreen
+import com.journeycontinuity.app.data.repository.ProbableEndResponseRequest
+import com.journeycontinuity.app.data.repository.ProbableEndTravellerResponse
+import com.journeycontinuity.app.data.repository.ProbableEndResponseOutcome
 import com.journeycontinuity.app.ui.LocationUiState
 import com.journeycontinuity.app.ui.destination.DestinationPickerViewModel
 import com.journeycontinuity.app.ui.destination.DestinationPickerViewModelFactory
@@ -70,6 +74,9 @@ class MainActivity : ComponentActivity() {
 
     private var notificationsVisible by mutableStateOf(true)
     private var probableEndForegroundEpisodeId by mutableStateOf<String?>(null)
+    private var probableEndResponseInFlight by mutableStateOf(false)
+    private var probableEndResponseError by mutableStateOf<String?>(null)
+    private var probableEndResultAcknowledging by mutableStateOf(false)
     private var renderedProbableEndJourneyId: String? = null
     private var renderedProbableEndEpisodeId: String? = null
     private var renderedProbableEndWindowView: View? = null
@@ -167,6 +174,7 @@ class MainActivity : ComponentActivity() {
                 val rootState by rootViewModel.state.collectAsStateWithLifecycle()
                 val accountState by accountViewModel.state.collectAsStateWithLifecycle()
                 val probableEndEpisode by app.probableEndPresentationEpisode.collectAsStateWithLifecycle(initialValue = null)
+                val probableEndCompletedResult by app.probableEndCompletedResult.collectAsStateWithLifecycle(initialValue = null)
                 val stopped = accountState.monitoringStoppedJourney
                 if (accountState.restoringMonitoringStoppedResult) {
                     Box(Modifier.fillMaxSize().background(Color(0xFFFBFBF8)),
@@ -183,6 +191,18 @@ class MainActivity : ComponentActivity() {
                         onDone = { accountViewModel.doneWithMonitoringStopped(
                             rootViewModel::assessStartup) },
                     )
+                } else if (probableEndCompletedResult != null && rootState.route in setOf(
+                        TravellerRootRoute.ADMITTED_EXISTING, TravellerRootRoute.ADMITTED_NEW)) {
+                    val result = requireNotNull(probableEndCompletedResult)
+                    ProbableEndCompletedResultScreen(result) {
+                        if (!probableEndResultAcknowledging) {
+                            probableEndResultAcknowledging = true
+                            lifecycleScope.launch {
+                                try { app.acknowledgeProbableEndCompletion(result.episodeId) }
+                                finally { probableEndResultAcknowledging = false }
+                            }
+                        }
+                    }
                 } else TravellerRootHost(rootViewModel) {
                     JourneyProductRoot(
                         viewModel = journeyViewModel,
@@ -241,6 +261,9 @@ class MainActivity : ComponentActivity() {
                                 recordVisibleProbableEndOpportunity()
                             }
                         },
+                        onProbableEndResponse = ::respondToProbableEnd,
+                        probableEndResponseInFlight = probableEndResponseInFlight,
+                        probableEndResponseError = probableEndResponseError,
                     )
                 }
             }
@@ -280,6 +303,33 @@ class MainActivity : ComponentActivity() {
                 sheetView.isAttachedToWindow && sheetView.isShown && sheetView.hasWindowFocus() &&
                 probableEndForegroundEpisodeId == episodeId && renderedProbableEndEpisodeId == episodeId)
                 app.recordProbableEndForegroundOpportunity(journeyId, episodeId)
+        }
+    }
+
+    private fun respondToProbableEnd(request: ProbableEndResponseRequest,
+        response: ProbableEndTravellerResponse) {
+        if (probableEndResponseInFlight || !isAdmitted() ||
+            probableEndForegroundEpisodeId != request.presentationEpisodeId ||
+            journeyViewModel.uiState.value.activeJourney?.id != request.journeyId) return
+        probableEndResponseInFlight = true
+        probableEndResponseError = null
+        lifecycleScope.launch {
+            try {
+                when (app.respondToProbableEnd(request, response)) {
+                    ProbableEndResponseOutcome.ACCEPTED, ProbableEndResponseOutcome.ALREADY_ACCEPTED -> {
+                        probableEndForegroundEpisodeId = null
+                        renderedProbableEndWindowView = null
+                        if (response == ProbableEndTravellerResponse.KEEP_MONITORING)
+                            journeyViewModel.openActive()
+                    }
+                    ProbableEndResponseOutcome.UNAVAILABLE ->
+                        probableEndResponseError = "Could not save this response. Please try again."
+                }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                probableEndResponseError = "Could not save this response. Please try again."
+            } finally { probableEndResponseInFlight = false }
         }
     }
 

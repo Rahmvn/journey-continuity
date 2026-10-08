@@ -17,8 +17,13 @@ import com.journeycontinuity.app.data.local.MIGRATION_11_12
 import com.journeycontinuity.app.data.local.MIGRATION_12_13
 import com.journeycontinuity.app.data.local.MIGRATION_13_14
 import com.journeycontinuity.app.data.local.MIGRATION_14_15
+import com.journeycontinuity.app.data.local.MIGRATION_15_16
 import com.journeycontinuity.app.data.repository.RoomProbableEndGuardStore
 import com.journeycontinuity.app.data.repository.RoomProbableEndPresentationCoordinator
+import com.journeycontinuity.app.data.repository.RoomProbableEndResponseCoordinator
+import com.journeycontinuity.app.data.repository.ProbableEndResponseRequest
+import com.journeycontinuity.app.data.repository.ProbableEndTravellerResponse
+import com.journeycontinuity.app.data.repository.ProbableEndResponseOutcome
 import com.journeycontinuity.app.domain.probableend.*
 import com.journeycontinuity.app.data.probableend.SupabaseProbableEndVerificationGuardGateway
 import com.journeycontinuity.app.data.repository.RoomProbableEndStore
@@ -122,6 +127,7 @@ class JourneyContinuityApplication : Application() {
             MIGRATION_12_13,
             MIGRATION_13_14,
             MIGRATION_14_15,
+            MIGRATION_15_16,
         ).addCallback(FALLBACK_ATTEMPT_INVARIANT_CALLBACK).build()
     }
 
@@ -194,14 +200,38 @@ class JourneyContinuityApplication : Application() {
         RoomProbableEndPresentationCoordinator(database, RoomProbableEndGuardStore(database),
             cloudGateways.verificationGuard)
     }
+    private val probableEndResponseCoordinator by lazy {
+        RoomProbableEndResponseCoordinator(database, probableEndStore,
+            onExplicitCompletion = { journeyId, completedAt ->
+                var needsRetry = false
+                try { journeyServiceController.stop() }
+                catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                catch (_: Exception) { needsRetry = true }
+                try { degradedConnectivityCoordinator.journeyCompleted(journeyId, completedAt) }
+                catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                catch (_: Exception) { needsRetry = true }
+                try { syncScheduler.schedule(SyncRequestUrgency.URGENT) }
+                catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                catch (_: Exception) { needsRetry = true }
+                if (needsRetry) error("Completion effects pending")
+            })
+    }
     val probableEndProvenCandidateId by lazy { database.probableEndPresentationDao().observeProvenCandidateId() }
     val probableEndPresentationEpisode by lazy { database.probableEndPresentationDao().observeActionableLocalEpisode() }
+    val probableEndCompletedResult by lazy { database.probableEndPresentationDao().observePendingCompletedResult() }
 
     suspend fun recheckProbableEndForForeground(journeyId: String, candidateId: String): String? =
         probableEndPresentationCoordinator.recheckAndPromote(journeyId, candidateId)
 
     suspend fun recordProbableEndForegroundOpportunity(journeyId: String, episodeId: String): Boolean =
         probableEndPresentationCoordinator.recordForegroundOpportunity(journeyId, episodeId)
+
+    suspend fun respondToProbableEnd(request: ProbableEndResponseRequest,
+        response: ProbableEndTravellerResponse): ProbableEndResponseOutcome =
+        probableEndResponseCoordinator.respond(request, response)
+
+    suspend fun acknowledgeProbableEndCompletion(episodeId: String): Boolean =
+        probableEndResponseCoordinator.acknowledgeCompletedResult(episodeId)
     // Service identity/display needs no structured-destination decoding. No fallback Journey is fabricated.
     internal val activeMonitoringJourney by lazy { database.journeyDao().observeActive() }
     private val localInferenceScope = kotlinx.coroutines.CoroutineScope(
@@ -435,6 +465,7 @@ class JourneyContinuityApplication : Application() {
         // bypass a legacy/retrying worker without cancelling work that is already running.
         runCatching { syncScheduler.schedule(SyncRequestUrgency.URGENT) }
         localInferenceScope.launch { resumeLocalProbableEnd() }
+        localInferenceScope.launch { probableEndResponseCoordinator.resumeCompletionEffects() }
     }
 
     /** Also isolates lazy store initialization; only optional inference failures are contained here. */

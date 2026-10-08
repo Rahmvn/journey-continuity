@@ -81,6 +81,10 @@ import com.journeycontinuity.app.R
 import com.journeycontinuity.app.degraded.SmsFallbackStatus
 import com.journeycontinuity.app.domain.Journey
 import com.journeycontinuity.app.data.local.ProbableEndPresentationEntity
+import com.journeycontinuity.app.data.local.ProbableEndPresentationStatus
+import com.journeycontinuity.app.data.repository.ProbableEndResponseRequest
+import com.journeycontinuity.app.data.repository.ProbableEndTravellerResponse
+import com.journeycontinuity.app.data.repository.responseRequest
 import com.journeycontinuity.app.telemetry.ForegroundLocationAccess
 import com.journeycontinuity.app.trusted.TrustedContactStatus
 import com.journeycontinuity.app.ui.destination.DestinationDraft
@@ -147,6 +151,9 @@ fun JourneyProductRoot(
     onProbableEndRendered: (String, String, View) -> Unit = { _, _, _ -> },
     onProbableEndDismissed: () -> Unit = {},
     onProbableEndReopen: (String, String) -> Unit = { _, _ -> },
+    onProbableEndResponse: (ProbableEndResponseRequest, ProbableEndTravellerResponse) -> Unit = { _, _ -> },
+    probableEndResponseInFlight: Boolean = false,
+    probableEndResponseError: String? = null,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val accountState = accountViewModel?.state?.collectAsStateWithLifecycle()?.value
@@ -276,6 +283,9 @@ fun JourneyProductRoot(
                                 onEndCompleted = viewModel::endJourney,
                                 probableEnd = if (showProbableEnd) probableEndPresentation else null,
                                 onProbableEndRendered = onProbableEndRendered,
+                                onProbableEndResponse = onProbableEndResponse,
+                                probableEndResponseInFlight = probableEndResponseInFlight,
+                                probableEndResponseError = probableEndResponseError,
                                 // Material 3 measures the handle and bottom inset outside this content.
                                 modifier = Modifier.fillMaxWidth().height(journeySheetHeight - 40.dp),
                             )
@@ -668,6 +678,9 @@ internal fun JourneyActiveScreen(
     onEndCompleted: () -> Unit,
     probableEnd: ProbableEndPresentationEntity? = null,
     onProbableEndRendered: (String, String, View) -> Unit = { _, _, _ -> },
+    onProbableEndResponse: (ProbableEndResponseRequest, ProbableEndTravellerResponse) -> Unit = { _, _ -> },
+    probableEndResponseInFlight: Boolean = false,
+    probableEndResponseError: String? = null,
     modifier: Modifier = Modifier,
 ) {
     var confirmCompletion by remember { mutableStateOf(false) }
@@ -775,18 +788,30 @@ internal fun JourneyActiveScreen(
                     Text("Alabarin detected signs that this Journey may have ended. If you don’t respond, monitoring may stop automatically after 30 minutes.",
                         color = Body, style = textStyle(15, 21), modifier = Modifier.testTag("probable_end_body"))
                     Spacer(Modifier.height(57.dp))
-                    // Responses are deliberately disabled until Slice 4B.
+                    val actionsEnabled = probableEnd.status == ProbableEndPresentationStatus.PRESENTED.name &&
+                        !probableEndResponseInFlight
                     Box(Modifier.fillMaxWidth().height(56.dp).clip(RoundedCornerShape(18.dp))
-                        .background(Brand).alpha(0.55f).semantics { role = Role.Button; disabled() }
-                        .testTag("probable_end_completed_disabled"), contentAlignment = Alignment.Center) {
+                        .background(Brand).alpha(if (actionsEnabled) 1f else 0.55f)
+                        .clickable(enabled = actionsEnabled, role = Role.Button) {
+                            onProbableEndResponse(probableEnd.responseRequest(),
+                                ProbableEndTravellerResponse.JOURNEY_COMPLETED)
+                        }.testTag("probable_end_completed_action"), contentAlignment = Alignment.Center) {
                         Text("Journey completed", color = Color.White, style = textStyle(16, 22, FontWeight.Bold))
                     }
                     Spacer(Modifier.height(10.dp))
                     Box(Modifier.fillMaxWidth().height(52.dp).clip(RoundedCornerShape(16.dp))
-                        .border(1.dp, Border, RoundedCornerShape(16.dp)).alpha(0.55f)
-                        .semantics { role = Role.Button; disabled() }
-                        .testTag("probable_end_keep_monitoring_disabled"), contentAlignment = Alignment.Center) {
+                        .border(1.dp, Border, RoundedCornerShape(16.dp))
+                        .alpha(if (actionsEnabled) 1f else 0.55f)
+                        .clickable(enabled = actionsEnabled, role = Role.Button) {
+                            onProbableEndResponse(probableEnd.responseRequest(),
+                                ProbableEndTravellerResponse.KEEP_MONITORING)
+                        }.testTag("probable_end_keep_monitoring_action"), contentAlignment = Alignment.Center) {
                         Text("Keep monitoring", color = Heading, style = textStyle(16, 22, FontWeight.Medium))
+                    }
+                    if (probableEndResponseError != null) {
+                        Spacer(Modifier.height(12.dp))
+                        Text(probableEndResponseError, color = Warning, style = textStyle(14, 20),
+                            modifier = Modifier.testTag("probable_end_response_error"))
                     }
                 }
             }

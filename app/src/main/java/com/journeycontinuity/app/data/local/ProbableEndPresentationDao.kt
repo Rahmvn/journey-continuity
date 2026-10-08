@@ -13,6 +13,36 @@ interface ProbableEndPresentationDao {
     @Query("SELECT * FROM probable_end_presentations WHERE id = :id")
     suspend fun byId(id: String): ProbableEndPresentationEntity?
 
+    @Query("""UPDATE probable_end_presentations SET status = :responseStatus, liveSlot = NULL,
+        respondedAtMillis = :whenMillis, closedAtMillis = :whenMillis,
+        closureReason = 'TRAVELLER_RESPONSE', revision = revision + 1
+        WHERE id = :episodeId AND journeyId = :journeyId AND candidateEpisodeId = :candidateId
+          AND generation = :generation AND revision = :expectedRevision
+          AND status = 'PRESENTED' AND liveSlot = 1 AND presentedAtMillis IS NOT NULL""")
+    suspend fun acceptResponse(episodeId: String, journeyId: String, candidateId: String,
+        generation: Long, expectedRevision: Long, responseStatus: String, whenMillis: Long): Int
+
+    @Query("""SELECT p.id AS episodeId, p.journeyId AS journeyId,
+        j.destination AS destination, j.expectedArrivalAt AS expectedArrivalAt
+        FROM probable_end_presentations p JOIN journeys j ON j.id = p.journeyId
+        WHERE p.status = 'RESPONDED_COMPLETED' AND p.resultAcknowledgedAtMillis IS NULL
+          AND j.status = 'COMPLETED' ORDER BY p.respondedAtMillis DESC LIMIT 1""")
+    fun observePendingCompletedResult(): Flow<ProbableEndCompletedResult?>
+
+    @Query("""SELECT * FROM probable_end_presentations
+        WHERE status = 'RESPONDED_COMPLETED' AND completionEffectsAppliedAtMillis IS NULL""")
+    suspend fun pendingCompletionEffects(): List<ProbableEndPresentationEntity>
+
+    @Query("""UPDATE probable_end_presentations SET completionEffectsAppliedAtMillis = :whenMillis,
+        revision = revision + 1 WHERE id = :episodeId AND status = 'RESPONDED_COMPLETED'
+          AND completionEffectsAppliedAtMillis IS NULL""")
+    suspend fun markCompletionEffectsApplied(episodeId: String, whenMillis: Long): Int
+
+    @Query("""UPDATE probable_end_presentations SET resultAcknowledgedAtMillis = :whenMillis,
+        revision = revision + 1 WHERE id = :episodeId AND status = 'RESPONDED_COMPLETED'
+          AND resultAcknowledgedAtMillis IS NULL""")
+    suspend fun acknowledgeCompletedResult(episodeId: String, whenMillis: Long): Int
+
     @Insert suspend fun insert(episode: ProbableEndPresentationEntity)
 
     @Query("""UPDATE probable_end_presentations SET status = 'PRESENTED', presentedAtMillis = :whenMillis,
@@ -44,4 +74,13 @@ interface ProbableEndPresentationDao {
           AND b.status = 'BOUND' AND b.historyBaselineAtMillis = p.historyBaselineAtMillis
           AND b.guardVersion = p.guardVersion LIMIT 1""")
     fun observeActionableLocalEpisode(): Flow<ProbableEndPresentationEntity?>
+}
+
+data class ProbableEndCompletedResult(
+    val episodeId: String,
+    val journeyId: String,
+    val destination: String,
+    val expectedArrivalAt: Long,
+) {
+    override fun toString() = "ProbableEndCompletedResult(redacted)"
 }

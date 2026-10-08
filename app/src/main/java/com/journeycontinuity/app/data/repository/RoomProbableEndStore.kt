@@ -116,24 +116,32 @@ class RoomProbableEndStore(
         }
     }
 
-    /** Persistence primitive only; no Traveller action or guard is wired to it in Slice 2. */
+    /** Exact-candidate primitive. The response coordinator invokes the same work in its transaction. */
     internal suspend fun suppressCandidate(journeyId: String, episodeId: String, acceptedBoundaryMillis: Long) = isolated {
         val now = clock.nowMillis()
-        require(now > 0 && acceptedBoundaryMillis > 0 && acceptedBoundaryMillis <= latestPermittedTime(now))
         database.withTransaction {
+            suppressCandidateInTransaction(journeyId, episodeId, acceptedBoundaryMillis, now)
+        }
+    }
+
+    /** Caller must already hold a Room transaction. Exceptions roll that whole transaction back. */
+    internal suspend fun suppressCandidateInTransaction(journeyId: String, episodeId: String,
+        acceptedBoundaryMillis: Long, now: Long): LocalProbableEndRun {
+        require(now > 0 && acceptedBoundaryMillis > 0 && acceptedBoundaryMillis <= latestPermittedTime(now))
+        return run {
             val journey = database.journeyDao().getById(journeyId)
-                ?: return@withTransaction LocalProbableEndRun(LocalProbableEndRunStatus.INELIGIBLE)
+                ?: return@run LocalProbableEndRun(LocalProbableEndRunStatus.INELIGIBLE)
             if (journey.status != com.journeycontinuity.app.domain.JourneyStatus.ACTIVE || journey.activeSlot != 1)
-                return@withTransaction LocalProbableEndRun(LocalProbableEndRunStatus.INELIGIBLE)
-            val row = dao.state(journeyId) ?: return@withTransaction LocalProbableEndRun(LocalProbableEndRunStatus.IDLE)
+                return@run LocalProbableEndRun(LocalProbableEndRunStatus.INELIGIBLE)
+            val row = dao.state(journeyId) ?: return@run LocalProbableEndRun(LocalProbableEndRunStatus.IDLE)
             row.restore()
             require(row.journeyStartedAtMillis == journey.startedAt && now >= row.lastEvaluationAtMillis)
             val live = dao.unclosed(journeyId).singleOrNull()
-                ?: return@withTransaction LocalProbableEndRun(LocalProbableEndRunStatus.IDLE)
+                ?: return@run LocalProbableEndRun(LocalProbableEndRunStatus.IDLE)
             live.evidence()
             require(live.generation == row.generation && live.evidenceFloorSequence == row.evidenceFloorSequence &&
                 live.evidenceFloorEventTimeMillis == row.evidenceFloorEventTimeMillis)
-            if (live.id != episodeId) return@withTransaction LocalProbableEndRun(LocalProbableEndRunStatus.IDLE)
+            if (live.id != episodeId) return@run LocalProbableEndRun(LocalProbableEndRunStatus.IDLE)
             val tail = database.telemetryDao().getLatest(journeyId)?.sequence ?: row.consumedSequence
             require(row.consumedSequence <= tail)
             dao.closeUnclosed(journeyId, LocalProbableEndLifecycle.SUPPRESSED.name, acceptedBoundaryMillis, "LOCAL_SUPPRESSION")
