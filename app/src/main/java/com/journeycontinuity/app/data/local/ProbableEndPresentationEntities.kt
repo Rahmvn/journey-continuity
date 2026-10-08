@@ -10,6 +10,9 @@ enum class ProbableEndPresentationStatus {
     READY_TO_PRESENT, PRESENTED, INVALIDATED, RESPONDED_COMPLETED, RESPONDED_KEEP_MONITORING,
 }
 
+/** This is local window provenance, never permission to terminalize a Journey. */
+enum class ProbableEndDeadlineStatus { ACTIVE, EXPIRED_PENDING_FINALIZATION, CANCELLED }
+
 /** A Traveller opportunity, distinct from the system-inference evidence candidate. */
 @Entity(
     tableName = "probable_end_presentations",
@@ -37,6 +40,9 @@ data class ProbableEndPresentationEntity(
     val respondedAtMillis: Long? = null,
     val resultAcknowledgedAtMillis: Long? = null,
     val completionEffectsAppliedAtMillis: Long? = null,
+    val confirmationDeadlineAtMillis: Long? = null,
+    val deadlineStatus: String? = null,
+    val deadlineExpiredAtMillis: Long? = null,
 ) {
     fun validate() {
         require(id.isNotBlank() && journeyId.isNotBlank() && candidateEpisodeId.isNotBlank() &&
@@ -48,6 +54,18 @@ data class ProbableEndPresentationEntity(
             ProbableEndPresentationStatus.INVALIDATED -> require(liveSlot == null && closedAtMillis != null && closedAtMillis >= createdAtMillis && !closureReason.isNullOrBlank() && respondedAtMillis == null && resultAcknowledgedAtMillis == null && completionEffectsAppliedAtMillis == null)
             ProbableEndPresentationStatus.RESPONDED_COMPLETED -> require(liveSlot == null && presentedAtMillis != null && respondedAtMillis != null && respondedAtMillis >= presentedAtMillis && closedAtMillis == respondedAtMillis && closureReason == "TRAVELLER_RESPONSE" && (resultAcknowledgedAtMillis == null || resultAcknowledgedAtMillis >= respondedAtMillis) && (completionEffectsAppliedAtMillis == null || completionEffectsAppliedAtMillis >= respondedAtMillis))
             ProbableEndPresentationStatus.RESPONDED_KEEP_MONITORING -> require(liveSlot == null && presentedAtMillis != null && respondedAtMillis != null && respondedAtMillis >= presentedAtMillis && closedAtMillis == respondedAtMillis && closureReason == "TRAVELLER_RESPONSE" && resultAcknowledgedAtMillis == null && completionEffectsAppliedAtMillis == null)
+        }
+        // Null is truthful for READY episodes and for PRESENTED episodes predating v17.
+        if (deadlineStatus == null) require(confirmationDeadlineAtMillis == null && deadlineExpiredAtMillis == null)
+        else {
+            val deadline = requireNotNull(confirmationDeadlineAtMillis)
+            require(presentedAtMillis != null && deadline == Math.addExact(presentedAtMillis, 30 * 60 * 1000L))
+            when (ProbableEndDeadlineStatus.valueOf(deadlineStatus)) {
+                ProbableEndDeadlineStatus.ACTIVE -> require(status == ProbableEndPresentationStatus.PRESENTED.name && deadlineExpiredAtMillis == null)
+                ProbableEndDeadlineStatus.EXPIRED_PENDING_FINALIZATION -> require(status == ProbableEndPresentationStatus.PRESENTED.name && deadlineExpiredAtMillis != null && deadlineExpiredAtMillis >= deadline)
+                ProbableEndDeadlineStatus.CANCELLED -> require(status != ProbableEndPresentationStatus.PRESENTED.name &&
+                    (deadlineExpiredAtMillis == null || deadlineExpiredAtMillis >= deadline))
+            }
         }
     }
     override fun toString() = "ProbableEndPresentationEntity(redacted)"

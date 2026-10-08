@@ -77,7 +77,9 @@ abstract class JourneyDao {
     protected abstract suspend fun supersedeUnsentFallback(journeyId: String, endedAt: Long)
 
     @Query("""UPDATE probable_end_presentations SET status = 'INVALIDATED', liveSlot = NULL,
-        closedAtMillis = :endedAt, closureReason = 'JOURNEY_TERMINAL', revision = revision + 1
+        closedAtMillis = :endedAt, closureReason = 'JOURNEY_TERMINAL',
+        deadlineStatus = CASE WHEN deadlineStatus IS NULL THEN NULL ELSE 'CANCELLED' END,
+        revision = revision + 1
         WHERE journeyId = :journeyId AND liveSlot = 1""")
     protected abstract suspend fun closeProbableEndPresentation(journeyId: String, endedAt: Long)
 

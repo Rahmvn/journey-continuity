@@ -81,7 +81,7 @@ class ProbableEndPresentationMigrationTest {
                 }
                 migrated.query("PRAGMA foreign_key_check").use { assertFalse(it.moveToFirst()) }
             }
-            val reopened = Room.databaseBuilder(context, JourneyDatabase::class.java, name).addMigrations(MIGRATION_14_15, MIGRATION_15_16).build()
+            val reopened = Room.databaseBuilder(context, JourneyDatabase::class.java, name).addMigrations(MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17).build()
             try {
                 assertNotNull(reopened.journeyDao().getById("migration")); assertNotNull(reopened.probableEndDao().state("migration"))
                 assertEquals(1, reopened.probableEndDao().episodes("migration").size)

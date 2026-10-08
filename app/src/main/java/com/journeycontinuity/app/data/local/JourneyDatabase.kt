@@ -19,7 +19,7 @@ import androidx.room.TypeConverters
         ProbableEndCandidateContinuityEntity::class,
         ProbableEndPresentationEntity::class,
     ],
-    version = 16,
+    version = 17,
     exportSchema = true,
 )
 @TypeConverters(

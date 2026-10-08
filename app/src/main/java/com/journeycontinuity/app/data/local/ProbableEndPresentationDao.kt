@@ -13,9 +13,16 @@ interface ProbableEndPresentationDao {
     @Query("SELECT * FROM probable_end_presentations WHERE id = :id")
     suspend fun byId(id: String): ProbableEndPresentationEntity?
 
+    @Query("""SELECT p.* FROM probable_end_presentations p JOIN journeys j ON j.id = p.journeyId
+        WHERE p.deadlineStatus = 'ACTIVE' AND p.status = 'PRESENTED' AND p.liveSlot = 1
+          AND j.status = 'ACTIVE' AND j.activeSlot = 1""")
+    suspend fun activeDeadlines(): List<ProbableEndPresentationEntity>
+
     @Query("""UPDATE probable_end_presentations SET status = :responseStatus, liveSlot = NULL,
         respondedAtMillis = :whenMillis, closedAtMillis = :whenMillis,
-        closureReason = 'TRAVELLER_RESPONSE', revision = revision + 1
+        closureReason = 'TRAVELLER_RESPONSE',
+        deadlineStatus = CASE WHEN deadlineStatus IS NULL THEN NULL ELSE 'CANCELLED' END,
+        revision = revision + 1
         WHERE id = :episodeId AND journeyId = :journeyId AND candidateEpisodeId = :candidateId
           AND generation = :generation AND revision = :expectedRevision
           AND status = 'PRESENTED' AND liveSlot = 1 AND presentedAtMillis IS NOT NULL""")
@@ -46,11 +53,26 @@ interface ProbableEndPresentationDao {
     @Insert suspend fun insert(episode: ProbableEndPresentationEntity)
 
     @Query("""UPDATE probable_end_presentations SET status = 'PRESENTED', presentedAtMillis = :whenMillis,
+        confirmationDeadlineAtMillis = :deadlineAtMillis, deadlineStatus = 'ACTIVE',
         revision = revision + 1 WHERE id = :id AND status = 'READY_TO_PRESENT' AND liveSlot = 1""")
-    suspend fun markPresented(id: String, whenMillis: Long): Int
+    suspend fun markPresented(id: String, whenMillis: Long, deadlineAtMillis: Long): Int
+
+    @Query("""UPDATE probable_end_presentations SET deadlineStatus = 'EXPIRED_PENDING_FINALIZATION',
+        deadlineExpiredAtMillis = :whenMillis
+        WHERE id = :episodeId AND journeyId = :journeyId AND candidateEpisodeId = :candidateId
+          AND generation = :generation AND revision = :expectedRevision
+          AND status = 'PRESENTED' AND liveSlot = 1 AND respondedAtMillis IS NULL
+          AND deadlineStatus = 'ACTIVE' AND confirmationDeadlineAtMillis = :deadlineAtMillis
+          AND :whenMillis >= confirmationDeadlineAtMillis
+          AND EXISTS (SELECT 1 FROM journeys j WHERE j.id = :journeyId
+              AND j.status = 'ACTIVE' AND j.activeSlot = 1)""")
+    suspend fun expireWindow(episodeId: String, journeyId: String, candidateId: String,
+        generation: Long, expectedRevision: Long, deadlineAtMillis: Long, whenMillis: Long): Int
 
     @Query("""UPDATE probable_end_presentations SET status = 'INVALIDATED', liveSlot = NULL,
-        closedAtMillis = :whenMillis, closureReason = :reason, revision = revision + 1
+        closedAtMillis = :whenMillis, closureReason = :reason,
+        deadlineStatus = CASE WHEN deadlineStatus IS NULL THEN NULL ELSE 'CANCELLED' END,
+        revision = revision + 1
         WHERE journeyId = :journeyId AND liveSlot = 1""")
     suspend fun invalidate(journeyId: String, whenMillis: Long, reason: String): Int
 

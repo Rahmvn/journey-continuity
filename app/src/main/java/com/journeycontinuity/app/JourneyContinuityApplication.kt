@@ -18,9 +18,12 @@ import com.journeycontinuity.app.data.local.MIGRATION_12_13
 import com.journeycontinuity.app.data.local.MIGRATION_13_14
 import com.journeycontinuity.app.data.local.MIGRATION_14_15
 import com.journeycontinuity.app.data.local.MIGRATION_15_16
+import com.journeycontinuity.app.data.local.MIGRATION_16_17
 import com.journeycontinuity.app.data.repository.RoomProbableEndGuardStore
 import com.journeycontinuity.app.data.repository.RoomProbableEndPresentationCoordinator
 import com.journeycontinuity.app.data.repository.RoomProbableEndResponseCoordinator
+import com.journeycontinuity.app.data.repository.RoomProbableEndDeadlineCoordinator
+import com.journeycontinuity.app.data.repository.WorkManagerProbableEndDeadlineScheduler
 import com.journeycontinuity.app.data.repository.ProbableEndResponseRequest
 import com.journeycontinuity.app.data.repository.ProbableEndTravellerResponse
 import com.journeycontinuity.app.data.repository.ProbableEndResponseOutcome
@@ -128,6 +131,7 @@ class JourneyContinuityApplication : Application() {
             MIGRATION_13_14,
             MIGRATION_14_15,
             MIGRATION_15_16,
+            MIGRATION_16_17,
         ).addCallback(FALLBACK_ATTEMPT_INVARIANT_CALLBACK).build()
     }
 
@@ -193,12 +197,16 @@ class JourneyContinuityApplication : Application() {
     val syncScheduler by lazy { WorkManagerSyncScheduler(applicationContext) }
 
     private val probableEndStore by lazy { RoomProbableEndStore(database) }
+    private val probableEndDeadlineScheduler by lazy { WorkManagerProbableEndDeadlineScheduler(applicationContext) }
+    val probableEndDeadlineCoordinator by lazy {
+        RoomProbableEndDeadlineCoordinator(database, probableEndDeadlineScheduler)
+    }
     private val probableEndGuardCoordinator by lazy {
         ProbableEndGuardCoordinator(RoomProbableEndGuardStore(database), cloudGateways.verificationGuard)
     }
     private val probableEndPresentationCoordinator by lazy {
         RoomProbableEndPresentationCoordinator(database, RoomProbableEndGuardStore(database),
-            cloudGateways.verificationGuard)
+            cloudGateways.verificationGuard, deadlineScheduler = probableEndDeadlineScheduler)
     }
     private val probableEndResponseCoordinator by lazy {
         RoomProbableEndResponseCoordinator(database, probableEndStore,
@@ -466,6 +474,7 @@ class JourneyContinuityApplication : Application() {
         runCatching { syncScheduler.schedule(SyncRequestUrgency.URGENT) }
         localInferenceScope.launch { resumeLocalProbableEnd() }
         localInferenceScope.launch { probableEndResponseCoordinator.resumeCompletionEffects() }
+        localInferenceScope.launch { probableEndDeadlineCoordinator.restore() }
     }
 
     /** Also isolates lazy store initialization; only optional inference failures are contained here. */

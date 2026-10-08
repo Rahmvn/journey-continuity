@@ -5,6 +5,7 @@ import com.journeycontinuity.app.data.local.JourneyDatabase
 import com.journeycontinuity.app.data.local.ProbableEndContinuityStatus
 import com.journeycontinuity.app.data.local.ProbableEndGuardBindingStatus
 import com.journeycontinuity.app.data.local.ProbableEndPresentationStatus
+import com.journeycontinuity.app.data.local.ProbableEndDeadlineStatus
 import com.journeycontinuity.app.domain.JourneyClock
 import com.journeycontinuity.app.domain.JourneyStatus
 import com.journeycontinuity.app.domain.probableend.*
@@ -18,6 +19,7 @@ class RoomProbableEndPresentationCoordinator(
     private val guardStore: RoomProbableEndGuardStore,
     private val gateway: ProbableEndVerificationGuardGateway,
     private val clock: JourneyClock = JourneyClock(System::currentTimeMillis),
+    private val deadlineScheduler: ProbableEndDeadlineScheduler = ProbableEndDeadlineScheduler { _, _ -> },
 ) {
     private val inFlight = Mutex()
 
@@ -42,7 +44,7 @@ class RoomProbableEndPresentationCoordinator(
 
     /** Called only after the exact sheet has laid out in a resumed, focused Activity. */
     suspend fun recordForegroundOpportunity(journeyId: String, episodeId: String): Boolean = try {
-        db.withTransaction {
+        val recorded = db.withTransaction {
             val p = db.probableEndPresentationDao().byId(episodeId) ?: return@withTransaction false
             p.validate()
             if (p.journeyId != journeyId || p.liveSlot != 1) return@withTransaction false
@@ -60,8 +62,19 @@ class RoomProbableEndPresentationCoordinator(
             if (p.status == ProbableEndPresentationStatus.PRESENTED.name) return@withTransaction true
             val now = clock.nowMillis()
             if (now < p.createdAtMillis) return@withTransaction false
-            db.probableEndPresentationDao().markPresented(episodeId, now) == 1
+            val deadline = Math.addExact(now, PROBABLE_END_WINDOW_MILLIS)
+            db.probableEndPresentationDao().markPresented(episodeId, now, deadline) == 1
         }
+        if (recorded) {
+            // Room committed first. A lost scheduling call is recovered from Room on restart.
+            try {
+                db.probableEndPresentationDao().byId(episodeId)?.takeIf {
+                    it.journeyId == journeyId && it.deadlineStatus == ProbableEndDeadlineStatus.ACTIVE.name
+                }?.let { deadlineScheduler.schedule(it.deadlineIdentity(), clock.nowMillis()) }
+            } catch (cancelled: CancellationException) { throw cancelled }
+              catch (_: Exception) { /* Scheduling is secondary; Room remains authoritative. */ }
+        }
+        recorded
     } catch (cancelled: CancellationException) { throw cancelled }
       catch (_: Exception) { false }
 }
