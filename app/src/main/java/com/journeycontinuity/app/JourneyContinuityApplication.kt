@@ -19,6 +19,14 @@ import com.journeycontinuity.app.data.local.MIGRATION_13_14
 import com.journeycontinuity.app.data.local.MIGRATION_14_15
 import com.journeycontinuity.app.data.local.MIGRATION_15_16
 import com.journeycontinuity.app.data.local.MIGRATION_16_17
+import com.journeycontinuity.app.data.local.MIGRATION_17_18
+import com.journeycontinuity.app.data.repository.RoomProbableEndAutoEndCoordinator
+import com.journeycontinuity.app.data.repository.WorkManagerProbableEndAutoEndScheduler
+import com.journeycontinuity.app.data.probableend.ProbableEndAutoEndGateway
+import com.journeycontinuity.app.data.probableend.ProbableEndFinalization
+import com.journeycontinuity.app.data.probableend.ProbableEndRegistration
+import com.journeycontinuity.app.data.probableend.ProbableEndServerWindowRequest
+import com.journeycontinuity.app.data.probableend.SupabaseProbableEndAutoEndGateway
 import com.journeycontinuity.app.data.repository.RoomProbableEndGuardStore
 import com.journeycontinuity.app.data.repository.RoomProbableEndPresentationCoordinator
 import com.journeycontinuity.app.data.repository.RoomProbableEndResponseCoordinator
@@ -132,6 +140,7 @@ class JourneyContinuityApplication : Application() {
             MIGRATION_14_15,
             MIGRATION_15_16,
             MIGRATION_16_17,
+            MIGRATION_17_18,
         ).addCallback(FALLBACK_ATTEMPT_INVARIANT_CALLBACK).build()
     }
 
@@ -201,6 +210,18 @@ class JourneyContinuityApplication : Application() {
     val probableEndDeadlineCoordinator by lazy {
         RoomProbableEndDeadlineCoordinator(database, probableEndDeadlineScheduler)
     }
+    val probableEndAutoEndCoordinator by lazy {
+        RoomProbableEndAutoEndCoordinator(database, cloudGateways.autoEnd,
+            WorkManagerProbableEndAutoEndScheduler(applicationContext),
+            onTerminalEffects = { _ ->
+                journeyServiceController.stop()
+                syncScheduler.schedule(SyncRequestUrgency.URGENT)
+            },
+            onGuardBlocked = { journeyId ->
+                probableEndGuardCoordinator.reconcile(journeyId,
+                    GuardReconciliationTrigger.RESTORE)
+            }, terminalHandoffGate = terminalHandoffGate)
+    }
     private val probableEndGuardCoordinator by lazy {
         ProbableEndGuardCoordinator(RoomProbableEndGuardStore(database), cloudGateways.verificationGuard)
     }
@@ -227,12 +248,19 @@ class JourneyContinuityApplication : Application() {
     val probableEndProvenCandidateId by lazy { database.probableEndPresentationDao().observeProvenCandidateId() }
     val probableEndPresentationEpisode by lazy { database.probableEndPresentationDao().observeActionableLocalEpisode() }
     val probableEndCompletedResult by lazy { database.probableEndPresentationDao().observePendingCompletedResult() }
+    val probableEndAutomaticResult by lazy { database.probableEndPresentationDao().observePendingAutomaticResult() }
 
     suspend fun recheckProbableEndForForeground(journeyId: String, candidateId: String): String? =
         probableEndPresentationCoordinator.recheckAndPromote(journeyId, candidateId)
 
     suspend fun recordProbableEndForegroundOpportunity(journeyId: String, episodeId: String): Boolean =
-        probableEndPresentationCoordinator.recordForegroundOpportunity(journeyId, episodeId)
+        probableEndPresentationCoordinator.recordForegroundOpportunity(journeyId, episodeId).also { recorded ->
+            if (recorded) localInferenceScope.launch {
+                try { probableEndAutoEndCoordinator.register(episodeId) }
+                catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                catch (_: Exception) { /* Secondary registration retries from durable work. */ }
+            }
+        }
 
     suspend fun respondToProbableEnd(request: ProbableEndResponseRequest,
         response: ProbableEndTravellerResponse): ProbableEndResponseOutcome =
@@ -240,6 +268,9 @@ class JourneyContinuityApplication : Application() {
 
     suspend fun acknowledgeProbableEndCompletion(episodeId: String): Boolean =
         probableEndResponseCoordinator.acknowledgeCompletedResult(episodeId)
+
+    suspend fun acknowledgeProbableEndAutomaticResult(episodeId: String): Boolean =
+        probableEndAutoEndCoordinator.acknowledgeResult(episodeId)
     // Service identity/display needs no structured-destination decoding. No fallback Journey is fabricated.
     internal val activeMonitoringJourney by lazy { database.journeyDao().observeActive() }
     private val localInferenceScope = kotlinx.coroutines.CoroutineScope(
@@ -350,6 +381,7 @@ class JourneyContinuityApplication : Application() {
                     sync = SupabaseCloudSyncGateway(client, identityCoordinator, logger),
                     heartbeat = SupabaseHeartbeatGateway(client, identityCoordinator, logger),
                     verificationGuard = SupabaseProbableEndVerificationGuardGateway(client, identityCoordinator),
+                    autoEnd = SupabaseProbableEndAutoEndGateway(client, identityCoordinator),
                     trustedContacts = SupabaseTrustedContactGateway(
                         client = client,
                         identityCoordinator = identityCoordinator,
@@ -411,6 +443,9 @@ class JourneyContinuityApplication : Application() {
             },
             reconcileCancelled = { journeyId, endedAt ->
                 journeyRepository.stopMonitoringActive(journeyId, endedAt) != null
+            },
+            reconcileAutoEnded = { journeyId, endedAt ->
+                probableEndAutoEndCoordinator.reconcileRemoteAutoEnded(journeyId, endedAt)
             },
         )
     }
@@ -475,6 +510,7 @@ class JourneyContinuityApplication : Application() {
         localInferenceScope.launch { resumeLocalProbableEnd() }
         localInferenceScope.launch { probableEndResponseCoordinator.resumeCompletionEffects() }
         localInferenceScope.launch { probableEndDeadlineCoordinator.restore() }
+        localInferenceScope.launch { probableEndAutoEndCoordinator.restore() }
     }
 
     /** Also isolates lazy store initialization; only optional inference failures are contained here. */
@@ -572,6 +608,11 @@ class JourneyContinuityApplication : Application() {
         val verificationGuard: ProbableEndVerificationGuardGateway = object : ProbableEndVerificationGuardGateway {
             override suspend fun read(journeyId: String, previous: AuthoritativeVerificationGuard?) =
                 VerificationGuardRead.Unknown(VerificationGuardUnavailableReason.UNAVAILABLE)
+        },
+        val autoEnd: ProbableEndAutoEndGateway = object : ProbableEndAutoEndGateway {
+            override suspend fun register(request: ProbableEndServerWindowRequest) = ProbableEndRegistration.Unknown
+            override suspend fun finalize(journeyId: String, presentationEpisodeId: String) =
+                ProbableEndFinalization.Unknown
         },
         val trustedContacts: TrustedContactGateway,
         val fallbackProvisioning: AuthenticatedFallbackProvisioningGateway,

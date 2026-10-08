@@ -18,6 +18,81 @@ interface ProbableEndPresentationDao {
           AND j.status = 'ACTIVE' AND j.activeSlot = 1""")
     suspend fun activeDeadlines(): List<ProbableEndPresentationEntity>
 
+    @Query("""SELECT p.* FROM probable_end_presentations p JOIN journeys j ON j.id = p.journeyId
+        WHERE p.status = 'PRESENTED' AND p.liveSlot = 1 AND p.respondedAtMillis IS NULL
+          AND p.deadlineStatus IN ('ACTIVE', 'EXPIRED_PENDING_FINALIZATION')
+          AND j.status = 'ACTIVE' AND j.activeSlot = 1""")
+    suspend fun windowsNeedingRegistration(): List<ProbableEndPresentationEntity>
+
+    @Query("""SELECT * FROM probable_end_presentations
+        WHERE status = 'AUTO_END_CLAIMED'""")
+    suspend fun pendingAutomaticClaims(): List<ProbableEndPresentationEntity>
+
+    @Query("""SELECT * FROM probable_end_presentations
+        WHERE status = 'AUTO_ENDED' AND automaticEffectsAppliedAtMillis IS NULL""")
+    suspend fun pendingAutomaticEffects(): List<ProbableEndPresentationEntity>
+
+    @Query("""UPDATE probable_end_presentations SET serverWindowRegisteredAtMillis = :registeredAt,
+        serverWindowNotBeforeAtMillis = :notBefore
+        WHERE id = :episodeId AND journeyId = :journeyId AND candidateEpisodeId = :candidateId
+          AND generation = :generation AND revision = :expectedRevision
+          AND status = 'PRESENTED' AND liveSlot = 1 AND respondedAtMillis IS NULL
+          AND serverWindowRegisteredAtMillis IS NULL AND confirmationDeadlineAtMillis IS NOT NULL""")
+    suspend fun saveServerWindow(episodeId: String, journeyId: String, candidateId: String,
+        generation: Long, expectedRevision: Long, registeredAt: Long, notBefore: Long): Int
+
+    @Query("""UPDATE probable_end_presentations SET status = 'AUTO_END_CLAIMED', liveSlot = NULL,
+        finalizationClaimedAtMillis = :claimedAt, revision = revision + 1
+        WHERE id = :episodeId AND journeyId = :journeyId AND candidateEpisodeId = :candidateId
+          AND generation = :generation AND revision = :expectedRevision
+          AND status = 'PRESENTED' AND liveSlot = 1 AND respondedAtMillis IS NULL
+          AND deadlineStatus = 'EXPIRED_PENDING_FINALIZATION'
+          AND serverWindowNotBeforeAtMillis IS NOT NULL""")
+    suspend fun claimAutomaticEnd(episodeId: String, journeyId: String, candidateId: String,
+        generation: Long, expectedRevision: Long, claimedAt: Long): Int
+
+    @Query("""UPDATE probable_end_presentations SET status = 'PRESENTED', liveSlot = 1,
+        finalizationClaimedAtMillis = NULL, revision = revision + 1
+        WHERE id = :episodeId AND status = 'AUTO_END_CLAIMED'
+          AND finalizationClaimedAtMillis = :claimedAt""")
+    suspend fun releaseEarlyClaim(episodeId: String, claimedAt: Long): Int
+
+    @Query("""UPDATE probable_end_presentations SET status = 'AUTO_ENDED',
+        automaticEndedAtMillis = :endedAt, closedAtMillis = :endedAt,
+        closureReason = 'AUTHORITATIVE_AUTO_END', revision = revision + 1
+        WHERE id = :episodeId AND status = 'AUTO_END_CLAIMED'
+          AND automaticEndedAtMillis IS NULL AND respondedAtMillis IS NULL""")
+    suspend fun recordAutomaticEnd(episodeId: String, endedAt: Long): Int
+
+    @Query("""UPDATE probable_end_presentations SET status = 'INVALIDATED',
+        closedAtMillis = :at, closureReason = :reason, deadlineStatus = 'CANCELLED',
+        revision = revision + 1 WHERE id = :episodeId AND status = 'AUTO_END_CLAIMED'""")
+    suspend fun invalidateAutomaticClaim(episodeId: String, at: Long, reason: String): Int
+
+    @Query("""UPDATE probable_end_presentations SET status = 'INVALIDATED', liveSlot = NULL,
+        closedAtMillis = :at, closureReason = :reason, deadlineStatus = 'CANCELLED',
+        revision = revision + 1 WHERE id = :episodeId AND journeyId = :journeyId
+          AND revision = :expectedRevision AND status = 'PRESENTED' AND liveSlot = 1""")
+    suspend fun invalidateExactPresented(episodeId: String, journeyId: String,
+        expectedRevision: Long, at: Long, reason: String): Int
+
+    @Query("""UPDATE probable_end_presentations SET automaticEffectsAppliedAtMillis = :at,
+        revision = revision + 1 WHERE id = :episodeId AND status = 'AUTO_ENDED'
+          AND automaticEffectsAppliedAtMillis IS NULL""")
+    suspend fun markAutomaticEffectsApplied(episodeId: String, at: Long): Int
+
+    @Query("""UPDATE probable_end_presentations SET automaticResultAcknowledgedAtMillis = :at,
+        revision = revision + 1 WHERE id = :episodeId AND status = 'AUTO_ENDED'
+          AND automaticResultAcknowledgedAtMillis IS NULL""")
+    suspend fun acknowledgeAutomaticResult(episodeId: String, at: Long): Int
+
+    @Query("""SELECT p.id AS episodeId, p.journeyId AS journeyId,
+        j.destination AS destination, j.expectedArrivalAt AS expectedArrivalAt
+        FROM probable_end_presentations p JOIN journeys j ON j.id = p.journeyId
+        WHERE p.status = 'AUTO_ENDED' AND p.automaticResultAcknowledgedAtMillis IS NULL
+          AND j.status = 'AUTO_ENDED' ORDER BY p.automaticEndedAtMillis DESC LIMIT 1""")
+    fun observePendingAutomaticResult(): Flow<ProbableEndCompletedResult?>
+
     @Query("""UPDATE probable_end_presentations SET status = :responseStatus, liveSlot = NULL,
         respondedAtMillis = :whenMillis, closedAtMillis = :whenMillis,
         closureReason = 'TRAVELLER_RESPONSE',

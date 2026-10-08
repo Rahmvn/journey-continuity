@@ -96,7 +96,8 @@ class GuardedTravellerActiveJourneySignOutGateway internal constructor(
                 JourneyStatus.CANCELLED -> before.takeIf(::validStoppedState)
                     ?: return@withLock ActiveJourneySignOutResult.RemoteResultInvalid
                 JourneyStatus.ACTIVE -> null
-                JourneyStatus.COMPLETED -> return@withLock ActiveJourneySignOutResult.RemoteResultInvalid
+                JourneyStatus.COMPLETED, JourneyStatus.AUTO_ENDED ->
+                    return@withLock ActiveJourneySignOutResult.RemoteResultInvalid
             }
 
             val acknowledged = previouslyStopped ?: run {

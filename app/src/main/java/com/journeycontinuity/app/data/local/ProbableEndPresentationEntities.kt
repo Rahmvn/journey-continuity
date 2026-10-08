@@ -8,6 +8,7 @@ import com.journeycontinuity.app.domain.probableend.ProbableEndPolicy
 
 enum class ProbableEndPresentationStatus {
     READY_TO_PRESENT, PRESENTED, INVALIDATED, RESPONDED_COMPLETED, RESPONDED_KEEP_MONITORING,
+    AUTO_END_CLAIMED, AUTO_ENDED,
 }
 
 /** This is local window provenance, never permission to terminalize a Journey. */
@@ -43,6 +44,12 @@ data class ProbableEndPresentationEntity(
     val confirmationDeadlineAtMillis: Long? = null,
     val deadlineStatus: String? = null,
     val deadlineExpiredAtMillis: Long? = null,
+    val serverWindowRegisteredAtMillis: Long? = null,
+    val serverWindowNotBeforeAtMillis: Long? = null,
+    val finalizationClaimedAtMillis: Long? = null,
+    val automaticEndedAtMillis: Long? = null,
+    val automaticEffectsAppliedAtMillis: Long? = null,
+    val automaticResultAcknowledgedAtMillis: Long? = null,
 ) {
     fun validate() {
         require(id.isNotBlank() && journeyId.isNotBlank() && candidateEpisodeId.isNotBlank() &&
@@ -54,6 +61,8 @@ data class ProbableEndPresentationEntity(
             ProbableEndPresentationStatus.INVALIDATED -> require(liveSlot == null && closedAtMillis != null && closedAtMillis >= createdAtMillis && !closureReason.isNullOrBlank() && respondedAtMillis == null && resultAcknowledgedAtMillis == null && completionEffectsAppliedAtMillis == null)
             ProbableEndPresentationStatus.RESPONDED_COMPLETED -> require(liveSlot == null && presentedAtMillis != null && respondedAtMillis != null && respondedAtMillis >= presentedAtMillis && closedAtMillis == respondedAtMillis && closureReason == "TRAVELLER_RESPONSE" && (resultAcknowledgedAtMillis == null || resultAcknowledgedAtMillis >= respondedAtMillis) && (completionEffectsAppliedAtMillis == null || completionEffectsAppliedAtMillis >= respondedAtMillis))
             ProbableEndPresentationStatus.RESPONDED_KEEP_MONITORING -> require(liveSlot == null && presentedAtMillis != null && respondedAtMillis != null && respondedAtMillis >= presentedAtMillis && closedAtMillis == respondedAtMillis && closureReason == "TRAVELLER_RESPONSE" && resultAcknowledgedAtMillis == null && completionEffectsAppliedAtMillis == null)
+            ProbableEndPresentationStatus.AUTO_END_CLAIMED -> require(liveSlot == null && presentedAtMillis != null && respondedAtMillis == null && finalizationClaimedAtMillis != null && automaticEndedAtMillis == null)
+            ProbableEndPresentationStatus.AUTO_ENDED -> require(liveSlot == null && presentedAtMillis != null && respondedAtMillis == null && finalizationClaimedAtMillis != null && automaticEndedAtMillis != null && closedAtMillis == automaticEndedAtMillis && closureReason == "AUTHORITATIVE_AUTO_END")
         }
         // Null is truthful for READY episodes and for PRESENTED episodes predating v17.
         if (deadlineStatus == null) require(confirmationDeadlineAtMillis == null && deadlineExpiredAtMillis == null)
@@ -62,11 +71,19 @@ data class ProbableEndPresentationEntity(
             require(presentedAtMillis != null && deadline == Math.addExact(presentedAtMillis, 30 * 60 * 1000L))
             when (ProbableEndDeadlineStatus.valueOf(deadlineStatus)) {
                 ProbableEndDeadlineStatus.ACTIVE -> require(status == ProbableEndPresentationStatus.PRESENTED.name && deadlineExpiredAtMillis == null)
-                ProbableEndDeadlineStatus.EXPIRED_PENDING_FINALIZATION -> require(status == ProbableEndPresentationStatus.PRESENTED.name && deadlineExpiredAtMillis != null && deadlineExpiredAtMillis >= deadline)
+                ProbableEndDeadlineStatus.EXPIRED_PENDING_FINALIZATION -> require(status in setOf(ProbableEndPresentationStatus.PRESENTED.name, ProbableEndPresentationStatus.AUTO_END_CLAIMED.name, ProbableEndPresentationStatus.AUTO_ENDED.name) && deadlineExpiredAtMillis != null && deadlineExpiredAtMillis >= deadline)
                 ProbableEndDeadlineStatus.CANCELLED -> require(status != ProbableEndPresentationStatus.PRESENTED.name &&
                     (deadlineExpiredAtMillis == null || deadlineExpiredAtMillis >= deadline))
             }
         }
+        if (serverWindowRegisteredAtMillis == null) require(serverWindowNotBeforeAtMillis == null)
+        else require(serverWindowRegisteredAtMillis > 0 && serverWindowNotBeforeAtMillis ==
+            Math.addExact(serverWindowRegisteredAtMillis, 30 * 60 * 1000L))
+        if (finalizationClaimedAtMillis != null) require(serverWindowNotBeforeAtMillis != null &&
+            (deadlineStatus == ProbableEndDeadlineStatus.EXPIRED_PENDING_FINALIZATION.name ||
+                status == ProbableEndPresentationStatus.INVALIDATED.name &&
+                deadlineStatus == ProbableEndDeadlineStatus.CANCELLED.name))
+        if (automaticEndedAtMillis != null) require(status == ProbableEndPresentationStatus.AUTO_ENDED.name)
     }
     override fun toString() = "ProbableEndPresentationEntity(redacted)"
 }

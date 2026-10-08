@@ -50,7 +50,11 @@ class ProbableEndDeadlineWorker(context: Context, params: WorkerParameters) : Co
         if (identity.generation < 0 || identity.revision < 0 || identity.deadlineAtMillis <= 0)
             return Result.failure()
         return when (app.probableEndDeadlineCoordinator.expire(identity)) {
-            ProbableEndExpiryOutcome.EXPIRED_PENDING_FINALIZATION, ProbableEndExpiryOutcome.OBSOLETE -> Result.success()
+            ProbableEndExpiryOutcome.EXPIRED_PENDING_FINALIZATION -> {
+                app.probableEndAutoEndCoordinator.advance(identity.episodeId)
+                Result.success()
+            }
+            ProbableEndExpiryOutcome.OBSOLETE -> Result.success()
             ProbableEndExpiryOutcome.TOO_EARLY, ProbableEndExpiryOutcome.UNAVAILABLE -> Result.retry()
         }
     }

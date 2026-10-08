@@ -39,7 +39,9 @@ abstract class JourneyDao {
     @Query(
         """UPDATE journeys
            SET status = :completedStatus, completedAt = :completedAt, activeSlot = NULL
-           WHERE id = :journeyId AND activeSlot = 1""",
+           WHERE id = :journeyId AND activeSlot = 1
+             AND NOT EXISTS (SELECT 1 FROM probable_end_presentations p
+                 WHERE p.journeyId = :journeyId AND p.status = 'AUTO_END_CLAIMED')""",
     )
     protected abstract suspend fun markCompleted(
         journeyId: String,
@@ -51,7 +53,9 @@ abstract class JourneyDao {
         """UPDATE journeys
            SET status = :cancelledStatus, endedAt = :endedAt, activeSlot = NULL
            WHERE id = :journeyId AND activeSlot = 1 AND status = :activeStatus
-             AND completedAt IS NULL""",
+             AND completedAt IS NULL
+             AND NOT EXISTS (SELECT 1 FROM probable_end_presentations p
+                 WHERE p.journeyId = :journeyId AND p.status = 'AUTO_END_CLAIMED')""",
     )
     protected abstract suspend fun markMonitoringStopped(
         journeyId: String,
@@ -59,6 +63,21 @@ abstract class JourneyDao {
         cancelledStatus: JourneyStatus = JourneyStatus.CANCELLED,
         activeStatus: JourneyStatus = JourneyStatus.ACTIVE,
     ): Int
+
+    @Query("""UPDATE journeys SET status = 'AUTO_ENDED', endedAt = :endedAt,
+        activeSlot = NULL WHERE id = :journeyId AND status = 'ACTIVE'
+          AND activeSlot = 1 AND completedAt IS NULL AND endedAt IS NULL""")
+    protected abstract suspend fun markAutomaticEnd(journeyId: String, endedAt: Long): Int
+
+    /** Called inside the exact presentation reconciliation transaction only. */
+    @Transaction
+    open suspend fun autoEndExactInTransaction(journeyId: String, endedAt: Long): Boolean {
+        if (markAutomaticEnd(journeyId, endedAt) != 1) return false
+        deactivateFallback(journeyId)
+        supersedeUnsentFallback(journeyId, endedAt)
+        markSyncPending(journeyId)
+        return true
+    }
 
     @Query(
         """UPDATE journey_degradation_states

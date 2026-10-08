@@ -36,7 +36,7 @@ class ProbableEndMigrationTest {
                     })
                 }
             }
-            val failed = Room.databaseBuilder(context, JourneyDatabase::class.java, name).addMigrations(failing, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17).build()
+            val failed = Room.databaseBuilder(context, JourneyDatabase::class.java, name).addMigrations(failing, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18).build()
             try {
                 try { failed.openHelper.writableDatabase; org.junit.Assert.fail("Migration should fail") }
                 catch (_: IllegalStateException) { }
@@ -128,7 +128,7 @@ class ProbableEndMigrationTest {
                     assertTrue(unique.contains("index_probable_end_episodes_journeyId_liveSlot"))
                 }
             }
-            val opened = Room.databaseBuilder(context, JourneyDatabase::class.java, name).addMigrations(MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17).build()
+            val opened = Room.databaseBuilder(context, JourneyDatabase::class.java, name).addMigrations(MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18).build()
             try {
                 assertNotNull(opened.journeyDao().getById("migration"))
                 assertNotNull(opened.journeyDao().getById("migration")!!.toDomain().structuredDestination)

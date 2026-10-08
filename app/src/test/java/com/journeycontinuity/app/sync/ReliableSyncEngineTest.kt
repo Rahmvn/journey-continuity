@@ -16,6 +16,27 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class ReliableSyncEngineTest {
+    @Test fun automaticEndSyncConfirmsServerTerminalStateWithoutOwnerStatusWrite() = runBlocking {
+        val ended = journey("server-auto-ended").copy(status = JourneyStatus.AUTO_ENDED, endedAt = 9_000L)
+        val local = FakeLocalSyncStore(ended, telemetry(ended.id, 1..2))
+        val remote = FakeCloudGateway().also { it.cloudJourneys[ended.id] = ended }
+        assertEquals(SyncRunResult.Success, engine(local, remote).synchronize())
+        assertEquals(2, remote.cloudTelemetry.size)
+        assertEquals(ended, remote.cloudJourneys[ended.id])
+        assertTrue(local.noWorkRequested(ended.id))
+    }
+
+    @Test fun automaticEndSyncRefusesMismatchedServerProvenance() = runBlocking {
+        val ended = journey("mismatched-auto-end").copy(status = JourneyStatus.AUTO_ENDED, endedAt = 9_000L)
+        val local = FakeLocalSyncStore(ended)
+        val remote = FakeCloudGateway().also {
+            it.cloudJourneys[ended.id] = ended.copy(endedAt = 10_000L)
+        }
+        assertEquals(SyncRunResult.Retry, engine(local, remote).synchronize())
+        assertEquals(ended, local.journey(ended.id))
+        assertFalse(local.noWorkRequested(ended.id))
+    }
+
     @Test fun structuredOfflineRetryPreservesUuidEvidenceAndActiveStatus() = runBlocking {
         val original = journey("structured").copy(structuredDestination =
             com.journeycontinuity.app.domain.DestinationEvidenceFixtures.mapPin())

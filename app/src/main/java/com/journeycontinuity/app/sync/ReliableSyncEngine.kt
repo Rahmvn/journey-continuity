@@ -15,6 +15,7 @@ class ReliableSyncEngine(
     private val attemptObserver: suspend (journeyId: String) -> Unit = {},
     private val provisioningObserver: suspend (journeyId: String) -> Unit = {},
     private val reconcileCancelled: suspend (journeyId: String, endedAt: Long) -> Boolean = { _, _ -> false },
+    private val reconcileAutoEnded: suspend (journeyId: String, endedAt: Long) -> Boolean = { _, _ -> false },
 ) {
     suspend fun synchronize(): SyncRunResult {
         var ownerId: String? = null
@@ -116,6 +117,14 @@ class ReliableSyncEngine(
                 }
                 reconcileCancelled(journeyId, endedAt)
             }
+            JourneyStatus.AUTO_ENDED -> {
+                val endedAt = remoteJourney.endedAt
+                if (endedAt == null || remoteJourney.completedAt != null) {
+                    throw CloudSyncException(SyncFailureKind.TERMINAL_CONFLICT,
+                        "Remote automatic-end timestamp is unavailable.")
+                }
+                reconcileAutoEnded(journeyId, endedAt)
+            }
             // The existing completion operation has no Journey-ID guard. Do not
             // manufacture a completion or stop the wrong active Journey here.
             JourneyStatus.COMPLETED -> throw CloudSyncException(
@@ -134,7 +143,7 @@ class ReliableSyncEngine(
                 SyncFailureKind.PERMANENT,
                 "Local synchronization state references a missing Journey.",
             )
-        remote.upsertJourney(initialJourney, ownerId)
+        upsertOrConfirmAutomaticEnd(initialJourney, ownerId)
         if (initialJourney.status == JourneyStatus.ACTIVE) {
             try {
                 provisioningObserver(initialJourney.id)
@@ -171,7 +180,7 @@ class ReliableSyncEngine(
                 SyncFailureKind.PERMANENT,
                 "Local Journey disappeared during synchronization.",
             )
-        remote.upsertJourney(latestJourney, ownerId)
+        upsertOrConfirmAutomaticEnd(latestJourney, ownerId)
 
         val finished = local.finishIfUnchanged(
             journeyId = candidate.journeyId,
@@ -181,5 +190,21 @@ class ReliableSyncEngine(
         logger.info("Synchronization candidate completed; local state unchanged: $finished")
         // If local evidence changed, finishIfUnchanged deliberately leaves workRequested
         // set. The outer loop immediately reads the new change version and drains it.
+    }
+
+    /** AUTO_ENDED is server-owned; syncing telemetry must not try an owner status write. */
+    private suspend fun upsertOrConfirmAutomaticEnd(journey: com.journeycontinuity.app.domain.Journey,
+        ownerId: String) {
+        if (journey.status != JourneyStatus.AUTO_ENDED) {
+            remote.upsertJourney(journey, ownerId)
+            return
+        }
+        val authoritative = remote.ownerJourneyState(journey.id, ownerId)
+        if (authoritative?.journeyId != journey.id || authoritative.ownerId != ownerId ||
+            authoritative.status != JourneyStatus.AUTO_ENDED ||
+            authoritative.endedAt != journey.endedAt || authoritative.completedAt != null) {
+            throw CloudSyncException(SyncFailureKind.TERMINAL_CONFLICT,
+                "Server automatic-end provenance does not match the local Journey.")
+        }
     }
 }

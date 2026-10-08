@@ -39,6 +39,7 @@ import com.journeycontinuity.app.ui.TravellerAccountViewModelFactory
 import com.journeycontinuity.app.ui.AccountSignOutStatus
 import com.journeycontinuity.app.ui.TravellerMonitoringStoppedResult
 import com.journeycontinuity.app.ui.ProbableEndCompletedResultScreen
+import com.journeycontinuity.app.ui.ProbableEndAutomaticResultScreen
 import com.journeycontinuity.app.data.repository.ProbableEndResponseRequest
 import com.journeycontinuity.app.data.repository.ProbableEndTravellerResponse
 import com.journeycontinuity.app.data.repository.ProbableEndResponseOutcome
@@ -175,6 +176,7 @@ class MainActivity : ComponentActivity() {
                 val accountState by accountViewModel.state.collectAsStateWithLifecycle()
                 val probableEndEpisode by app.probableEndPresentationEpisode.collectAsStateWithLifecycle(initialValue = null)
                 val probableEndCompletedResult by app.probableEndCompletedResult.collectAsStateWithLifecycle(initialValue = null)
+                val probableEndAutomaticResult by app.probableEndAutomaticResult.collectAsStateWithLifecycle(initialValue = null)
                 val stopped = accountState.monitoringStoppedJourney
                 if (accountState.restoringMonitoringStoppedResult) {
                     Box(Modifier.fillMaxSize().background(Color(0xFFFBFBF8)),
@@ -191,6 +193,18 @@ class MainActivity : ComponentActivity() {
                         onDone = { accountViewModel.doneWithMonitoringStopped(
                             rootViewModel::assessStartup) },
                     )
+                } else if (probableEndAutomaticResult != null && rootState.route in setOf(
+                        TravellerRootRoute.ADMITTED_EXISTING, TravellerRootRoute.ADMITTED_NEW)) {
+                    val result = requireNotNull(probableEndAutomaticResult)
+                    ProbableEndAutomaticResultScreen(result) {
+                        if (!probableEndResultAcknowledging) {
+                            probableEndResultAcknowledging = true
+                            lifecycleScope.launch {
+                                try { app.acknowledgeProbableEndAutomaticResult(result.episodeId) }
+                                finally { probableEndResultAcknowledging = false }
+                            }
+                        }
+                    }
                 } else if (probableEndCompletedResult != null && rootState.route in setOf(
                         TravellerRootRoute.ADMITTED_EXISTING, TravellerRootRoute.ADMITTED_NEW)) {
                     val result = requireNotNull(probableEndCompletedResult)
