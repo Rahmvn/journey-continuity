@@ -1,0 +1,30 @@
+Parsed test spec with 2 sessions
+
+starting permutation: f_begin f_commit_incident r_before_commit f_end r_after_commit
+step f_begin: begin;
+step f_commit_incident: 
+    do $$ declare d text; begin
+      select f.decision into d from public.isolation_incident_read_identity i,
+      lateral public.finalize_unresolved_incident_v1(i.journey_id,i.admission_id,
+      i.boundary_at,i.policy_version,i.verification_case_id,i.opening_event_id,
+      i.verifying_started_at,i.guard_version,i.history_baseline_at) f;
+      assert d='UNRESOLVED_INCIDENT';
+    end $$;
+
+step r_before_commit: 
+    do $$ begin
+      perform * from public.get_owner_unresolved_incident_finalization_v1(
+        '20000000-0000-4000-8000-0000000000e1');
+      raise exception 'Uncommitted incident was visible';
+    exception when sqlstate '22023' then null;
+    end $$;
+
+step f_end: commit;
+step r_after_commit: 
+    do $$ declare d text; a uuid; c uuid; begin
+      select r.decision,r.admission_id,r.verification_case_id into d,a,c
+      from public.get_owner_unresolved_incident_finalization_v1(
+        '20000000-0000-4000-8000-0000000000e1') r;
+      assert d='UNRESOLVED_INCIDENT' and a is not null and c is not null;
+    end $$;
+
