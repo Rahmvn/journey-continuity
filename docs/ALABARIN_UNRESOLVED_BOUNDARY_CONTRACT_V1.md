@@ -1,11 +1,11 @@
 # Alabarin Unresolved Boundary Contract v1
 
-**Status:** LOCKED PRODUCT CONTRACT following the Section 10 Final Contract Reconciliation instruction. Implementation strategies remain to be validated; exact pending/late-episode UI copy remains a later UI review gate. Only the narrowed 10A foundation is implemented locally; no Section 10 operational stop or terminal behavior is active. This contract does not authorize deployment.
+**Status:** LOCKED PRODUCT CONTRACT following the Section 10 Final Contract Reconciliation instruction. Implementation strategies remain to be validated; exact pending/late-episode UI copy remains a later UI review gate. The 10A foundation is committed and deployed; 10B authoritative server finalization is implemented and locally tested only. No Section 10 operational stop or Android terminal/result behavior is active. This contract does not authorize another deployment.
 **Date:** 2026-10-09
 **Source baseline:** `132142aaaab1f28293f274de099b2ad1ecec676d`, branch `feat/milestone-7-alexa-mcp-agent`.
-**10A foundation under implementation:** Room v18 to v19 and a separate additive hosted migration are prepared locally; neither is deployed or committed. Journey statuses remain ACTIVE, COMPLETED, CANCELLED and AUTO_ENDED. No Section 10 operational stop or terminal behavior is active. Section 09 is closed for engineering and remains unchanged.
+**10A foundation:** Room v19 and the additive hosted admission/eligibility migration were committed and deployed separately. The new 10B migration adds server-side UNRESOLVED_INCIDENT support only in local acceptance; it is not deployed. Android Journey statuses remain ACTIVE, COMPLETED, CANCELLED and AUTO_ENDED until 10C integration. Section 09 is closed for engineering and remains unchanged.
 **Revised 10A authority (2026-10-09):** An authenticated server timestamp at or beyond the exact boundary can establish historical passage. An earlier sample cannot be advanced through Android `elapsedRealtime()` into an authoritative UTC lower bound without a supported clock-error envelope. The narrowed 10A foundation is authorized independently of the unresolved offline-stop policy question in section 6.
-**10A policy identifier:** `alabarin-unresolved-boundary-v1` in the local Room and additive server-migration foundations; deployment remains separately gated.
+**10A policy identifier:** `alabarin-unresolved-boundary-v1` in Room and server admission provenance. Deployment of the 10B migration remains separately gated.
 
 ## 1. Authority, review status and scope
 
@@ -28,7 +28,7 @@ Labels in this document:
 - **UI COPY REVIEW:** exact wording/presentation still requires review before the relevant user-visible slice, without reopening a locked policy.
 - **ENGINEERING RISK:** a feasibility, integration or acceptance obligation to resolve during separately authorized implementation.
 
-The original contract-only reconciliation preserved this draft without production code or migrations. The separately authorized narrowed 10A implementation now prepares local code and additive migrations. No hosted writes, Figma changes, staging or commit are included. Trusted Viewer, SMS and Alexa implementation remain outside scope.
+The original contract-only reconciliation preceded the separately authorized, committed and hosted-accepted 10A foundation. The current 10B work is local-only, with no hosted writes, Figma changes, staging or commit. Trusted Viewer, SMS and Alexa implementation remain outside scope.
 
 ## 2. Decision register
 
@@ -41,7 +41,7 @@ The original contract-only reconciliation preserved this draft without productio
 | D05 | Operational stop does not require a received unresolved-case snapshot; absent authority cannot manufacture incident eligibility | LOCKED |
 | D06 | Pending authority retains the occupied active-Journey slot; no second admission or silent replacement | LOCKED |
 | D07 | A genuinely new coherent verification episode after the fixed boundary may qualify immediately; preserve its own history | LOCKED rule; exact conditional result wording remains UI COPY REVIEW |
-| D08 | Freeze original ETA/provenance; preserve delayed offline admission; invent no historical authority | LOCKED; 10A schema prepared locally, not deployed |
+| D08 | Freeze original ETA/provenance; preserve delayed offline admission; invent no historical authority | LOCKED; committed 10A schema deployed and hosted-accepted |
 | D09 | Device-initiated finalization; reconcile winning explicit intent first; terminal authority remains server-atomic and monotonic | LOCKED; exact claim/recovery mechanism requires validation |
 | D10 | Seven elapsed days of restricted, revocable, read-only incident-detail access from authoritative terminalization | LOCKED |
 | D11 | No new post-terminal reporting; evidence retention is separate from access expiry | LOCKED constraint; retention duration remains separately undecided |
@@ -95,7 +95,7 @@ Genuine resolution permanently supersedes eligibility attached to that old verif
 
 **LOCKED D02/D08/D15:** ETA is the Traveller-selected original arrival instant captured in the admitted Journey request. The Journey UUID, ETA, admission/source provenance and policy are frozen. Valid v1 ETA satisfies `admissionAt < ETA <= admissionAt + 259,200,000 milliseconds` (72 elapsed hours). The absolute unresolved boundary is `ETA + 86,400,000 milliseconds` / exactly 24 elapsed hours. The latest possible boundary for a newly admitted v1 Journey is admission plus 96 elapsed hours. This is not a universal terminal limit or a substitute for current coherent unresolved verification. The boundary is not a calendar-day calculation or server-registration-time plus 24 hours.
 
-Android freezes the Start request before readiness/permissions and revalidates ETA against actual local admission. Room stores a non-null epoch-millisecond value. The additive 10A server migration freezes accepted ETA against owner updates while preserving historical rows unchanged. Until separately deployed, hosted storage retains its pre-10A behavior.
+Android freezes the Start request before readiness/permissions and revalidates ETA against actual local admission. Room stores a non-null epoch-millisecond value. The deployed additive 10A server migration freezes accepted ETA against owner updates while preserving historical rows unchanged.
 
 Admission authority preserves exact Journey/owner, original ETA, locally attested admission time, source/provenance, boundary and policy version. Validate finite, representable values, checked arithmetic, timestamp precision, `admissionAt < ETA`, and the approved 72-hour maximum. Compute fixed elapsed durations in UTC/epoch arithmetic; do not substitute a session-timezone calendar day across daylight-saving changes. Do not rewrite existing Journey ETAs to make them appear compliant. A delayed upload of a valid original admission is not rejected because its ETA is past at server receipt.
 
@@ -146,7 +146,7 @@ No elapsed-time guarantee, safety margin or new clock-sync system was invented. 
 
 The operational stop does not require a positive cached VERIFYING/OPEN snapshot or a fresh server response. Current Android has no durable current OPEN-case projection and cannot learn an episode opened while the phone is offline. That absence does not authorize an incident, but it does not veto the independently proven bounded operational stop. Any saved case snapshot must retain its evaluation time and episode/version as last-known knowledge, never a lease proving current server state.
 
-Offline/ETA/silence alone must never be relabelled genuine unresolved verification. The approved policy deliberately separates operational cessation from authoritative terminal eligibility: lack of authority leaves the operational decision pending; only the future server operation may determine current incident eligibility. If time proof itself is unavailable, apply section 6's conservative exception rather than stopping on an untrusted wall-clock value.
+Offline/ETA/silence alone must never be relabelled genuine unresolved verification. The approved policy deliberately separates operational cessation from authoritative terminal eligibility: lack of authority leaves the operational decision pending; only the authoritative server operation may determine current incident eligibility. That operation is implemented locally in 10B but is not deployed or invoked by Android. If time proof itself is unavailable, apply section 6's conservative exception rather than stopping on an untrusted wall-clock value.
 
 Once PENDING_AUTHORITY commits, stop continuous location collection and heartbeat generation, new degradation evaluation and new fallback allocation under the bounded-stop policy. Server unavailability alone never resumes them. Cancel obsolete collection/Probable End/deadline execution; preserve pending transport records and already handed-off/uncertain transport history. Reconcile a handed-off attempt's acknowledgement where permitted; do not blindly allocate or re-send new fallback attempts after the stop. Preserve reconciliation of any already-claimed/uncertain terminal operation, including Section 09 finalization, rather than abandoning its possible server outcome. Keep only bounded authenticated time/status/terminal reconciliation, explicit-intent sync and permitted existing evidence upload; those operations must not generate a fake fresh device-contact signal merely to make reconciliation succeed.
 
@@ -197,7 +197,7 @@ A server cannot know an unsent action on another offline client. Device initiati
 
 ## 11. Atomic server finalization and Section 09 exclusion
 
-The future server operation itself must authorize, lock, re-evaluate time/ETA/current VERIFYING/current OPEN case/authenticated evidence, then write UNRESOLVED_INCIDENT and immutable provenance together. A client eligibility read followed by generic Journey UPDATE is forbidden.
+The authoritative server operation itself must authorize, lock, re-evaluate time/ETA/current VERIFYING/current OPEN case/authenticated evidence, then write UNRESOLVED_INCIDENT and immutable provenance together. Its local 10B implementation remains undeployed. A client eligibility read followed by generic Journey UPDATE is forbidden.
 
 Use the accepted Journey `NO KEY UPDATE` then monitoring-row locking discipline. It preserves compatibility with state-first case insertion and Journey foreign-key KEY SHARE. Bind any subsequent case/boundary locks consistently and prove composition with every resolution writer, heartbeat, watchdog and existing terminal mutation using official isolation tests.
 
@@ -221,13 +221,13 @@ Only factual nonsensitive summaries already permitted by existing authorization 
 
 Read-only means no post-terminal report submission through the existing report RPC either. Deny it after incident terminalization, including within the seven days. Preserve older reports. Any later post-terminal reporting capability needs separate approval. Report/finalization races must serialize so a report accepted before terminalization remains attributed history and a later submission is rejected.
 
-**ENGINEERING RISKS:** the duration is approved, but enforcement is not implemented. Confidentiality depends on complete revocation/expiry checks; TTL is not deletion; old access helpers, direct routes and client caches can undermine an incomplete implementation; a summary must not accidentally carry protected detail. Revocation cannot undo a disclosure or offline copy already obtained legitimately. Previously resolved evidence remains subject to its stricter existing policy, not a newly extended seven-day TTL.
+**ENGINEERING RISKS:** the seven-day detail-access checks are implemented locally in the undeployed 10B migration, pending final review and hosted acceptance. Confidentiality still depends on complete revocation/expiry checks; TTL is not deletion; direct routes and client caches can undermine enforcement if they bypass current authority; a summary must not accidentally carry protected detail. Revocation cannot undo a disclosure or offline copy already obtained legitimately. Previously resolved evidence remains subject to its stricter existing policy, not a newly extended seven-day TTL.
 
 ## 13. Existing access gap and complete route audit
 
-Current `trusted_contact_has_journey_access` checks accepted relationship and Journey grant revocation but not an incident terminal-access deadline; incident integration must also explicitly validate matching identity and relationship revocation. `get_verification_case` and `submit_verification_case_report` currently expire sensitive access only for RESOLVED cases. OPEN cases require null resolution/expiry fields. Simply setting the grant's `sensitive_access_expires_at` therefore does not bound an unresolved OPEN case, and falsely resolving it would change evidence meaning. An OPEN case must never bypass the locked incident-detail expiry.
+The deployed `trusted_contact_has_journey_access` checks accepted relationship and Journey grant revocation but not an incident terminal-access deadline. Before 10B deployment, hosted `get_verification_case` and `submit_verification_case_report` expire sensitive access only for RESOLVED cases; OPEN cases require null resolution/expiry fields. Simply setting the grant's `sensitive_access_expires_at` would not bound an unresolved OPEN case, and falsely resolving it would change evidence meaning. The local 10B migration adds a separate incident-detail predicate for verified identity, exact grant, relationship, revocation and immutable expiry, and denies post-terminal report submission. This has not been hosted-accepted or activated.
 
-The future backend must enforce a distinct incident-access boundary, including terminal read-only behavior, without broadening active/resolved policies or implementing Viewer/Alexa features. Audit every exposed version; securing only the newest wrapper leaves older granted RPCs callable.
+The local 10B migration applies that predicate to case detail and case-link disclosure in snapshots. Existing status/list routes retain only bounded factual summaries with verified-identity and current grant/relationship checks; they do not use the incident-detail predicate or expose case detail. Final review and hosted acceptance must verify every exposed version; securing only the newest wrapper would leave older granted RPCs callable. Android operational stopping, terminal reconciliation and result presentation remain future 10C work.
 
 | Existing route | Required incident treatment |
 | --- | --- |
@@ -274,15 +274,15 @@ Read-only architecture checks against the source baseline, not a new hosted/runt
 
 | Area | Current implementation | Required integration/validation |
 | --- | --- | --- |
-| ETA/admission | `JourneyLifecycle` validates and persists ETA locally; hosted terminal rewrite protection freezes ETA only after terminalization | Freeze qualifying admitted ETA while ACTIVE, preserving legitimate delayed upload and rejecting invented historical provenance |
+| ETA/admission | `JourneyLifecycle` validates and persists ETA locally; deployed 10A hosted admission provenance freezes qualifying ETA while ACTIVE and leaves historical rows unaltered | Preserve delayed valid offline upload and reject invented historical authority in 10B/10C paths |
 | Clock | The 10A foundation persists server observation and optional receipt metadata only | No same-boot UTC extrapolation; 10C offline missing-proof operational policy remains a human decision |
 | Active slot/restoration | Room `JourneyDao` retains one unique active slot; Application/service observe ACTIVE as monitoring permission | Keep the slot occupied but separately gate every collection/restoration path on operational state |
 | Explicit intent | Completion is local-first; `JourneyLifecycle.stopMonitoring` requires confirmed server ended time; local-only sign-out returns ConnectionRequired | Add exact pending stop-intent recovery for Section 10 without fabricated CANCELLED or offline account sign-out |
-| Terminal/sync | AUTO_ENDED has exact durable claim, server-authoritative reconciliation and monotonic hosted terminal protection | Add distinct incident handling and explicit-intent exclusion without changing Section 09 precedence |
+| Terminal/sync | AUTO_ENDED has exact durable claim, server-authoritative reconciliation and monotonic hosted terminal protection; local 10B adds a distinct server-only incident finalizer and extends hosted terminal protection | 10C must add durable device claim, explicit-intent exclusion and Android reconciliation before deployment/use |
 | SQL serialization | AUTO_ENDED locks Journey NO KEY UPDATE then monitoring; case opening uses monitoring state first and checks ACTIVE | Validate extension against all case/report/resolution writers using official isolation tests, not assumed lock compatibility |
-| Sensitive access | Granted case/report RPCs use ordinary contact access; OPEN-case reads are not limited by resolved-case TTL | Enforce immutable incident expiry/revocation and terminal read-only policy on every exposed version/direct route |
+| Sensitive access | Existing hosted case/report RPCs use ordinary contact access; local 10B closes the OPEN-case expiry bypass, caps grants, gates case/snapshot detail and denies post-terminal reports | Deploy only after route, grant, privacy and revocation acceptance; preserve the separate resolved-case TTL |
 
-No approved rule is shown to be materially impossible by these checks. These gaps are future engineering obligations, not evidence that the new behavior is already working. Stop the affected implementation slice if a safe mechanism cannot preserve the locked rule.
+No approved rule is shown to be materially impossible by these checks. Local 10B SQL acceptance is not hosted or Android runtime acceptance. Stop the affected implementation slice if a safe mechanism cannot preserve a locked rule.
 
 Before valid operational stop, optional eligibility/time reconciliation must not drop telemetry, block sync or crash core monitoring. After the stop, durable operational state must prevent location/heartbeat/fallback restart despite Journey.status remaining ACTIVE. Database truth and recoverable effects, not in-memory flags or WorkManager uniqueness, enforce this distinction.
 
@@ -294,7 +294,7 @@ No reboot, TalkBack or new hosted-runtime pass is claimed by drafting this contr
 
 ## 16. Implementation strategies to validate: slice boundaries
 
-These boundaries are recommendations, not implementation authorization. The committed source baseline uses Room v18; the local 10A foundation prepares v19. Additive migrations must preserve all existing data and fabricate no boundary authority, unresolved state, pending stop, claim or incident.
+These boundaries do not authorize another slice. The committed 10A foundation uses Room v19. The local 10B migration adds server terminal provenance without backfilling existing data; 10C still owns the Android operational stop, claim, reconciliation and result. Additive migrations must fabricate no historical boundary authority or incident.
 
 ### 10A - Immutable ETA, eligibility and durable boundary foundation
 
@@ -337,8 +337,8 @@ Use Kotlin deterministic clock/policy tests, Room migration/reopen/fault tests, 
 
 All D01-D15 product decisions are locked by the latest explicit approval. They do not claim current runtime support. No further product-policy approval is required for the narrowed 10A foundation. The offline missing-proof operational choice requires a human product decision before 10C activation. Exact late-episode and pending/operational-limit copy/layout must be reviewed against current Figma before 10C runtime/UI activation; do not invent uninterrupted unresolved history. The amber uncertainty-caveat contrast and compact/adaptive layout remain future UI acceptance gates, not authorized Figma edits.
 
-Remaining engineering risks: resolve the 10C missing-proof offline operational policy; validate authenticated server-time receipt provenance without elapsed-clock extrapolation; freeze ETA across all ACTIVE write paths without rejecting legitimate delayed admissions; preserve the Room active slot while separating service permission from Journey status; integrate durable offline stop intent with current server-acknowledged cancellation; prove atomic claim/terminal lock order and uncertain-ack recovery; close every sensitive-access route and OPEN-case expiry bypass. Do not weaken a locked rule to accommodate a shortcut. If a material conflict is discovered, stop the affected slice and report it.
+Remaining engineering risks: resolve the 10C missing-proof offline operational policy; validate authenticated server-time receipt provenance without elapsed-clock extrapolation; preserve the Room active slot while separating service permission from Journey status; integrate durable offline stop intent with current server-acknowledged cancellation; prove device claim/terminal lock order and uncertain-ack recovery; verify every locally gated sensitive-access route and OPEN-case expiry restriction during the separate hosted gate. Do not weaken a locked rule to accommodate a shortcut. If a material conflict is discovered, stop the affected slice and report it.
 
-The revised **10A - immutable ETA, eligibility and durable boundary foundation** was separately authorized and is implemented locally without activating monitoring stop, pending authority or terminalization. Its additive migrations are not deployed. Section 09 engineering closure remains unchanged.
+The revised **10A - immutable ETA, eligibility and durable boundary foundation** was separately authorized, committed and deployed without activating monitoring stop, pending authority or terminalization. The local 10B migration adds an exact owner finalizer that locks Journey, monitoring state and current case; it rechecks 10A eligibility under server time, commits distinct UNRESOLVED_INCIDENT with immutable case/boundary/timestamp provenance, preserves the OPEN case, and caps accepted-contact incident detail access at 168 elapsed hours. The migration has not been hosted-deployed. Section 09 engineering closure remains unchanged.
 
-**Product-contract review decision:** SECTION 10 CONTRACT LOCKED - READY FOR 10A was the product reconciliation outcome. The first 10A investigation stopped before implementation on the clock-proof limitation recorded in section 6. The revised narrowed 10A foundation was then authorized, and the 72-hour maximum ETA decision was added. Its commit-gate readiness depends on the implementation validation report. No Section 10 runtime stop, unresolved terminal state, seven-day access or result UI is claimed.
+**Product-contract review decision:** SECTION 10 CONTRACT LOCKED - READY FOR 10A was the product reconciliation outcome. The first 10A investigation stopped before implementation on the clock-proof limitation recorded in section 6; the revised narrowed foundation and 72-hour maximum ETA were then authorized. 10B server behavior remains a local implementation pending separate deployment review. No Android Section 10 runtime stop, incident reconciliation or result UI is claimed.

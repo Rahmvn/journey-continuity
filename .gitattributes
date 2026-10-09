@@ -5,3 +5,5 @@ data/boundaries/ng_operational_2026-10-03-v1/mapping.json -text
 supabase/migrations/20261003000200_nigeria_admin_catalogue.sql text eol=lf
 supabase/migrations/20261005000100_nigeria_admin_catalogue_v2.sql text eol=lf
 supabase/migrations/20261005000200_nigeria_operational_boundaries.sql text eol=lf
+# PostgreSQL's official isolation runner emits a space after each step label.
+supabase/tests/isolation/expected/unresolved_incident_finalization.out text eol=lf -whitespace
