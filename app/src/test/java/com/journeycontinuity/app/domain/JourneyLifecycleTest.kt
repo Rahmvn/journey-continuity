@@ -52,6 +52,23 @@ class JourneyLifecycleTest {
         assertNull(repository.currentActive())
     }
 
+    @Test fun actualAdmissionEnforces72HoursAndRejectsOverflow() = runBlocking {
+        assertEquals(StartJourneyResult.ExpectedArrivalOutOfRange,
+            lifecycle.start("Abuja", clock.now + JourneyEtaPolicy.MAX_DURATION_MILLIS + 1))
+        assertNull(repository.currentActive())
+        val admitted = lifecycle.start("Abuja", clock.now + JourneyEtaPolicy.MAX_DURATION_MILLIS)
+        assertTrue(admitted is StartJourneyResult.Started)
+        assertEquals(1_000L, (admitted as StartJourneyResult.Started).journey.startedAt)
+    }
+
+    @Test fun finalAdmissionClockRevalidationDoesNotAcceptExpiredRequest() = runBlocking {
+        val request = JourneyStartRequest("Offa, Kwara", DestinationEvidenceFixtures.locality(), 2_000)
+        assertEquals(JourneyInputValidation.Valid, lifecycle.validate(request))
+        clock.now = 2_001
+        assertEquals(StartJourneyResult.ExpectedArrivalNotFuture, lifecycle.start(request))
+        assertNull(repository.currentActive())
+    }
+
     @Test
     fun pastOrPresentEtaIsRejected() = runBlocking {
         assertEquals(

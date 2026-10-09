@@ -9,11 +9,14 @@ import com.journeycontinuity.app.ui.destination.DestinationDraft
 import com.journeycontinuity.app.ui.destination.toJourneyStartRequest
 
 internal fun canSubmitStructuredJourneyStart(draft: DestinationDraft?, arrivalAt: Long?, now: Long): Boolean =
-    arrivalAt != null && arrivalAt > now && draft != null &&
+    arrivalAt != null && com.journeycontinuity.app.domain.JourneyEtaPolicy.validate(now, arrivalAt) ==
+        com.journeycontinuity.app.domain.JourneyEtaPolicy.Validation.VALID && draft != null &&
         runCatching { draft.toJourneyStartRequest(arrivalAt) }.isSuccess
 
 internal fun canSubmitJourneyStart(destination: String, arrivalAt: Long?, now: Long): Boolean =
-    destination.isNotBlank() && arrivalAt != null && arrivalAt > now
+    destination.isNotBlank() && arrivalAt != null &&
+        com.journeycontinuity.app.domain.JourneyEtaPolicy.validate(now, arrivalAt) ==
+        com.journeycontinuity.app.domain.JourneyEtaPolicy.Validation.VALID
 
 internal fun homeJourneyAction(journey: Journey?): String =
     if (journey == null) "Start Journey" else "Open Journey"

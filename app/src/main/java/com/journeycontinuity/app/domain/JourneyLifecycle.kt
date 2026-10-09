@@ -15,6 +15,7 @@ sealed interface StartJourneyResult {
     data class Started(val journey: Journey) : StartJourneyResult
     data object BlankDestination : StartJourneyResult
     data object ExpectedArrivalNotFuture : StartJourneyResult
+    data object ExpectedArrivalOutOfRange : StartJourneyResult
     data object ActiveJourneyAlreadyExists : StartJourneyResult
     data object InvalidStructuredDestination : StartJourneyResult
 }
@@ -33,6 +34,7 @@ sealed interface JourneyInputValidation {
     data object Valid : JourneyInputValidation
     data object BlankDestination : JourneyInputValidation
     data object ExpectedArrivalNotFuture : JourneyInputValidation
+    data object ExpectedArrivalOutOfRange : JourneyInputValidation
     data object InvalidStructuredDestination : JourneyInputValidation
 }
 
@@ -58,8 +60,10 @@ class JourneyLifecycle(
 
     fun validate(destination: String, expectedArrivalAt: Long): JourneyInputValidation {
         if (destination.trim().isEmpty()) return JourneyInputValidation.BlankDestination
-        if (expectedArrivalAt <= clock.nowMillis()) {
-            return JourneyInputValidation.ExpectedArrivalNotFuture
+        when (JourneyEtaPolicy.validate(clock.nowMillis(), expectedArrivalAt)) {
+            JourneyEtaPolicy.Validation.NOT_FUTURE -> return JourneyInputValidation.ExpectedArrivalNotFuture
+            JourneyEtaPolicy.Validation.OUT_OF_RANGE -> return JourneyInputValidation.ExpectedArrivalOutOfRange
+            JourneyEtaPolicy.Validation.VALID -> Unit
         }
         return JourneyInputValidation.Valid
     }
@@ -78,12 +82,17 @@ class JourneyLifecycle(
             JourneyInputValidation.BlankDestination -> return StartJourneyResult.BlankDestination
             JourneyInputValidation.ExpectedArrivalNotFuture ->
                 return StartJourneyResult.ExpectedArrivalNotFuture
+            JourneyInputValidation.ExpectedArrivalOutOfRange -> return StartJourneyResult.ExpectedArrivalOutOfRange
             JourneyInputValidation.Valid -> Unit
             JourneyInputValidation.InvalidStructuredDestination -> return StartJourneyResult.InvalidStructuredDestination
         }
 
         val startedAt = clock.nowMillis()
-        if (expectedArrivalAt <= startedAt) return StartJourneyResult.ExpectedArrivalNotFuture
+        when (JourneyEtaPolicy.validate(startedAt, expectedArrivalAt)) {
+            JourneyEtaPolicy.Validation.NOT_FUTURE -> return StartJourneyResult.ExpectedArrivalNotFuture
+            JourneyEtaPolicy.Validation.OUT_OF_RANGE -> return StartJourneyResult.ExpectedArrivalOutOfRange
+            JourneyEtaPolicy.Validation.VALID -> Unit
+        }
 
         val journey = Journey(
             id = idGenerator.newId(),

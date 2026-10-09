@@ -27,6 +27,9 @@ abstract class JourneyDao {
     @Insert
     protected abstract suspend fun insertHeartbeatState(state: JourneyHeartbeatStateEntity)
 
+    @Insert
+    protected abstract suspend fun insertBoundary(state: UnresolvedBoundaryEntity)
+
     @Query(
         """UPDATE journey_sync_states
            SET changeVersion = changeVersion + 1,
@@ -106,6 +109,11 @@ abstract class JourneyDao {
     open suspend fun insertIfNoActive(journey: JourneyEntity): Boolean {
         if (getActive() != null) return false
         insert(journey)
+        // Freeze the admission identity before sync can observe this newly admitted Journey.
+        val boundary = com.journeycontinuity.app.domain.JourneyEtaPolicy.boundary(journey.startedAt, journey.expectedArrivalAt)
+        insertBoundary(UnresolvedBoundaryEntity(journey.id, java.util.UUID.randomUUID().toString(),
+            journey.startedAt, journey.expectedArrivalAt, boundary,
+            com.journeycontinuity.app.domain.JourneyEtaPolicy.VERSION))
         insertSyncState(JourneySyncStateEntity(journeyId = journey.id))
         insertHeartbeatState(JourneyHeartbeatStateEntity(journeyId = journey.id))
         return true

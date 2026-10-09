@@ -611,6 +611,12 @@ internal fun JourneyStartScreen(
                 Text("Choose a future date and time.", color = Warning,
                     style = textStyle(13, 18), modifier = Modifier.padding(top = 8.dp))
             }
+            if (state.draftExpectedArrivalAt != null &&
+                com.journeycontinuity.app.domain.JourneyEtaPolicy.validate(now, state.draftExpectedArrivalAt) ==
+                com.journeycontinuity.app.domain.JourneyEtaPolicy.Validation.OUT_OF_RANGE) {
+                Text("Choose an arrival within 72 hours of starting this Journey.", color = Warning,
+                    style = textStyle(13, 18), modifier = Modifier.padding(top = 8.dp))
+            }
         }
         PrimaryAction("Start Journey", onStart, enabled = ready && !state.isActionInProgress,
             loading = state.isActionInProgress)

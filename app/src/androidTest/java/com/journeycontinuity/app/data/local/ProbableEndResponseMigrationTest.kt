@@ -60,7 +60,7 @@ class ProbableEndResponseMigrationTest {
                 migrated.query("SELECT count(*) FROM probable_end_episodes").use { it.moveToFirst(); assertEquals(2, it.getInt(0)) }
             }
             val reopened = Room.databaseBuilder(context, JourneyDatabase::class.java, name)
-                .addMigrations(MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18).build()
+                .addMigrations(MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19).build()
             try {
                 kotlinx.coroutines.runBlocking {
                     assertEquals("READY_TO_PRESENT", reopened.probableEndPresentationDao().byId("presentation1")!!.status)

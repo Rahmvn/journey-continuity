@@ -361,6 +361,7 @@ class JourneyViewModel(
                     StartJourneyResult.BlankDestination, StartJourneyResult.InvalidStructuredDestination ->
                         setMessage("Choose a valid destination.")
                     StartJourneyResult.ExpectedArrivalNotFuture -> setMessage("Expected arrival must be in the future.")
+                    StartJourneyResult.ExpectedArrivalOutOfRange -> setMessage("Expected arrival must be within 72 hours of starting this Journey.")
                     StartJourneyResult.ActiveJourneyAlreadyExists -> setMessage("A journey is already active.")
                 }
             } catch (error: CancellationException) {
@@ -421,6 +422,10 @@ class JourneyViewModel(
                 setMessage("Choose a valid destination.")
                 false
             }
+            JourneyInputValidation.ExpectedArrivalOutOfRange -> {
+                setMessage("Expected arrival must be within 72 hours of starting this Journey.")
+                false
+            }
         }
 
     fun startJourney(destination: String, expectedArrivalAt: Long) {
@@ -437,6 +442,7 @@ class JourneyViewModel(
                         }
                         StartJourneyResult.BlankDestination -> setMessage("Enter a destination.")
                         StartJourneyResult.ExpectedArrivalNotFuture -> setMessage("Expected arrival must be in the future.")
+                        StartJourneyResult.ExpectedArrivalOutOfRange -> setMessage("Expected arrival must be within 72 hours of starting this Journey.")
                         StartJourneyResult.ActiveJourneyAlreadyExists -> setMessage("A journey is already active.")
                         StartJourneyResult.InvalidStructuredDestination -> setMessage("Choose a valid destination.")
                     }

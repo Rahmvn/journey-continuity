@@ -81,7 +81,7 @@ class ProbableEndPresentationMigrationTest {
                 }
                 migrated.query("PRAGMA foreign_key_check").use { assertFalse(it.moveToFirst()) }
             }
-            val reopened = Room.databaseBuilder(context, JourneyDatabase::class.java, name).addMigrations(MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18).build()
+            val reopened = Room.databaseBuilder(context, JourneyDatabase::class.java, name).addMigrations(MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19).build()
             try {
                 assertNotNull(reopened.journeyDao().getById("migration")); assertNotNull(reopened.probableEndDao().state("migration"))
                 assertEquals(1, reopened.probableEndDao().episodes("migration").size)
@@ -107,7 +107,7 @@ class ProbableEndPresentationMigrationTest {
                     })
                 }
             }
-            val db = Room.databaseBuilder(context, JourneyDatabase::class.java, name).addMigrations(failing, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18).build()
+            val db = Room.databaseBuilder(context, JourneyDatabase::class.java, name).addMigrations(failing, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19).build()
             try { try { db.openHelper.writableDatabase; fail("Expected rollback") } catch (_: IllegalStateException) { } }
             finally { db.close() }
             android.database.sqlite.SQLiteDatabase.openDatabase(context.getDatabasePath(name).path, null,

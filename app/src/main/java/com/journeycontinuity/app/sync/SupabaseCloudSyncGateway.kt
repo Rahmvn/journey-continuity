@@ -27,6 +27,7 @@ class SupabaseCloudSyncGateway(
     private val client: SupabaseClient,
     private val identityCoordinator: TravellerIdentityCoordinator,
     private val logger: SyncDiagnosticLogger = NoOpSyncDiagnosticLogger,
+    private val boundaryAdmission: suspend (String) -> com.journeycontinuity.app.domain.BoundaryAdmission? = { null },
 ) : CloudSyncGateway {
     override suspend fun authenticatedOwnerId(): String {
         logger.info("Resolving established traveller identity for cloud synchronization")
@@ -38,7 +39,7 @@ class SupabaseCloudSyncGateway(
     override suspend fun upsertJourney(journey: Journey, ownerId: String) {
         logger.info("Starting Journey upsert")
         cloudCall(CloudStage.JOURNEY_UPSERT) {
-            client.from("journeys").upsert(journey.toCloudRow(ownerId)) {
+            client.from("journeys").upsert(journey.toCloudRow(ownerId, boundaryAdmission(journey.id))) {
                 onConflict = "id"
             }
         }
@@ -164,6 +165,8 @@ internal data class CloudJourneyRow(
     @SerialName("destination_boundary_dataset_version") val destinationBoundaryDatasetVersion: String?,
     @SerialName("destination_provider_attribution")
     val destinationProviderAttribution: com.journeycontinuity.app.domain.DestinationProviderAttribution?,
+    @SerialName("unresolved_admission_id") val unresolvedAdmissionId: String? = null,
+    @SerialName("unresolved_policy_version") val unresolvedPolicyVersion: String? = null,
 ) {
     override fun toString(): String = "CloudJourneyRow(redacted)"
 }
@@ -181,7 +184,12 @@ private data class CloudTelemetryRow(
     @SerialName("connectivity_state") val connectivityState: String,
 )
 
-internal fun Journey.toCloudRow(ownerId: String) = CloudJourneyRow(
+internal fun Journey.toCloudRow(ownerId: String, admission: com.journeycontinuity.app.domain.BoundaryAdmission? = null): CloudJourneyRow {
+    if (admission != null) require(admission.valid() && admission.journeyId == id &&
+        admission.admittedAtMillis == startedAt && admission.etaMillis == expectedArrivalAt) {
+        "Journey admission binding mismatch."
+    }
+    return CloudJourneyRow(
     id = id,
     ownerId = ownerId,
     destination = destination,
@@ -207,7 +215,10 @@ internal fun Journey.toCloudRow(ownerId: String) = CloudJourneyRow(
     destinationBoundaryDatasetId = structuredDestination?.boundaryDatasetId,
     destinationBoundaryDatasetVersion = structuredDestination?.boundaryDatasetVersion,
     destinationProviderAttribution = structuredDestination?.providerAttribution,
+    unresolvedAdmissionId = admission?.admissionId,
+    unresolvedPolicyVersion = admission?.policyVersion,
 )
+}
 
 private fun TelemetryObservation.toCloudRow() = CloudTelemetryRow(
     journeyId = journeyId,

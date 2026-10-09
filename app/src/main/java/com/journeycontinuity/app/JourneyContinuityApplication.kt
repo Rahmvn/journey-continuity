@@ -20,6 +20,7 @@ import com.journeycontinuity.app.data.local.MIGRATION_14_15
 import com.journeycontinuity.app.data.local.MIGRATION_15_16
 import com.journeycontinuity.app.data.local.MIGRATION_16_17
 import com.journeycontinuity.app.data.local.MIGRATION_17_18
+import com.journeycontinuity.app.data.local.MIGRATION_18_19
 import com.journeycontinuity.app.data.repository.RoomProbableEndAutoEndCoordinator
 import com.journeycontinuity.app.data.repository.WorkManagerProbableEndAutoEndScheduler
 import com.journeycontinuity.app.data.probableend.ProbableEndAutoEndGateway
@@ -141,6 +142,7 @@ class JourneyContinuityApplication : Application() {
             MIGRATION_15_16,
             MIGRATION_16_17,
             MIGRATION_17_18,
+            MIGRATION_18_19,
         ).addCallback(FALLBACK_ATTEMPT_INVARIANT_CALLBACK).build()
     }
 
@@ -378,7 +380,9 @@ class JourneyContinuityApplication : Application() {
                             syncScheduler.schedule(SyncRequestUrgency.URGENT)
                         },
                     ),
-                    sync = SupabaseCloudSyncGateway(client, identityCoordinator, logger),
+                    sync = SupabaseCloudSyncGateway(client, identityCoordinator, logger,
+                        boundaryAdmission = { database.unresolvedBoundaryDao().get(it)?.admission() }),
+                    unresolvedBoundary = com.journeycontinuity.app.data.unresolved.SupabaseUnresolvedBoundaryGateway(client, identityCoordinator),
                     heartbeat = SupabaseHeartbeatGateway(client, identityCoordinator, logger),
                     verificationGuard = SupabaseProbableEndVerificationGuardGateway(client, identityCoordinator),
                     autoEnd = SupabaseProbableEndAutoEndGateway(client, identityCoordinator),
@@ -595,7 +599,22 @@ class JourneyContinuityApplication : Application() {
         )
     }
 
+    /** Foundation is opt-in; 10A does not activate boundary work or operational stopping. */
+    val unresolvedBoundaryStore by lazy {
+        val preferences = getSharedPreferences("unresolved-boundary-observation", MODE_PRIVATE)
+        val installation = preferences.getString("installationId", null) ?: java.util.UUID.randomUUID().toString().also {
+            check(preferences.edit().putString("installationId", it).commit())
+        }
+        com.journeycontinuity.app.data.repository.RoomUnresolvedBoundaryStore(database, cloudGateways.unresolvedBoundary) {
+            com.journeycontinuity.app.domain.BoundaryReceipt(android.os.SystemClock.elapsedRealtime(),
+                runCatching { android.provider.Settings.Global.getInt(contentResolver,
+                    android.provider.Settings.Global.BOOT_COUNT) }.getOrNull(), installation)
+        }
+    }
+
     private data class CloudGateways(
+        val unresolvedBoundary: com.journeycontinuity.app.data.unresolved.UnresolvedBoundaryGateway =
+            com.journeycontinuity.app.data.unresolved.UnresolvedBoundaryGateway { null },
         val authBackend: com.journeycontinuity.app.auth.TravellerAuthBackend? = null,
         val ownerStore: com.journeycontinuity.app.auth.TravellerIdentityStore? = null,
         val accountEmail: () -> String? = { null },
