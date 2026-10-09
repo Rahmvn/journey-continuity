@@ -1,7 +1,7 @@
 # Alabarin Traveller v1 Closure Plan
 
 **Status:** Active working plan
-**Current Traveller position:** Page 05, Section 09 of 10
+**Current Traveller position:** Page 05, Section 09 engineering closed; Section 10 pending
 **Purpose of this file:** Make sure we do not call Traveller v1 finished just because the screens and flows exist.
 
 Traveller v1 is only closed when the product is:
@@ -20,7 +20,7 @@ Traveller v1 is only closed when the product is:
 Finish the remaining current Traveller Page 05 sections first:
 
 - [x] **08 - Connectivity states - system-triggered changes**
-- [ ] **09 - Probable end - separate branch**
+- [x] **09 - Probable end - separate branch** (engineering reacceptance, 2026-10-09; broader frontend closure remains pending)
 - [ ] **10 - Unresolved boundary - separate branch**
 
 After Section 10, **do not immediately jump to Trusted Viewer, TextBee or Alexa+**.
@@ -367,6 +367,29 @@ Fixture tests are useful, but critical Traveller behaviors should be exercised a
 
 These should not be forgotten merely because fixture/device presentation tests passed.
 
+## Section 09 final full-flow frontend/truthfulness worklist
+
+Observed on 2026-10-08 at `03102c7ad6c3427b5daffe1017ad2f27dc6c2f42`. The first two issues blocked final full-flow sign-off despite durable engineering evidence. Their narrow UI repairs passed final reacceptance on 2026-10-09; Section 09 engineering is closed, while broader Traveller frontend/accessibility closure remains pending. Current Figma was inspected read-only and was not redesigned.
+
+| Issue | Severity / closure impact | Evidence and smallest proposed repair |
+| --- | --- | --- |
+| Enabled probable-end primary action is almost invisible in MainActivity | Originally high; resolved and reaccepted on 2026-10-09 | Original settled reproduction: `%TEMP%/section09-final-flow/fresh-uid/story-a-prompt.png`. The enabled transition removed the disabled graphics layer while fill/border painting preceded it. Persistent layers with paint inside now retain Figma `93:688` dark primary and outlined secondary. A pixel regression fails on the old implementation and passes through settled/recomposed/in-flight/reopened states; enabled white text on `#1B3250` measures 12.97:1. Fixed MainActivity captures are `%TEMP%/section09-ui-repair/story-a-prompt{,-recreated,-reopened}.png`. Real completion/Done remains exact and durable. No response/domain changes. |
+| Automatic result loses caveat and Done at short height/larger fonts | Originally high; resolved and reaccepted on 2026-10-09 | Original: `%TEMP%/section09-final-flow/fresh-uid/layout-automatic-320-480-font1.5.png`. Bounded column measurement and fixed summary rows supplied no scroll route. Shared inset-aware result scrolling now preserves normal geometry, expands text, stacks compact summaries and restores episode scroll position. Both results pass 320x480 / 1.5x and 2x, 360x640 / 1x, and 390x844 / 1x with long labels and reachable full-sized Done. Scrolled automatic captures are `%TEMP%/section09-ui-repair/repair-automatic-320-480-font1.5-{caveat,done}.png`. Done acknowledges exact Room provenance without changing AUTO_ENDED. No copy/terminal-policy redesign. |
+| Home snackbar covers Start Journey after Done while contacts are unavailable | Medium; existing frontend closure debt | `%TEMP%/section09-final-flow/story-a-home.png`: correct no-active Home and durable acknowledgement, but the contacts-unavailable snackbar obscures the primary action. Review snackbar placement/duration without changing ownership or Journey lifecycle. |
+| Success-like checkmark on automatic result | Deferred truthfulness review; engineering classification retained | Current Figma `78:4796` and the authenticated Redmi result both retain the mark and exact uncertainty text. Do not treat it as arrival/safety proof. The small-height missing caveat compounded this risk; the layout repair above makes that caveat reachable. Reconsider the mark in the later frontend/truthfulness pass; do not silently edit Figma. |
+
+The explicit completion and Keep monitoring checks use production MainActivity/Room/service with declared local evidence/auth/guard test seams; they are not newly authenticated hosted A/B tests. Story C reuses the genuine hosted 30-minute acceptance and result restoration/Done proof. Original hosted population remains 36 with preserved fingerprints; no new hosted fixture or deployment was needed. See [Probable End contract: final full-flow record](ALABARIN_PROBABLE_END_CONTRACT_V1.md#section-09-final-full-flow-acceptance-2026-10-08) for evidence boundaries and recovery-test limits. Section 10 has not begun.
+
+The later clean-UID Redmi retry passed both functional stories and the independent result/Done check, while reproducing both high-severity defects. Use `%TEMP%/section09-final-flow/fresh-uid/story-a-prompt.png` (two-second settled capture) and `layout-automatic-320-480-font1.5.png` as the latest reproductions. The temporary package was removed; the normal Alabarin package was not replaced.
+
+The 2026-10-09 repair also diagnoses the earlier automatic-result Compose test stall as MIUI's synchronous ActivityScenario launch waiting before composition; explicit foreground test-host launch restores the retained test. Device tests cover settled rendered colors, exact response callbacks, full text/Done reachability at the four requested viewport/font combinations, Activity scroll restoration, and durable automatic-result acknowledgement. These are isolated local tests with declared time/auth/guard seams, not new hosted automatic-ending evidence or a TalkBack walkthrough. The normal Alabarin package, protected local configuration/artifacts and historical UX documents remain untouched. The separate snackbar/checkmark work remains deferred; Section 09 is not marked closed by this repair.
+
+Final repair checks passed 38/38 targeted Redmi tests, the MainActivity completion story and the viewport capture test, plus 596/596 JVM tests (112 Probable End) and both debug APK builds. The two blocking repairs are **READY FOR SECTION 09 REACCEPTANCE**; existing scope/recovery limits and the separate frontend worklist remain in force.
+
+Final reacceptance on 2026-10-09: **SECTION 09 CLOSED** for engineering. The five-test relevant UI group, viewport captures and real-touch MainActivity completion/Done story passed. Reviewed result screens preserve full text and reachable Done at all four requested viewport/font combinations, with recreation and immutable terminal status. Story B and the genuine authenticated 30-minute Story C are reused on unchanged domain/server code; previous 38/38 Redmi and 596/596 JVM/build evidence remains valid. No UI tests were skipped; no hosted test, deployment or WSL suite was needlessly repeated.
+
+The compact checkmark remains deferred because the first viewport explicitly describes monitoring ending without claiming safe arrival, and the full caveat is reachable. The Home snackbar can obscure Start Journey for this Redmi configured 120000ms accessibility timeout; without changing that setting, a real touch opened Start Journey after the interval. This is finite obstruction, still a placement/accessibility debt. A five-second acceptance probe failed for that reason; a separate temporary assertion also needed to await the asynchronous durable teardown marker. Neither required a production change. No OS reboot or TalkBack walkthrough is claimed. See the canonical contract closure record and `%TEMP%/section09-ui-repair/reacceptance` for evidence. Both original defects, all earlier findings and the broader Traveller closure checklist remain preserved. Section 10 is pending and separately authorized, not started.
+
 ## Active-Journey sign out - real hosted path
 
 Still prove using a safe disposable real Journey:
@@ -591,7 +614,7 @@ Before every remaining Traveller UI slice:
 # 13. Final closure checklist
 
 - [x] Section 08 implemented and closed
-- [ ] Section 09 implemented and closed
+- [x] Section 09 implemented and closed (engineering reacceptance, 2026-10-09)
 - [ ] Section 10 implemented and closed
 - [ ] first-three-pages purpose comprehension audited
 - [ ] whole-product purpose comprehension audited

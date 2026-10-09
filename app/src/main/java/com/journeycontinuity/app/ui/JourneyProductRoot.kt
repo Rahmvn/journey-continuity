@@ -49,8 +49,8 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
@@ -791,7 +791,10 @@ internal fun JourneyActiveScreen(
                     val actionsEnabled = probableEnd.status == ProbableEndPresentationStatus.PRESENTED.name &&
                         !probableEndResponseInFlight
                     Box(Modifier.fillMaxWidth().height(56.dp).clip(RoundedCornerShape(18.dp))
-                        .background(Brand).alpha(if (actionsEnabled) 1f else 0.55f)
+                        // Keep the layer present when enabled changes; alpha(1f) removes it.
+                        // Paint inside it so fill, label and border invalidate together.
+                        .graphicsLayer { alpha = if (actionsEnabled) 1f else 0.55f }
+                        .background(Brand)
                         .clickable(enabled = actionsEnabled, role = Role.Button) {
                             onProbableEndResponse(probableEnd.responseRequest(),
                                 ProbableEndTravellerResponse.JOURNEY_COMPLETED)
@@ -800,8 +803,8 @@ internal fun JourneyActiveScreen(
                     }
                     Spacer(Modifier.height(10.dp))
                     Box(Modifier.fillMaxWidth().height(52.dp).clip(RoundedCornerShape(16.dp))
+                        .graphicsLayer { alpha = if (actionsEnabled) 1f else 0.55f }
                         .border(1.dp, Border, RoundedCornerShape(16.dp))
-                        .alpha(if (actionsEnabled) 1f else 0.55f)
                         .clickable(enabled = actionsEnabled, role = Role.Button) {
                             onProbableEndResponse(probableEnd.responseRequest(),
                                 ProbableEndTravellerResponse.KEEP_MONITORING)
