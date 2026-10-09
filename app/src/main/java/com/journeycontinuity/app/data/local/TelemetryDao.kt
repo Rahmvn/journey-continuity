@@ -67,10 +67,15 @@ abstract class TelemetryDao {
 
     @Transaction
     open suspend fun insertForActiveJourney(sample: TelemetrySample): TelemetryObservationEntity? {
-        if (getJourneyStatus(sample.journeyId) != JourneyStatus.ACTIVE) return null
+        if (getJourneyStatus(sample.journeyId) != JourneyStatus.ACTIVE ||
+            operationallyPaused(sample.journeyId) != 0) return null
         val entity = sample.toEntity(sequence = nextSequence(sample.journeyId))
         val inserted = entity.copy(id = insert(entity))
         markSyncPending(sample.journeyId)
         return inserted
     }
+
+    @Query("""SELECT COUNT(*) FROM journey_operational_boundaries
+        WHERE journeyId = :journeyId AND state = 'PENDING_AUTHORITY'""")
+    protected abstract suspend fun operationallyPaused(journeyId: String): Int
 }

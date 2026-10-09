@@ -4,10 +4,15 @@ import com.journeycontinuity.app.data.local.HeartbeatAllocation
 import com.journeycontinuity.app.domain.CloudMonitoringPhase
 import com.journeycontinuity.app.domain.ConnectivityState
 import com.journeycontinuity.app.domain.DeviceHeartbeat
+import com.journeycontinuity.app.degraded.JourneyTerminalHandoffGate
 import com.journeycontinuity.app.sync.CloudSyncException
 import com.journeycontinuity.app.sync.SyncFailureKind
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.yield
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -115,7 +120,39 @@ class HeartbeatCoordinatorTest {
         assertEquals(1, provisioningAttempts)
     }
 
+    @Test
+    fun operationalPauseWaitsForInFlightHeartbeatAndBlocksLaterHeartbeat() = runBlocking {
+        val gate = JourneyTerminalHandoffGate()
+        val local = FakeLocalStore()
+        val enteredRemote = CompletableDeferred<Unit>()
+        val releaseRemote = CompletableDeferred<Unit>()
+        val remote = object : HeartbeatGateway {
+            var sends = 0
+            override suspend fun recordFreshHeartbeat(heartbeat: DeviceHeartbeat): HeartbeatServerState {
+                sends++
+                enteredRemote.complete(Unit)
+                releaseRemote.await()
+                return HeartbeatServerState(CloudMonitoringPhase.EVIDENCE_FRESH,
+                    heartbeat.clientSentAt, heartbeat.sequence)
+            }
+        }
+        val coordinator = HeartbeatCoordinator(local, remote, { 20_000L }, terminalHandoffGate = gate)
+        val send = async { coordinator.sendFreshHeartbeat("journey", null, null,
+            ConnectivityState.WIFI, true) }
+        enteredRemote.await()
+        val pause = async { gate.withLock { local.paused = true } }
+        yield()
+        assertFalse(pause.isCompleted)
+        releaseRemote.complete(Unit)
+        assertEquals(HeartbeatAttemptResult.Sent, send.await())
+        pause.await()
+        assertEquals(HeartbeatAttemptResult.Skipped,
+            coordinator.sendFreshHeartbeat("journey", null, null, ConnectivityState.WIFI, true))
+        assertEquals(1, remote.sends)
+    }
+
     private class FakeLocalStore : HeartbeatLocalStore {
+        var paused = false
         var sequence = 0L
         var success: HeartbeatServerState? = null
         var failure: String? = null
@@ -124,7 +161,7 @@ class HeartbeatCoordinatorTest {
             journeyId: String,
             attemptedAt: Long,
             minimumSpacingMillis: Long,
-        ) = HeartbeatAllocation(journeyId, ++sequence, attemptedAt, 8)
+        ) = if (paused) null else HeartbeatAllocation(journeyId, ++sequence, attemptedAt, 8)
 
         override suspend fun recordSuccess(
             journeyId: String,

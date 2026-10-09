@@ -5,6 +5,7 @@ import com.journeycontinuity.app.data.local.HeartbeatDao
 import com.journeycontinuity.app.domain.CloudMonitoringPhase
 import com.journeycontinuity.app.domain.ConnectivityState
 import com.journeycontinuity.app.domain.DeviceHeartbeat
+import com.journeycontinuity.app.degraded.JourneyTerminalHandoffGate
 import com.journeycontinuity.app.sync.CloudSyncException
 import com.journeycontinuity.app.sync.NoOpSyncDiagnosticLogger
 import com.journeycontinuity.app.sync.SyncDiagnosticLogger
@@ -75,8 +76,19 @@ class HeartbeatCoordinator(
     private val clock: () -> Long = System::currentTimeMillis,
     private val logger: SyncDiagnosticLogger = NoOpSyncDiagnosticLogger,
     private val provisioningObserver: suspend (journeyId: String) -> Unit = {},
+    private val terminalHandoffGate: JourneyTerminalHandoffGate = JourneyTerminalHandoffGate(),
 ) {
     suspend fun sendFreshHeartbeat(
+        journeyId: String,
+        batteryPercent: Int?,
+        charging: Boolean?,
+        connectivity: ConnectivityState,
+        networkUsable: Boolean,
+    ): HeartbeatAttemptResult = terminalHandoffGate.withLock {
+        sendFreshHeartbeatUnderGate(journeyId, batteryPercent, charging, connectivity, networkUsable)
+    }
+
+    private suspend fun sendFreshHeartbeatUnderGate(
         journeyId: String,
         batteryPercent: Int?,
         charging: Boolean?,

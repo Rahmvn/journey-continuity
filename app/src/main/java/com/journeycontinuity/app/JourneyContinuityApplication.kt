@@ -21,6 +21,7 @@ import com.journeycontinuity.app.data.local.MIGRATION_15_16
 import com.journeycontinuity.app.data.local.MIGRATION_16_17
 import com.journeycontinuity.app.data.local.MIGRATION_17_18
 import com.journeycontinuity.app.data.local.MIGRATION_18_19
+import com.journeycontinuity.app.data.local.MIGRATION_19_20
 import com.journeycontinuity.app.data.repository.RoomProbableEndAutoEndCoordinator
 import com.journeycontinuity.app.data.repository.WorkManagerProbableEndAutoEndScheduler
 import com.journeycontinuity.app.data.probableend.ProbableEndAutoEndGateway
@@ -143,6 +144,7 @@ class JourneyContinuityApplication : Application() {
             MIGRATION_16_17,
             MIGRATION_17_18,
             MIGRATION_18_19,
+            MIGRATION_19_20,
         ).addCallback(FALLBACK_ATTEMPT_INVARIANT_CALLBACK).build()
     }
 
@@ -274,7 +276,7 @@ class JourneyContinuityApplication : Application() {
     suspend fun acknowledgeProbableEndAutomaticResult(episodeId: String): Boolean =
         probableEndAutoEndCoordinator.acknowledgeResult(episodeId)
     // Service identity/display needs no structured-destination decoding. No fallback Journey is fabricated.
-    internal val activeMonitoringJourney by lazy { database.journeyDao().observeActive() }
+    internal val activeMonitoringJourney by lazy { database.journeyDao().observeCollectable() }
     private val localInferenceScope = kotlinx.coroutines.CoroutineScope(
         kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
 
@@ -289,6 +291,7 @@ class JourneyContinuityApplication : Application() {
             admissionGate = ownerAdmissionGate,
             terminalHandoffGate = terminalHandoffGate,
             probableEndObserver = { resumeLocalProbableEnd(it) },
+            admissionReceipt = { runCatching { operationalBoundaryReceipt() }.getOrNull() },
         )
     }
 
@@ -459,6 +462,7 @@ class JourneyContinuityApplication : Application() {
             local = RoomHeartbeatLocalStore(database.heartbeatDao()),
             remote = cloudGateways.heartbeat,
             logger = AndroidSyncDiagnosticLogger,
+            terminalHandoffGate = terminalHandoffGate,
             provisioningObserver = { journeyId ->
                 fallbackProvisioningCoordinator.provisionIfEligible(journeyId)
             },
@@ -599,17 +603,25 @@ class JourneyContinuityApplication : Application() {
         )
     }
 
-    /** Foundation is opt-in; 10A does not activate boundary work or operational stopping. */
-    val unresolvedBoundaryStore by lazy {
+    private fun operationalBoundaryReceipt(): com.journeycontinuity.app.domain.BoundaryReceipt {
         val preferences = getSharedPreferences("unresolved-boundary-observation", MODE_PRIVATE)
         val installation = preferences.getString("installationId", null) ?: java.util.UUID.randomUUID().toString().also {
             check(preferences.edit().putString("installationId", it).commit())
         }
-        com.journeycontinuity.app.data.repository.RoomUnresolvedBoundaryStore(database, cloudGateways.unresolvedBoundary) {
-            com.journeycontinuity.app.domain.BoundaryReceipt(android.os.SystemClock.elapsedRealtime(),
-                runCatching { android.provider.Settings.Global.getInt(contentResolver,
-                    android.provider.Settings.Global.BOOT_COUNT) }.getOrNull(), installation)
-        }
+        return com.journeycontinuity.app.domain.BoundaryReceipt(android.os.SystemClock.elapsedRealtime(),
+            runCatching { android.provider.Settings.Global.getInt(contentResolver,
+                android.provider.Settings.Global.BOOT_COUNT) }.getOrNull(), installation)
+    }
+
+    /** 10C-1 machinery is deliberately not scheduled or called by production startup. */
+    val operationalBoundaryCoordinator by lazy {
+        com.journeycontinuity.app.data.repository.RoomOperationalBoundaryCoordinator(database,
+            terminalHandoffGate, afterPause = { journeyServiceController.stop() })
+    }
+
+    val unresolvedBoundaryStore by lazy {
+        com.journeycontinuity.app.data.repository.RoomUnresolvedBoundaryStore(database,
+            cloudGateways.unresolvedBoundary, ::operationalBoundaryReceipt)
     }
 
     private data class CloudGateways(

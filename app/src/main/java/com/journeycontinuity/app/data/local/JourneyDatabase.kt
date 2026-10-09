@@ -19,8 +19,9 @@ import androidx.room.TypeConverters
         ProbableEndCandidateContinuityEntity::class,
         ProbableEndPresentationEntity::class,
         UnresolvedBoundaryEntity::class,
+        OperationalBoundaryEntity::class,
     ],
-    version = 19,
+    version = 20,
     exportSchema = true,
 )
 @TypeConverters(
@@ -42,4 +43,5 @@ abstract class JourneyDatabase : RoomDatabase() {
     abstract fun probableEndGuardDao(): ProbableEndGuardDao
     abstract fun probableEndPresentationDao(): ProbableEndPresentationDao
     abstract fun unresolvedBoundaryDao(): UnresolvedBoundaryDao
+    abstract fun operationalBoundaryDao(): OperationalBoundaryDao
 }

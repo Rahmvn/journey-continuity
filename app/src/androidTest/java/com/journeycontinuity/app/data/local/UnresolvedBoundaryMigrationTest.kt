@@ -44,7 +44,7 @@ class UnresolvedBoundaryMigrationTest {
                 next.query("PRAGMA foreign_key_check").use { assertFalse(it.moveToFirst()) }
             }
             val reopened = Room.databaseBuilder(context, JourneyDatabase::class.java, name)
-                .addMigrations(MIGRATION_18_19).build()
+                .addMigrations(MIGRATION_18_19, MIGRATION_19_20).build()
             try { runBlocking {
                 assertNull(reopened.unresolvedBoundaryDao().get("legacy0"))
                 assertEquals(9000, reopened.journeyDao().getById("legacy0")!!.expectedArrivalAt.toInt())

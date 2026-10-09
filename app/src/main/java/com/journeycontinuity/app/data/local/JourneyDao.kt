@@ -12,6 +12,12 @@ abstract class JourneyDao {
     @Query("SELECT * FROM journeys WHERE activeSlot = 1 LIMIT 1")
     abstract fun observeActive(): Flow<JourneyEntity?>
 
+    /** ACTIVE remains occupied while a privacy pause removes collection permission. */
+    @Query("""SELECT j.* FROM journeys j LEFT JOIN journey_operational_boundaries o
+        ON o.journeyId = j.id WHERE j.activeSlot = 1
+        AND (o.state IS NULL OR o.state = 'MONITORING') LIMIT 1""")
+    abstract fun observeCollectable(): Flow<JourneyEntity?>
+
     @Query("SELECT * FROM journeys WHERE activeSlot = 1 LIMIT 1")
     abstract suspend fun getActive(): JourneyEntity?
 
@@ -29,6 +35,9 @@ abstract class JourneyDao {
 
     @Insert
     protected abstract suspend fun insertBoundary(state: UnresolvedBoundaryEntity)
+
+    @Insert
+    protected abstract suspend fun insertOperationalBoundary(state: OperationalBoundaryEntity)
 
     @Query(
         """UPDATE journey_sync_states
@@ -106,14 +115,24 @@ abstract class JourneyDao {
     protected abstract suspend fun closeProbableEndPresentation(journeyId: String, endedAt: Long)
 
     @Transaction
-    open suspend fun insertIfNoActive(journey: JourneyEntity): Boolean {
+    open suspend fun insertIfNoActive(
+        journey: JourneyEntity,
+        admissionReceipt: com.journeycontinuity.app.domain.BoundaryReceipt? = null,
+    ): Boolean {
         if (getActive() != null) return false
         insert(journey)
         // Freeze the admission identity before sync can observe this newly admitted Journey.
         val boundary = com.journeycontinuity.app.domain.JourneyEtaPolicy.boundary(journey.startedAt, journey.expectedArrivalAt)
-        insertBoundary(UnresolvedBoundaryEntity(journey.id, java.util.UUID.randomUUID().toString(),
+        val admissionId = java.util.UUID.randomUUID().toString()
+        insertBoundary(UnresolvedBoundaryEntity(journey.id, admissionId,
             journey.startedAt, journey.expectedArrivalAt, boundary,
             com.journeycontinuity.app.domain.JourneyEtaPolicy.VERSION))
+        val anchor = admissionReceipt?.takeIf { it.elapsedRealtimeMillis >= 0 &&
+            it.installationId.isNotBlank() }
+        insertOperationalBoundary(OperationalBoundaryEntity(journey.id, admissionId,
+            anchorElapsedRealtimeMillis = anchor?.elapsedRealtimeMillis,
+            anchorBootCount = anchor?.bootCount,
+            anchorInstallationId = anchor?.installationId))
         insertSyncState(JourneySyncStateEntity(journeyId = journey.id))
         insertHeartbeatState(JourneyHeartbeatStateEntity(journeyId = journey.id))
         return true

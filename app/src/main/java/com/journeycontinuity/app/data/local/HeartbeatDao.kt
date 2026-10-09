@@ -46,7 +46,7 @@ abstract class HeartbeatDao {
         attemptedAt: Long,
         minimumSpacingMillis: Long,
     ): HeartbeatAllocation? {
-        if (journeyStatus(journeyId) != JourneyStatus.ACTIVE) return null
+        if (journeyStatus(journeyId) != JourneyStatus.ACTIVE || operationallyPaused(journeyId) != 0) return null
         val before = state(journeyId) ?: return null
         if (before.lastHeartbeatAttemptAt != null &&
             attemptedAt - before.lastHeartbeatAttemptAt < minimumSpacingMillis
@@ -60,6 +60,10 @@ abstract class HeartbeatDao {
             latestTelemetrySequence = latestTelemetrySequence(journeyId),
         )
     }
+
+    @Query("""SELECT COUNT(*) FROM journey_operational_boundaries
+        WHERE journeyId = :journeyId AND state = 'PENDING_AUTHORITY'""")
+    protected abstract suspend fun operationallyPaused(journeyId: String): Int
 
     @Query(
         """UPDATE journey_heartbeat_states

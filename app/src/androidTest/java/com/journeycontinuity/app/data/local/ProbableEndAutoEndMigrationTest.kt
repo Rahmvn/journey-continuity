@@ -73,7 +73,7 @@ class ProbableEndAutoEndMigrationTest {
                 }
             }
             val reopened = Room.databaseBuilder(context, JourneyDatabase::class.java, name)
-                .addMigrations(MIGRATION_17_18, MIGRATION_18_19).build()
+                .addMigrations(MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20).build()
             try { runBlocking {
                 val presented = reopened.probableEndPresentationDao().byId("presentation1")!!
                 presented.validate(); assertNull(presented.serverWindowRegisteredAtMillis)

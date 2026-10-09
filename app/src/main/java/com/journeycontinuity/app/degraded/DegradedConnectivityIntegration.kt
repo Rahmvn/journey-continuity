@@ -74,6 +74,8 @@ class RoomDegradedConnectivityStateStore(
         )
         val reduction = transform(dao.get(journeyId)?.toDomain(), backlog) ?: return@withTransaction null
         require(reduction.state.journeyId == journeyId)
+        if (database.operationalBoundaryDao().get(journeyId)?.state == "PENDING_AUTHORITY")
+            return@withTransaction null
         if (reduction.state.journeyActive &&
             database.journeyDao().getById(journeyId)?.status != JourneyStatus.ACTIVE
         ) return@withTransaction null

@@ -28,6 +28,8 @@ class DurableFallbackAttemptAllocator(
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
     suspend fun allocate(action: DegradedConnectivityAction.AllocateFallbackAttempt): FallbackAllocationResult {
+        if (fallbackAttemptDao.operationallyPaused(action.journeyId) != 0)
+            return FallbackAllocationResult.Unavailable
         fallbackAttemptDao.getLogicalAttempt(
             action.journeyId,
             action.degradationEpisodeId,

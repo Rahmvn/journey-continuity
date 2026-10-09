@@ -32,13 +32,14 @@ class RoomJourneyRepository(
     private val admissionGate: OwnerAdmissionGate = OwnerAdmissionGate(),
     private val terminalHandoffGate: JourneyTerminalHandoffGate = JourneyTerminalHandoffGate(),
     private val probableEndObserver: suspend (String) -> Unit = {},
+    private val admissionReceipt: () -> com.journeycontinuity.app.domain.BoundaryReceipt? = { null },
 ) : JourneyRepository {
     override val activeJourney: Flow<Journey?> =
         journeyDao.observeActive().map { it?.toDomain() }
 
     override suspend fun createIfNoActive(journey: Journey): Boolean = admissionGate.withLock {
         try {
-            journeyDao.insertIfNoActive(journey.toEntity()).also { created ->
+            journeyDao.insertIfNoActive(journey.toEntity(), admissionReceipt()).also { created ->
                 if (created) scheduleSyncWithoutAffectingLocalWrite(SyncRequestUrgency.URGENT)
             }
         } catch (error: SQLiteConstraintException) {

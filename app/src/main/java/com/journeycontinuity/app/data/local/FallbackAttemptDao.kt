@@ -10,6 +10,10 @@ import com.journeycontinuity.app.degraded.FallbackTransportOutcome
 
 @Dao
 interface FallbackAttemptDao {
+    @Query("""SELECT COUNT(*) FROM journey_operational_boundaries
+        WHERE journeyId = :journeyId AND state = 'PENDING_AUTHORITY'""")
+    suspend fun operationallyPaused(journeyId: String): Int
+
     @Query("""SELECT COUNT(*) FROM fallback_attempts WHERE journeyId = :journeyId
         AND transportState IN ('ALLOCATED', 'RETRY_PENDING')""")
     suspend fun countUnsentForJourney(journeyId: String): Int
@@ -21,6 +25,8 @@ interface FallbackAttemptDao {
         """SELECT * FROM fallback_attempts
            WHERE journeyId = :journeyId
              AND EXISTS (SELECT 1 FROM journeys WHERE id = :journeyId AND status = 'ACTIVE')
+             AND NOT EXISTS (SELECT 1 FROM journey_operational_boundaries o
+                 WHERE o.journeyId = :journeyId AND o.state = 'PENDING_AUTHORITY')
              AND transportAttemptCount < 2
              AND (transportState = :allocated
                OR (transportState = :retryPending AND (nextRetryAt IS NULL OR nextRetryAt <= :atMillis)))
@@ -89,6 +95,8 @@ interface FallbackAttemptDao {
            WHERE localAttemptId = :localAttemptId
              AND EXISTS (SELECT 1 FROM journeys
                          WHERE id = fallback_attempts.journeyId AND status = 'ACTIVE')
+             AND NOT EXISTS (SELECT 1 FROM journey_operational_boundaries o
+                 WHERE o.journeyId = fallback_attempts.journeyId AND o.state = 'PENDING_AUTHORITY')
              AND transportAttemptCount < 2
              AND (transportState = :allocated
                OR (transportState = :retryPending AND (nextRetryAt IS NULL OR nextRetryAt <= :atMillis)))""",
