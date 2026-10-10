@@ -466,7 +466,7 @@ class JourneyViewModel(
                         }
                         CompleteJourneyResult.NoActiveJourney -> {
                             serviceController.stop()
-                            setMessage("There is no active journey.")
+                            setMessage("Journey status changed. Check the saved Journey status.")
                         }
                     }
                 },

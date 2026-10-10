@@ -60,6 +60,13 @@ android {
             applicationIdSuffix = ".m6isolation"
             matchingFallbacks += listOf("debug")
         }
+        create("travellerUiAcceptance") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".travelleruiacceptance"
+            matchingFallbacks += listOf("debug")
+            buildConfigField("String", "SUPABASE_URL", "\"\"")
+            buildConfigField("String", "SUPABASE_PUBLISHABLE_KEY", "\"\"")
+        }
         release {
             optimization {
                 enable = false
@@ -78,6 +85,9 @@ android {
 
 androidComponents {
     beforeVariants(selector().withBuildType("m6Acceptance")) {
+        it.enableAndroidTest = true
+    }
+    beforeVariants(selector().withBuildType("travellerUiAcceptance")) {
         it.enableAndroidTest = true
     }
 }
@@ -117,5 +127,6 @@ dependencies {
     androidTestImplementation(libs.androidx.work.testing)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     add("m6AcceptanceImplementation", libs.androidx.compose.ui.test.manifest)
+    add("travellerUiAcceptanceImplementation", libs.androidx.compose.ui.test.manifest)
     debugImplementation(libs.androidx.compose.ui.tooling)
 }

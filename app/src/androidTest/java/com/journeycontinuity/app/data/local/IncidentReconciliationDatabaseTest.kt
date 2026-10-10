@@ -139,8 +139,90 @@ class IncidentReconciliationDatabaseTest {
     }
     @After fun cleanup() { db.close(); context.deleteDatabase(name) }
 
+    @Test fun travellerOfflineCompleteOccupiesSlotUntilExactServerReconciliation() = runBlocking {
+        offline = true
+        var stoppedEffects = 0
+        val actions = TravellerAuthorityActions(db, cloud, object : IncidentAuthorityGateway {
+            override suspend fun eligibility(journeyId: String): AuthorityRead<IncidentEligibility> = error("Offline")
+            override suspend fun finalize(claim: IncidentClaim, beforeDispatch: suspend () -> Boolean):
+                AuthorityRead<IncidentFinalizerResponse> = error("No finalizer")
+            override suspend fun provenance(journeyId: String): AuthorityRead<IncidentProvenance> = error("No incident")
+        }, coordinator()::reconcileServerTerminal, coordinator()::requestStop, { owner },
+            { assertEquals(id, it); stoppedEffects++ }, {}, clock = { now })
+        assertTrue(actions.complete(id))
+        assertEquals(1, stoppedEffects)
+        val intent = db.incidentReconciliationDao().get(id)!!
+        assertEquals("PENDING", intent.explicitState)
+        assertEquals(JourneyStatus.ACTIVE, server.status)
+        assertEquals(IncidentReconciliationOutcome.UNAVAILABLE, coordinator().advance(id))
+        reopen()
+        assertEquals(id, db.journeyDao().getActive()?.id)
+        assertEquals(1, db.journeyDao().getById(id)?.activeSlot)
+        assertNull(db.journeyDao().observeCollectable().first())
+        assertNull(db.telemetryDao().insertForActiveJourney(sample()))
+        assertNull(db.heartbeatDao().allocateForActiveJourney(id, now, 0))
+        assertNull(selectTravellerTerminalResult(db.travellerAuthorityDao().observe().first()))
+        val next = Journey("20000000-0000-4000-8000-000000000022", "Next", now + 60_000,
+            now, JourneyStatus.ACTIVE, null).toEntity()
+        assertFalse(db.journeyDao().insertIfNoActive(next))
+        assertNull(db.journeyDao().completeActive(now + 1))
+        offline = false
+        now += RoomIncidentReconciliationCoordinator.RETRY_MILLIS
+        assertEquals(IncidentReconciliationOutcome.TERMINAL, coordinator().advance(id))
+        reopen()
+        assertNull(db.journeyDao().getActive())
+        assertEquals("ACKNOWLEDGED", db.incidentReconciliationDao().get(id)?.explicitState)
+        assertEquals(intent.explicitActionId, db.incidentReconciliationDao().get(id)?.explicitActionId)
+        assertEquals(intent.explicitAtMillis, server.completedAt)
+        assertTrue(db.journeyDao().insertIfNoActive(next))
+        assertEquals(0, finalCalls)
+    }
+
+    @Test fun legacyCompleteAfterAuthorityPauseCannotReleaseSlotOrRecordFalseSuccess() = runBlocking {
+        offline = true
+        val paused = db.operationalBoundaryDao().get(id)!!
+        assertEquals("PENDING_AUTHORITY", paused.state)
+        val before = db.journeyDao().getActive()!!
+        assertNull(db.journeyDao().completeActive(now))
+        assertEquals(before, db.journeyDao().getById(id))
+        assertEquals(paused, db.operationalBoundaryDao().get(id))
+        assertNull(db.incidentReconciliationDao().get(id))
+        assertNull(db.journeyDao().observeCollectable().first())
+        assertNull(db.telemetryDao().insertForActiveJourney(sample()))
+        val next = Journey("20000000-0000-4000-8000-000000000023", "Next", now + 60_000,
+            now, JourneyStatus.ACTIVE, null).toEntity()
+        assertFalse(db.journeyDao().insertIfNoActive(next))
+        reopen()
+        assertEquals(before, db.journeyDao().getActive())
+        assertEquals(paused, db.operationalBoundaryDao().get(id))
+        assertFalse(db.journeyDao().insertIfNoActive(next))
+        val actions = TravellerAuthorityActions(db, cloud, object : IncidentAuthorityGateway {
+            override suspend fun eligibility(journeyId: String): AuthorityRead<IncidentEligibility> = error("Offline")
+            override suspend fun finalize(claim: IncidentClaim, beforeDispatch: suspend () -> Boolean):
+                AuthorityRead<IncidentFinalizerResponse> = error("No finalizer")
+            override suspend fun provenance(journeyId: String): AuthorityRead<IncidentProvenance> =
+                error("No incident")
+        }, coordinator()::reconcileServerTerminal, coordinator()::requestStop, { owner }, {}, {}, clock = { now })
+        assertTrue(actions.complete(id))
+        val intent = db.incidentReconciliationDao().get(id)!!
+        assertEquals("COMPLETE", intent.explicitAction)
+        assertEquals("PENDING", intent.explicitState)
+        assertEquals(1, db.journeyDao().getActive()?.activeSlot)
+        assertEquals(IncidentReconciliationOutcome.UNAVAILABLE, coordinator().advance(id))
+        reopen()
+        assertEquals(id, db.journeyDao().getActive()?.id)
+        assertFalse(db.journeyDao().insertIfNoActive(next))
+        offline = false
+        now += RoomIncidentReconciliationCoordinator.RETRY_MILLIS
+        assertEquals(IncidentReconciliationOutcome.TERMINAL, coordinator().advance(id))
+        assertEquals("ACKNOWLEDGED", db.incidentReconciliationDao().get(id)?.explicitState)
+        assertEquals(intent.explicitActionId, db.incidentReconciliationDao().get(id)?.explicitActionId)
+        assertNull(db.journeyDao().getActive())
+        assertTrue(db.journeyDao().insertIfNoActive(next))
+    }
+
     @Test fun offlineCompleteIsDurableAndPrecedesEveryFinalizerClaim() = runBlocking {
-        assertNotNull(db.journeyDao().completeActive(now))
+        assertNotNull(db.journeyDao().completeActive(now, retainActiveSlot = true))
         val intent = db.incidentReconciliationDao().get(id)!!
         assertEquals("COMPLETE", intent.explicitAction); assertEquals("PENDING", intent.explicitState)
         offline = true; assertEquals(IncidentReconciliationOutcome.UNAVAILABLE, coordinator().advance(id))
@@ -220,7 +302,7 @@ class IncidentReconciliationDatabaseTest {
         assertEquals(JourneyStatus.ACTIVE, db.journeyDao().getActive()!!.status)
         assertNull(db.journeyDao().observeCollectable().first()); assertNull(db.incidentReconciliationDao().provenance(id))
         assertEquals(1, finalCalls); coordinator().advance(id); assertEquals(1, finalCalls)
-        assertNotNull(db.journeyDao().completeActive(now))
+        assertNotNull(db.journeyDao().completeActive(now, retainActiveSlot = true))
     }
     @Test fun blockedOldEpisodeRequiresFreshReadBeforeAReplacementCanFinalize() = runBlocking {
         finalDecision = "BLOCKED"
@@ -260,7 +342,7 @@ class IncidentReconciliationDatabaseTest {
         assertNull(db.incidentReconciliationDao().provenance(id)); assertEquals(0, finalCalls)
     }
     @Test fun olderServerIncidentWinsOverUnacknowledgedLocalCompletion() = runBlocking {
-        db.journeyDao().completeActive(now + 1)
+        db.journeyDao().completeActive(now + 1, retainActiveSlot = true)
         terminalProof = IncidentProvenance(claim().copy(admittedAt = null), utc(now), utc(now + 604_800_000),
             "AUTHORITATIVE_UNRESOLVED_FINALIZER_V1")
         server = RemoteJourneyState(id, owner, JourneyStatus.UNRESOLVED_INCIDENT, now, null)
@@ -270,7 +352,7 @@ class IncidentReconciliationDatabaseTest {
         assertNull(db.journeyDao().getById(id)!!.completedAt)
     }
     @Test fun acknowledgedLocalTerminalCannotBeRewrittenByAnotherOutcome() = runBlocking {
-        db.journeyDao().completeActive(now); coordinator().advance(id)
+        db.journeyDao().completeActive(now, retainActiveSlot = true); coordinator().advance(id)
         assertEquals("ACKNOWLEDGED", db.incidentReconciliationDao().get(id)!!.explicitState)
         val competing = RemoteJourneyState(id, owner, JourneyStatus.CANCELLED, now + 1, null)
         assertFalse(coordinator().reconcileServerTerminal(competing))
@@ -296,7 +378,7 @@ class IncidentReconciliationDatabaseTest {
         val entered = CompletableDeferred<Unit>(); val release = CompletableDeferred<Unit>()
         beforeEligibility = { entered.complete(Unit); release.await() }
         val c = coordinator(); val result = async { c.advance(id) }; entered.await()
-        assertNotNull(db.journeyDao().completeActive(now)); release.complete(Unit)
+        assertNotNull(db.journeyDao().completeActive(now, retainActiveSlot = true)); release.complete(Unit)
         assertEquals(IncidentReconciliationOutcome.EXPLICIT_PENDING, result.await())
         assertEquals(0, finalCalls); assertNull(db.incidentReconciliationDao().get(id)!!.claimJson)
     }
@@ -396,7 +478,7 @@ class IncidentReconciliationDatabaseTest {
         assertEquals(IncidentReconciliationOutcome.FINAL_GUARD_BLOCKED, coordinator().advance(id))
         assertEquals(old.claimId, db.incidentReconciliationDao().get(id)!!.claimId)
         assertEquals(attempts.first(), attempts.last()); assertEquals(2, finalCalls)
-        assertNotNull(db.journeyDao().completeActive(now))
+        assertNotNull(db.journeyDao().completeActive(now, retainActiveSlot = true))
     }
 
     @Test fun inconsistentDispatchedClaimRecoversCommittedTruthInsteadOfReleasing() = runBlocking {
@@ -618,7 +700,7 @@ class IncidentReconciliationDatabaseTest {
     }
 
     @Test fun automaticEndSupersedesUnacknowledgedOfflineCompleteButNotAcknowledgedTerminal() = runBlocking {
-        assertNotNull(db.journeyDao().completeActive(now)); remoteAutoEnd()
+        assertNotNull(db.journeyDao().completeActive(now, retainActiveSlot = true)); remoteAutoEnd()
         assertTrue(coordinator().reconcileServerTerminal(server))
         assertEquals("SUPERSEDED", db.incidentReconciliationDao().get(id)!!.explicitState)
         assertEquals(JourneyStatus.AUTO_ENDED, db.journeyDao().getById(id)!!.status)

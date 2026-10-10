@@ -45,6 +45,8 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.journeycontinuity.app.data.repository.isPendingAuthority
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -154,6 +156,12 @@ fun JourneyProductRoot(
     onProbableEndResponse: (ProbableEndResponseRequest, ProbableEndTravellerResponse) -> Unit = { _, _ -> },
     probableEndResponseInFlight: Boolean = false,
     probableEndResponseError: String? = null,
+    authorityState: TravellerAuthorityUiState = TravellerAuthorityUiState(records = emptyList()),
+    onAuthorityCheck: (String) -> Unit = {},
+    onAuthorityComplete: (String) -> Unit = {},
+    onAuthorityStop: (String) -> Unit = {},
+    onAuthorityResume: () -> Unit = {},
+    onOpenNetworkSettings: () -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val accountState = accountViewModel?.state?.collectAsStateWithLifecycle()?.value
@@ -163,7 +171,11 @@ fun JourneyProductRoot(
     val snackbar = remember { SnackbarHostState() }
     var accountOpen by remember { mutableStateOf(false) }
     var dismissedProbableEndId by remember { mutableStateOf<String?>(null) }
+    val pendingAuthority = authorityState.pending
+    var pendingOpen by rememberSaveable(pendingAuthority?.journey?.id) { mutableStateOf(false) }
     val showProbableEnd = probableEndPresentation != null &&
+        authorityState.records != null &&
+        authorityState.records.none { it.journey.id == state.activeJourney?.id && it.isPendingAuthority() } &&
         probableEndPresentation.journeyId == state.activeJourney?.id &&
         probableEndPresentation.id == probableEndForegroundEpisodeId &&
         dismissedProbableEndId != probableEndPresentation.id &&
@@ -188,7 +200,10 @@ fun JourneyProductRoot(
     }
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) viewModel.refreshTrustedContacts()
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.refreshTrustedContacts()
+                onAuthorityResume()
+            }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
@@ -202,6 +217,17 @@ fun JourneyProductRoot(
     }
     LaunchedEffect(state.productRoute) {
         if (state.productRoute == JourneyProductRoute.RESILIENCE) onRefreshSmsFallback()
+    }
+    if (pendingAuthority != null && (pendingOpen ||
+            state.productRoute == JourneyProductRoute.ACTIVE && pendingAuthority.journey.id == state.activeJourney?.id)) {
+        PendingAuthorityScreen(pendingAuthority, authorityState,
+            onBack = { pendingOpen = false; viewModel.backToHome() },
+            onCheck = { onAuthorityCheck(pendingAuthority.journey.id) },
+            onComplete = { pendingOpen = true; onAuthorityComplete(pendingAuthority.journey.id) },
+            onStop = { onAuthorityStop(pendingAuthority.journey.id) },
+            onAuthenticate = onReauthenticateRequested,
+            onOpenNetworkSettings = onOpenNetworkSettings)
+        return
     }
     BackHandler(!pickerOpen && !mapOpen && state.productRoute != JourneyProductRoute.HOME &&
         state.productRoute != JourneyProductRoute.ACTIVE) {
@@ -250,8 +276,10 @@ fun JourneyProductRoot(
                         accountOpen = true
                         accountViewModel?.load()
                     },
+                    pendingAuthority = pendingAuthority,
+                    onPendingAuthority = { pendingOpen = true },
                 )
-                if (state.productRoute == JourneyProductRoute.ACTIVE || showProbableEnd) {
+                if (authorityState.records != null && (state.productRoute == JourneyProductRoute.ACTIVE || showProbableEnd)) {
                     state.activeJourney?.let { journey ->
                         ModalBottomSheet(
                             onDismissRequest = {
@@ -280,7 +308,10 @@ fun JourneyProductRoot(
                                     viewModel.backToHome()
                                 },
                                 onRetry = onRetryMonitoring,
-                                onEndCompleted = viewModel::endJourney,
+                                onEndCompleted = {
+                                    if (pendingAuthority?.journey?.id == journey.id) pendingOpen = true
+                                    else viewModel.endJourney()
+                                },
                                 probableEnd = if (showProbableEnd) probableEndPresentation else null,
                                 onProbableEndRendered = onProbableEndRendered,
                                 onProbableEndResponse = onProbableEndResponse,
@@ -473,6 +504,8 @@ internal fun JourneyHome(
     onContacts: () -> Unit,
     onResilience: () -> Unit,
     onAccount: () -> Unit,
+    pendingAuthority: com.journeycontinuity.app.data.local.TravellerAuthorityRecord? = null,
+    onPendingAuthority: () -> Unit = {},
 ) {
     Column(Modifier.fillMaxSize().padding(start = 24.dp, end = 24.dp, top = 34.dp, bottom = 24.dp)) {
         Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
@@ -487,6 +520,16 @@ internal fun JourneyHome(
             Spacer(Modifier.height(18.dp))
             UtilityRow(R.drawable.alabarin_account, "Account",
                 accountEmail ?: "Signed in to Alabarin", onAccount)
+            if (pendingAuthority != null) {
+                Spacer(Modifier.height(28.dp))
+                Text("Monitoring paused", color = Heading, style = textStyle(18, 24, FontWeight.Bold))
+                Spacer(Modifier.height(8.dp))
+                Text("${pendingAuthority.journey.destination}: final outcome not confirmed",
+                    color = Body, style = textStyle(15, 21))
+                Spacer(Modifier.height(12.dp))
+                AuthorityAction("View pending status", "home_pending_authority", onPendingAuthority, primary = false)
+                Spacer(Modifier.height(24.dp))
+            }
         }
         state.activeJourney?.let { journey ->
             Column(Modifier.fillMaxWidth().border(1.dp, Border, RoundedCornerShape(22.dp))

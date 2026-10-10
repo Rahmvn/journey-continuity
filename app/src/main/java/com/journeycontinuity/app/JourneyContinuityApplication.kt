@@ -627,12 +627,15 @@ class JourneyContinuityApplication : Application() {
             terminalHandoffGate, afterPause = { journeyServiceController.stop() })
     }
 
+    internal suspend fun mayStartContinuousMonitoring(journeyId: String): Boolean =
+        database.operationalBoundaryDao().get(journeyId)?.state != "PENDING_AUTHORITY"
+
     val unresolvedBoundaryStore by lazy {
         com.journeycontinuity.app.data.repository.RoomUnresolvedBoundaryStore(database,
             cloudGateways.unresolvedBoundary, ::operationalBoundaryReceipt)
     }
 
-    /** No production caller of advance/restore/requestStop: 10C-3 owns activation and truthful UI. */
+    /** No automatic advance/restore caller. Foreground retry requires a durable failed attempt. */
     internal val incidentReconciliationCoordinator by lazy {
         com.journeycontinuity.app.data.repository.RoomIncidentReconciliationCoordinator(database,
             cloudGateways.incidentAuthority, cloudGateways.sync, cloudGateways.journeyStop,
@@ -641,6 +644,18 @@ class JourneyContinuityApplication : Application() {
                 check(exactJourneyRuntimeTeardown.stop(journeyId)) { "Exact runtime teardown pending" }
                 syncScheduler.schedule(SyncRequestUrgency.URGENT)
             }, requestRetry = { _, _ -> syncScheduler.schedule(SyncRequestUrgency.ROUTINE) })
+    }
+
+    internal val travellerAuthorityActions by lazy {
+        com.journeycontinuity.app.data.repository.TravellerAuthorityActions(database,
+            cloudGateways.sync, cloudGateways.incidentAuthority,
+            reconcileTerminal = incidentReconciliationCoordinator::reconcileServerTerminal,
+            requestStop = incidentReconciliationCoordinator::requestStop,
+            localOwner = { cloudGateways.ownerStore?.expectedTravellerUserId() },
+            afterComplete = { journeyId ->
+                check(exactJourneyRuntimeTeardown.stop(journeyId)) { "Exact runtime teardown pending" }
+            }, requestSync = { syncScheduler.schedule(SyncRequestUrgency.URGENT) },
+            retryReconciliation = incidentReconciliationCoordinator::advance)
     }
 
     private val exactJourneyRuntimeTeardown by lazy {

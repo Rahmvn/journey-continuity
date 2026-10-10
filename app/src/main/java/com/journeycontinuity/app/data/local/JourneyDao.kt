@@ -14,7 +14,7 @@ abstract class JourneyDao {
 
     /** ACTIVE remains occupied while a privacy pause removes collection permission. */
     @Query("""SELECT j.* FROM journeys j LEFT JOIN journey_operational_boundaries o
-        ON o.journeyId = j.id WHERE j.activeSlot = 1
+        ON o.journeyId = j.id WHERE j.activeSlot = 1 AND j.status = 'ACTIVE'
         AND (o.state IS NULL OR o.state = 'MONITORING')
         AND NOT EXISTS (SELECT 1 FROM journey_terminal_reconciliations r WHERE r.journeyId = j.id
             AND r.explicitAction = 'STOP' AND r.explicitState = 'PENDING') LIMIT 1""")
@@ -59,10 +59,15 @@ abstract class JourneyDao {
     )
     protected abstract suspend fun markSyncPending(journeyId: String)
 
+    /** Legacy Complete cannot vacate a slot after the exact Journey enters pending authority. */
     @Query(
         """UPDATE journeys
-           SET status = :completedStatus, completedAt = :completedAt, activeSlot = NULL
-           WHERE id = :journeyId AND activeSlot = 1
+           SET status = :completedStatus, completedAt = :completedAt,
+               activeSlot = CASE WHEN :retainActiveSlot THEN 1 ELSE NULL END
+           WHERE id = :journeyId AND activeSlot = 1 AND status = 'ACTIVE'
+             AND (:retainActiveSlot OR NOT EXISTS (
+                 SELECT 1 FROM journey_operational_boundaries o
+                 WHERE o.journeyId = :journeyId AND o.state = 'PENDING_AUTHORITY'))
              AND NOT EXISTS (SELECT 1 FROM probable_end_presentations p
                  WHERE p.journeyId = :journeyId AND p.status = 'AUTO_END_CLAIMED')
              AND NOT EXISTS (SELECT 1 FROM journey_terminal_reconciliations r
@@ -73,6 +78,7 @@ abstract class JourneyDao {
         journeyId: String,
         completedAt: Long,
         completedStatus: JourneyStatus,
+        retainActiveSlot: Boolean,
     ): Int
 
     @Query(
@@ -157,17 +163,21 @@ abstract class JourneyDao {
     }
 
     @Transaction
-    open suspend fun completeActive(completedAt: Long): JourneyEntity? {
+    open suspend fun completeActive(completedAt: Long, retainActiveSlot: Boolean = false): JourneyEntity? {
         val active = getActive() ?: return null
-        if (markCompleted(active.id, completedAt, JourneyStatus.COMPLETED) != 1) return null
+        if (markCompleted(active.id, completedAt, JourneyStatus.COMPLETED, retainActiveSlot) != 1) return null
         insertTerminalWorkflow(JourneyTerminalReconciliationEntity(active.id))
         recordCompletionIntent(active.id, java.util.UUID.randomUUID().toString(), completedAt)
         closeProbableEndPresentation(active.id, completedAt)
+        if (retainActiveSlot) {
+            deactivateFallback(active.id)
+            supersedeUnsentFallback(active.id, completedAt)
+        }
         markSyncPending(active.id)
         return active.copy(
             status = JourneyStatus.COMPLETED,
             completedAt = completedAt,
-            activeSlot = null,
+            activeSlot = if (retainActiveSlot) 1 else null,
         )
     }
 

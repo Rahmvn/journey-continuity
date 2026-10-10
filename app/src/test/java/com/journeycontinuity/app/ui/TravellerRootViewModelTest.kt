@@ -58,6 +58,17 @@ class TravellerRootViewModelTest {
         assertEquals(0, auth.establishCalls)
     }
 
+    @Test fun authorityAuthenticationFailureOpensRealSameOwnerSignInFromAdmittedShell() = rootTest {
+        val auth = FakeAuth().apply { resolved = authenticated(a); hasActiveJourney = true }
+        val root = newRoot(auth, FakeIntro(true))
+        advanceUntilIdle()
+        assertEquals(TravellerRootRoute.ADMITTED_EXISTING, root.state.value.route)
+        root.reauthenticateAuthorityStatus()
+        assertEquals(TravellerRootRoute.LOGIN_EMAIL, root.state.value.route)
+        assertTrue(root.state.value.activeJourneyReauthentication)
+        assertEquals(0, auth.establishCalls)
+    }
+
     @Test fun reassessmentAfterBoundOwnerSignOutRoutesToSameOwnerRecovery() = rootTest {
         val auth = FakeAuth().apply { resolved = authenticated(a) }
         val root = newRoot(auth, FakeIntro(true))

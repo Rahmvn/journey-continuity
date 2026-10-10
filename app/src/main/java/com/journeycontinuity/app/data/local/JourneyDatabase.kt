@@ -48,4 +48,5 @@ abstract class JourneyDatabase : RoomDatabase() {
     abstract fun unresolvedBoundaryDao(): UnresolvedBoundaryDao
     abstract fun operationalBoundaryDao(): OperationalBoundaryDao
     abstract fun incidentReconciliationDao(): IncidentReconciliationDao
+    abstract fun travellerAuthorityDao(): TravellerAuthorityDao
 }

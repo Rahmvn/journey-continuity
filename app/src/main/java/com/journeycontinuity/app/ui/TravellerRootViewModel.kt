@@ -183,6 +183,17 @@ class TravellerRootViewModel(
         else notice("Could not open same-owner log in safely. Try again.")
     }
 
+    /** A server auth failure can be detected while the local shell is still admitted. */
+    fun reauthenticateAuthorityStatus() {
+        if (state.value.route !in setOf(TravellerRootRoute.ADMITTED_EXISTING,
+                TravellerRootRoute.ADMITTED_NEW, TravellerRootRoute.ACTIVE_REAUTHENTICATION) || state.value.busy) return
+        recoveringExistingOwner = true
+        if (!loginEntry.markEmailEntry()) return notice("Could not open same-owner log in safely. Try again.")
+        mutableState.value = state.value.copy(route = TravellerRootRoute.LOGIN_EMAIL,
+            activeJourneyReauthentication = true, code = "", busy = false, notice = null,
+            loginAttemptActive = false)
+    }
+
     private fun toCreateDetails() {
         mutableState.value = state.value.copy(route = TravellerRootRoute.CREATE_DETAILS,
             code = "", busy = false, notice = null, loginAttemptActive = false)

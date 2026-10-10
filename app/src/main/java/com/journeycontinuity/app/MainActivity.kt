@@ -43,6 +43,9 @@ import com.journeycontinuity.app.ui.ProbableEndAutomaticResultScreen
 import com.journeycontinuity.app.data.repository.ProbableEndResponseRequest
 import com.journeycontinuity.app.data.repository.ProbableEndTravellerResponse
 import com.journeycontinuity.app.data.repository.ProbableEndResponseOutcome
+import com.journeycontinuity.app.ui.TravellerAuthorityViewModel
+import com.journeycontinuity.app.ui.TravellerAuthorityViewModelFactory
+import com.journeycontinuity.app.ui.UnresolvedJourneyResultScreen
 import com.journeycontinuity.app.ui.LocationUiState
 import com.journeycontinuity.app.ui.destination.DestinationPickerViewModel
 import com.journeycontinuity.app.ui.destination.DestinationPickerViewModelFactory
@@ -71,6 +74,12 @@ class MainActivity : ComponentActivity() {
             trustedContactGateway = app.trustedContactGateway,
             degradedConnectivityCoordinator = app.degradedConnectivityCoordinator,
         )
+    }
+
+    private val authorityViewModel by viewModels<TravellerAuthorityViewModel> {
+        TravellerAuthorityViewModelFactory(app.travellerAuthorityActions) {
+            !DeviceContextReader(app.applicationContext).usableInternet()
+        }
     }
 
     private var notificationsVisible by mutableStateOf(true)
@@ -174,9 +183,10 @@ class MainActivity : ComponentActivity() {
             JourneyContinuityTheme {
                 val rootState by rootViewModel.state.collectAsStateWithLifecycle()
                 val accountState by accountViewModel.state.collectAsStateWithLifecycle()
+                val authorityState by authorityViewModel.state.collectAsStateWithLifecycle()
                 val probableEndEpisode by app.probableEndPresentationEpisode.collectAsStateWithLifecycle(initialValue = null)
                 val probableEndCompletedResult by app.probableEndCompletedResult.collectAsStateWithLifecycle(initialValue = null)
-                val probableEndAutomaticResult by app.probableEndAutomaticResult.collectAsStateWithLifecycle(initialValue = null)
+                val probableEndAutomaticResult = authorityState.automaticResult
                 val stopped = accountState.monitoringStoppedJourney
                 if (accountState.restoringMonitoringStoppedResult) {
                     Box(Modifier.fillMaxSize().background(Color(0xFFFBFBF8)),
@@ -193,6 +203,14 @@ class MainActivity : ComponentActivity() {
                         onDone = { accountViewModel.doneWithMonitoringStopped(
                             rootViewModel::assessStartup) },
                     )
+                } else if (authorityState.result != null && rootState.route in setOf(
+                        TravellerRootRoute.ADMITTED_EXISTING, TravellerRootRoute.ADMITTED_NEW)) {
+                    val result = requireNotNull(authorityState.result)
+                    UnresolvedJourneyResultScreen(result, authorityState.busyJourneyId != null,
+                        authorityState.error) {
+                        authorityViewModel.acknowledge(result)
+                        journeyViewModel.backToHome()
+                    }
                 } else if (probableEndAutomaticResult != null && rootState.route in setOf(
                         TravellerRootRoute.ADMITTED_EXISTING, TravellerRootRoute.ADMITTED_NEW)) {
                     val result = requireNotNull(probableEndAutomaticResult)
@@ -220,6 +238,15 @@ class MainActivity : ComponentActivity() {
                 } else TravellerRootHost(rootViewModel) {
                     JourneyProductRoot(
                         viewModel = journeyViewModel,
+                        authorityState = authorityState,
+                        onAuthorityCheck = authorityViewModel::check,
+                        onAuthorityComplete = authorityViewModel::complete,
+                        onAuthorityStop = authorityViewModel::stop,
+                        onAuthorityResume = authorityViewModel::refreshConnectivity,
+                        onOpenNetworkSettings = {
+                            authorityViewModel.markNetworkSettingsOpened()
+                            startActivity(Intent(Settings.ACTION_WIRELESS_SETTINGS))
+                        },
                         locationUiState = locationUiState,
                         accountEmail = when (rootState.route) {
                             TravellerRootRoute.ACTIVE_REAUTHENTICATION -> "Account connection needs attention"
@@ -248,7 +275,7 @@ class MainActivity : ComponentActivity() {
                             accountViewModel.confirmActiveSignOut(accountSignOutReady())
                         },
                         onCancelActiveSignOutRequested = accountViewModel::cancelActiveSignOut,
-                        onReauthenticateRequested = rootViewModel::reauthenticateActiveJourney,
+                        onReauthenticateRequested = rootViewModel::reauthenticateAuthorityStatus,
                         destinationPickerViewModel = destinationPickerViewModel,
                         onMapRefinementRequested = destinationMapViewModel::open,
                         destinationMapViewModel = destinationMapViewModel,
@@ -369,12 +396,16 @@ class MainActivity : ComponentActivity() {
             locationUiState.locationServicesEnabled &&
             lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
         ) {
-            if (com.journeycontinuity.app.service.JourneyForegroundService
-                    .activeRuntimeJourneyId.value == journeyViewModel.uiState.value.activeJourney?.id) return
-            runCatching { app.journeyServiceController.start() }
-                .onFailure {
-                    journeyViewModel.showMessage("Could not start location monitoring. Retry monitoring.")
-                }
+            val journeyId = requireNotNull(journeyViewModel.uiState.value.activeJourney?.id)
+            lifecycleScope.launch {
+                if (!app.mayStartContinuousMonitoring(journeyId) ||
+                    !lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) ||
+                    journeyViewModel.uiState.value.activeJourney?.id != journeyId ||
+                    com.journeycontinuity.app.service.JourneyForegroundService.activeRuntimeJourneyId.value == journeyId)
+                    return@launch
+                runCatching { app.journeyServiceController.start() }
+                    .onFailure { journeyViewModel.showMessage("Could not start location monitoring. Retry monitoring.") }
+            }
         }
     }
 
@@ -395,9 +426,9 @@ class MainActivity : ComponentActivity() {
         if (locationUiState.access == ForegroundLocationAccess.NONE ||
             !locationUiState.locationServicesEnabled) return
         lifecycleScope.launch {
-            val hasActiveJourney = runCatching { app.journeyRepository.activeJourney.first() != null }
-                .getOrDefault(false)
-            if (hasActiveJourney && lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+            val journeyId = runCatching { app.journeyRepository.activeJourney.first()?.id }.getOrNull()
+            if (journeyId != null && app.mayStartContinuousMonitoring(journeyId) &&
+                lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
                 runCatching { app.journeyServiceController.start() }
             }
         }
