@@ -23,6 +23,13 @@ class SupabaseHeartbeatGateway(
     private val identityCoordinator: TravellerIdentityCoordinator,
     private val logger: SyncDiagnosticLogger = NoOpSyncDiagnosticLogger,
 ) : HeartbeatGateway {
+    override suspend fun prepareDispatch(): HeartbeatDispatchCheck = try {
+        prepareHeartbeatDispatch(identityCoordinator)
+    } catch (error: Throwable) {
+        if (error is CancellationException) throw error
+        throw error.toCloudSyncException(CloudStage.AUTH_INITIALIZATION)
+    }
+
     override suspend fun requireAuthenticatedTraveller() {
         try {
             identityCoordinator.requireAuthenticatedTraveller()
@@ -57,6 +64,12 @@ class SupabaseHeartbeatGateway(
             throw classified
         }
     }
+}
+
+/** Shared by the production gateway and deterministic composition tests; never caches a token or UTC authority. */
+internal suspend fun prepareHeartbeatDispatch(identity: TravellerIdentityCoordinator): HeartbeatDispatchCheck {
+    val owner = identity.requireAuthenticatedTraveller().userId
+    return HeartbeatDispatchCheck { identity.authenticatedTravellerStillMatches(owner) }
 }
 
 @Serializable

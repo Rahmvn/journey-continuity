@@ -22,4 +22,6 @@ class JourneyServiceController(
     override fun stop() {
         context.stopService(Intent(context, JourneyForegroundService::class.java))
     }
+
+    suspend fun stopExact(journeyId: String): Boolean = JourneyForegroundService.stopExact(journeyId)
 }

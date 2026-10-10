@@ -37,6 +37,9 @@ class SupabaseCloudSyncGateway(
     }
 
     override suspend fun upsertJourney(journey: Journey, ownerId: String) {
+        require(journey.status !in setOf(JourneyStatus.AUTO_ENDED, JourneyStatus.UNRESOLVED_INCIDENT)) {
+            "Server-owned terminal states require authoritative reconciliation."
+        }
         logger.info("Starting Journey upsert")
         cloudCall(CloudStage.JOURNEY_UPSERT) {
             client.from("journeys").upsert(journey.toCloudRow(ownerId, boundaryAdmission(journey.id))) {

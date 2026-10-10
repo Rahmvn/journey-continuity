@@ -44,10 +44,13 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CompletableDeferred
 
 class JourneyForegroundService : Service() {
+    private var serviceGeneration = 0L
+    private var collectionGeneration: Long? = null
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var activeJourneyJob: Job? = null
     private var persistenceJob: Job? = null
@@ -83,7 +86,8 @@ class JourneyForegroundService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        runtimeSignals.serviceStarted()
+        serviceGeneration = runtimeSignals.serviceStarted()
+        liveService = this
         locationSource = FusedJourneyLocationSource(this)
         deviceContextReader = DeviceContextReader(this)
         createNotificationChannel()
@@ -100,6 +104,7 @@ class JourneyForegroundService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        runtimeSignals.startCommand(startId)
         if (!hasLocationPrerequisites()) {
             stopServiceCompletely()
             return START_NOT_STICKY
@@ -143,6 +148,7 @@ class JourneyForegroundService : Service() {
     private fun startCollecting(journeyId: String) {
         stopCollecting()
         val registration = runtimeSignals.begin(journeyId)
+        collectionGeneration = registration
         val channel = Channel<Location>(Channel.UNLIMITED)
         locationChannel = channel
         // Historical catch-up must not sit ahead of fresh telemetry on the persistence channel.
@@ -308,7 +314,8 @@ class JourneyForegroundService : Service() {
         }
         networkCallback = null
         // Publish teardown only after location, heartbeat and network work has been stopped.
-        runtimeSignals.stop()
+        runtimeSignals.stopRegistration(collectionGeneration)
+        collectionGeneration = null
     }
 
     private fun showRecordingNotification(destination: String) {
@@ -338,7 +345,8 @@ class JourneyForegroundService : Service() {
         serviceScope.cancel()
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         super.onDestroy()
-        runtimeSignals.serviceStopped()
+        if (liveService === this) liveService = null
+        runtimeSignals.serviceStopped(serviceGeneration)
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -384,6 +392,7 @@ class JourneyForegroundService : Service() {
             accuracy.isFinite() && accuracy >= 0f
 
     companion object {
+        private var liveService: JourneyForegroundService? = null
         /** Process-local evidence that the location foreground service started for this Journey. */
         private val runtimeSignals = JourneyRuntimeSignals()
         val monitoringJourneyId: StateFlow<String?> = runtimeSignals.monitoringJourneyId
@@ -393,6 +402,25 @@ class JourneyForegroundService : Service() {
             runtimeSignals.currentConnectivity
         val isMonitoringInThisProcess: Boolean
             get() = monitoringJourneyId.value != null
+        /** Exact asynchronous stop; never sends a global stopService request. */
+        internal suspend fun stopExact(journeyId: String): Boolean {
+            val ticket = runtimeSignals.stopTicket(journeyId)
+                ?: return !serviceRunning.value || activeRuntimeJourneyId.value?.let { it != journeyId } == true
+            val accepted = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main.immediate) {
+                val service = liveService ?: return@withContext true
+                runtimeSignals.executeStop(ticket, service::stopSelfResult) {
+                    service.stopCollecting()
+                    ServiceCompat.stopForeground(service, ServiceCompat.STOP_FOREGROUND_REMOVE)
+                }
+            }
+            if (!accepted) return false
+            return kotlinx.coroutines.withTimeoutOrNull(5_000L) {
+                kotlinx.coroutines.flow.combine(activeRuntimeJourneyId, serviceRunning) { id, running ->
+                    !running || id != null && id != journeyId
+                }.first { it }
+                true
+            } == true
+        }
         private const val CHANNEL_ID = "active_journey"
         private const val NOTIFICATION_ID = 1001
     }

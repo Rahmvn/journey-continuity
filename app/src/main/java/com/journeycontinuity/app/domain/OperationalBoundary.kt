@@ -7,6 +7,7 @@ enum class OperationalPauseReason {
     AUTHENTICATED_BOUNDARY_PROOF,
     APPROXIMATE_MONOTONIC_CAP,
     LOST_OR_INVALID_BOOT_ANCHOR,
+    EXPLICIT_STOP_INTENT,
 }
 
 enum class OperationalBoundaryAssessment {

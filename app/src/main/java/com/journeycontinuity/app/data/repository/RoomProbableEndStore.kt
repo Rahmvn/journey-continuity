@@ -34,7 +34,7 @@ class RoomProbableEndStore(
         database.withTransaction {
             val journey = database.journeyDao().getById(journeyId)
                 ?: return@withTransaction LocalProbableEndRun(LocalProbableEndRunStatus.INELIGIBLE)
-            if (database.operationalBoundaryDao().get(journeyId)?.state == "PENDING_AUTHORITY")
+            if (database.fallbackAttemptDao().operationallyPaused(journeyId) != 0)
                 return@withTransaction LocalProbableEndRun(LocalProbableEndRunStatus.INELIGIBLE)
             val input = journey.probableEndInput()
             var row = try { dao.state(journeyId) }

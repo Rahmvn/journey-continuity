@@ -75,7 +75,9 @@ abstract class TelemetryDao {
         return inserted
     }
 
-    @Query("""SELECT COUNT(*) FROM journey_operational_boundaries
-        WHERE journeyId = :journeyId AND state = 'PENDING_AUTHORITY'""")
+    @Query("""SELECT (SELECT COUNT(*) FROM journey_operational_boundaries
+        WHERE journeyId = :journeyId AND state = 'PENDING_AUTHORITY') +
+        (SELECT COUNT(*) FROM journey_terminal_reconciliations WHERE journeyId = :journeyId
+        AND explicitAction = 'STOP' AND explicitState = 'PENDING')""")
     protected abstract suspend fun operationallyPaused(journeyId: String): Int
 }

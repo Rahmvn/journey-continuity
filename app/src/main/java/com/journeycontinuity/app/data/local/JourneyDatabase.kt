@@ -20,8 +20,11 @@ import androidx.room.TypeConverters
         ProbableEndPresentationEntity::class,
         UnresolvedBoundaryEntity::class,
         OperationalBoundaryEntity::class,
+        JourneyTerminalReconciliationEntity::class,
+        JourneyIncidentFinalizationEntity::class,
+        JourneyAutoEndFinalizationEntity::class,
     ],
-    version = 20,
+    version = 21,
     exportSchema = true,
 )
 @TypeConverters(
@@ -44,4 +47,5 @@ abstract class JourneyDatabase : RoomDatabase() {
     abstract fun probableEndPresentationDao(): ProbableEndPresentationDao
     abstract fun unresolvedBoundaryDao(): UnresolvedBoundaryDao
     abstract fun operationalBoundaryDao(): OperationalBoundaryDao
+    abstract fun incidentReconciliationDao(): IncidentReconciliationDao
 }

@@ -7,6 +7,57 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class JourneyRuntimeSignalsTest {
+    @Test fun delayedOldStopCannotStopNewJourneyOrItsListener() {
+        val signals = JourneyRuntimeSignals()
+        signals.serviceStarted(); signals.startCommand(1)
+        signals.begin("journey-a")
+        val ticket = requireNotNull(signals.stopTicket("journey-a"))
+        signals.startCommand(2)
+        val newer = signals.begin("journey-b")
+        signals.listenerRegistered(newer, "journey-b")
+        repeat(2) {
+            assertTrue(signals.executeStop(ticket, { error("Old Android stop must not execute") },
+                { error("New collection must not stop") }))
+        }
+        signals.stopRegistration(ticket.generation)
+        assertEquals("journey-b", signals.monitoringJourneyId.value)
+    }
+
+    @Test fun queuedNewStartAndAndroidRefusalDoNotStopCollection() {
+        val signals = JourneyRuntimeSignals()
+        signals.serviceStarted(); signals.startCommand(1); signals.begin("journey-a")
+        val ticket = requireNotNull(signals.stopTicket("journey-a"))
+        signals.startCommand(2)
+        assertFalse(signals.executeStop(ticket, { error("Stale start ID") }, { error("Collection") }))
+        val current = requireNotNull(signals.stopTicket("journey-a"))
+        assertFalse(signals.executeStop(current, { false }, { error("Android rejected stop") }))
+        assertEquals("journey-a", signals.activeRuntimeJourneyId.value)
+    }
+
+    @Test fun oldServiceDestructionCannotClearRestoredServiceSignals() {
+        val signals = JourneyRuntimeSignals()
+        val oldService = signals.serviceStarted(); signals.startCommand(1); signals.begin("journey-a")
+        val ticket = requireNotNull(signals.stopTicket("journey-a"))
+        signals.serviceStarted(); signals.startCommand(1)
+        val newer = signals.begin("journey-b"); signals.listenerRegistered(newer, "journey-b")
+        signals.serviceStopped(oldService); signals.stopRegistration(ticket.generation)
+        assertTrue(signals.executeStop(ticket, { error("Old service") }, { error("New listener") }))
+        assertTrue(signals.serviceRunning.value)
+        assertEquals("journey-b", signals.monitoringJourneyId.value)
+    }
+
+    @Test fun exactCurrentTicketStopsOnlyItsOwnRegistrationOnce() {
+        val signals = JourneyRuntimeSignals()
+        signals.serviceStarted(); signals.startCommand(7)
+        val registration = signals.begin("journey-a"); signals.listenerRegistered(registration, "journey-a")
+        val ticket = requireNotNull(signals.stopTicket("journey-a"))
+        var stopped = 0
+        assertTrue(signals.executeStop(ticket, { assertEquals(7, it); true }, {
+            stopped++; signals.stopRegistration(registration)
+        }))
+        assertTrue(signals.executeStop(ticket, { error("Duplicate Android stop") }, { stopped++ }))
+        assertEquals(1, stopped); assertNull(signals.monitoringJourneyId.value)
+    }
     @Test fun collectionStopDoesNotClaimForegroundServiceDestroyed() {
         val signals = JourneyRuntimeSignals()
         signals.serviceStarted()

@@ -15,7 +15,9 @@ abstract class JourneyDao {
     /** ACTIVE remains occupied while a privacy pause removes collection permission. */
     @Query("""SELECT j.* FROM journeys j LEFT JOIN journey_operational_boundaries o
         ON o.journeyId = j.id WHERE j.activeSlot = 1
-        AND (o.state IS NULL OR o.state = 'MONITORING') LIMIT 1""")
+        AND (o.state IS NULL OR o.state = 'MONITORING')
+        AND NOT EXISTS (SELECT 1 FROM journey_terminal_reconciliations r WHERE r.journeyId = j.id
+            AND r.explicitAction = 'STOP' AND r.explicitState = 'PENDING') LIMIT 1""")
     abstract fun observeCollectable(): Flow<JourneyEntity?>
 
     @Query("SELECT * FROM journeys WHERE activeSlot = 1 LIMIT 1")
@@ -39,6 +41,15 @@ abstract class JourneyDao {
     @Insert
     protected abstract suspend fun insertOperationalBoundary(state: OperationalBoundaryEntity)
 
+    @Insert(onConflict = androidx.room.OnConflictStrategy.IGNORE)
+    protected abstract suspend fun insertTerminalWorkflow(row: JourneyTerminalReconciliationEntity)
+
+    @Query("""UPDATE journey_terminal_reconciliations SET explicitActionId = :actionId,
+        explicitAction = 'COMPLETE', explicitAtMillis = :atMillis, explicitState = 'PENDING',
+        effectsPending = 1, explicitDispatch = 'NEVER_DISPATCHED', revision = revision + 1
+        WHERE journeyId = :journeyId AND (explicitAction IS NULL OR explicitState = 'REFUSED')""")
+    protected abstract suspend fun recordCompletionIntent(journeyId: String, actionId: String, atMillis: Long)
+
     @Query(
         """UPDATE journey_sync_states
            SET changeVersion = changeVersion + 1,
@@ -53,7 +64,10 @@ abstract class JourneyDao {
            SET status = :completedStatus, completedAt = :completedAt, activeSlot = NULL
            WHERE id = :journeyId AND activeSlot = 1
              AND NOT EXISTS (SELECT 1 FROM probable_end_presentations p
-                 WHERE p.journeyId = :journeyId AND p.status = 'AUTO_END_CLAIMED')""",
+                 WHERE p.journeyId = :journeyId AND p.status = 'AUTO_END_CLAIMED')
+             AND NOT EXISTS (SELECT 1 FROM journey_terminal_reconciliations r
+                 WHERE r.journeyId = :journeyId AND (r.claimState = 'PENDING'
+                   OR (r.explicitState IN ('PENDING','ACCOUNT_RESERVED','ACCOUNT_UNCERTAIN') AND r.explicitAction = 'STOP')))""",
     )
     protected abstract suspend fun markCompleted(
         journeyId: String,
@@ -67,7 +81,10 @@ abstract class JourneyDao {
            WHERE id = :journeyId AND activeSlot = 1 AND status = :activeStatus
              AND completedAt IS NULL
              AND NOT EXISTS (SELECT 1 FROM probable_end_presentations p
-                 WHERE p.journeyId = :journeyId AND p.status = 'AUTO_END_CLAIMED')""",
+                 WHERE p.journeyId = :journeyId AND p.status = 'AUTO_END_CLAIMED')
+             AND NOT EXISTS (SELECT 1 FROM journey_terminal_reconciliations r
+                 WHERE r.journeyId = :journeyId AND (r.claimState = 'PENDING'
+                   OR (r.explicitState IN ('PENDING','ACCOUNT_RESERVED','ACCOUNT_UNCERTAIN') AND r.explicitAction = 'STOP')))""",
     )
     protected abstract suspend fun markMonitoringStopped(
         journeyId: String,
@@ -108,7 +125,8 @@ abstract class JourneyDao {
     protected abstract suspend fun supersedeUnsentFallback(journeyId: String, endedAt: Long)
 
     @Query("""UPDATE probable_end_presentations SET status = 'INVALIDATED', liveSlot = NULL,
-        closedAtMillis = :endedAt, closureReason = 'JOURNEY_TERMINAL',
+        closedAtMillis = MAX(:endedAt, createdAtMillis, COALESCE(presentedAtMillis, 0),
+            COALESCE(deadlineExpiredAtMillis, 0)), closureReason = 'JOURNEY_TERMINAL',
         deadlineStatus = CASE WHEN deadlineStatus IS NULL THEN NULL ELSE 'CANCELLED' END,
         revision = revision + 1
         WHERE journeyId = :journeyId AND liveSlot = 1""")
@@ -142,6 +160,8 @@ abstract class JourneyDao {
     open suspend fun completeActive(completedAt: Long): JourneyEntity? {
         val active = getActive() ?: return null
         if (markCompleted(active.id, completedAt, JourneyStatus.COMPLETED) != 1) return null
+        insertTerminalWorkflow(JourneyTerminalReconciliationEntity(active.id))
+        recordCompletionIntent(active.id, java.util.UUID.randomUUID().toString(), completedAt)
         closeProbableEndPresentation(active.id, completedAt)
         markSyncPending(active.id)
         return active.copy(
@@ -165,5 +185,31 @@ abstract class JourneyDao {
             endedAt = endedAt,
             activeSlot = null,
         )
+    }
+
+    @Query("""UPDATE journeys SET status = :status, completedAt = :completedAt,
+        endedAt = :endedAt, activeSlot = NULL WHERE id = :journeyId""")
+    protected abstract suspend fun saveAuthoritativeTerminal(journeyId: String, status: JourneyStatus,
+        completedAt: Long?, endedAt: Long?)
+
+    /** Caller supplies authenticated exact-ID authority, within the provenance transaction. */
+    @Transaction
+    open suspend fun reconcileAuthoritativeTerminalInTransaction(journeyId: String, status: JourneyStatus,
+        completedAt: Long?, endedAt: Long?, pendingExplicitCompletion: Boolean): Boolean {
+        require(status != JourneyStatus.ACTIVE)
+        val row = getById(journeyId) ?: return false
+        if (row.status != JourneyStatus.ACTIVE &&
+            !(row.status == JourneyStatus.COMPLETED && pendingExplicitCompletion)) {
+            return row.status == status && row.completedAt == completedAt && row.endedAt == endedAt
+        }
+        require(if (status == JourneyStatus.COMPLETED) completedAt != null && completedAt > 0 && endedAt == null
+            else endedAt != null && endedAt > 0 && completedAt == null)
+        saveAuthoritativeTerminal(journeyId, status, completedAt, endedAt)
+        val at = requireNotNull(endedAt ?: completedAt)
+        closeProbableEndPresentation(journeyId, at)
+        deactivateFallback(journeyId)
+        supersedeUnsentFallback(journeyId, at)
+        markSyncPending(journeyId)
+        return true
     }
 }

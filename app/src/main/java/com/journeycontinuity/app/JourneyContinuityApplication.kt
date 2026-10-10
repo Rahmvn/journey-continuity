@@ -22,6 +22,7 @@ import com.journeycontinuity.app.data.local.MIGRATION_16_17
 import com.journeycontinuity.app.data.local.MIGRATION_17_18
 import com.journeycontinuity.app.data.local.MIGRATION_18_19
 import com.journeycontinuity.app.data.local.MIGRATION_19_20
+import com.journeycontinuity.app.data.local.MIGRATION_20_21
 import com.journeycontinuity.app.data.repository.RoomProbableEndAutoEndCoordinator
 import com.journeycontinuity.app.data.repository.WorkManagerProbableEndAutoEndScheduler
 import com.journeycontinuity.app.data.probableend.ProbableEndAutoEndGateway
@@ -145,6 +146,7 @@ class JourneyContinuityApplication : Application() {
             MIGRATION_17_18,
             MIGRATION_18_19,
             MIGRATION_19_20,
+            MIGRATION_20_21,
         ).addCallback(FALLBACK_ATTEMPT_INVARIANT_CALLBACK).build()
     }
 
@@ -217,8 +219,8 @@ class JourneyContinuityApplication : Application() {
     val probableEndAutoEndCoordinator by lazy {
         RoomProbableEndAutoEndCoordinator(database, cloudGateways.autoEnd,
             WorkManagerProbableEndAutoEndScheduler(applicationContext),
-            onTerminalEffects = { _ ->
-                journeyServiceController.stop()
+            onTerminalEffects = { journeyId ->
+                check(exactJourneyRuntimeTeardown.stop(journeyId)) { "Exact automatic-end teardown pending" }
                 syncScheduler.schedule(SyncRequestUrgency.URGENT)
             },
             onGuardBlocked = { journeyId ->
@@ -382,10 +384,13 @@ class JourneyContinuityApplication : Application() {
                         reconciliationRequested = {
                             syncScheduler.schedule(SyncRequestUrgency.URGENT)
                         },
+                        reservations = com.journeycontinuity.app.data.repository.RoomAccountStopReservations(database, terminalHandoffGate),
                     ),
                     sync = SupabaseCloudSyncGateway(client, identityCoordinator, logger,
                         boundaryAdmission = { database.unresolvedBoundaryDao().get(it)?.admission() }),
                     unresolvedBoundary = com.journeycontinuity.app.data.unresolved.SupabaseUnresolvedBoundaryGateway(client, identityCoordinator),
+                    incidentAuthority = com.journeycontinuity.app.data.unresolved.SupabaseIncidentAuthorityGateway(client, identityCoordinator),
+                    journeyStop = SupabaseActiveJourneyStopRemote(client, authBackend),
                     heartbeat = SupabaseHeartbeatGateway(client, identityCoordinator, logger),
                     verificationGuard = SupabaseProbableEndVerificationGuardGateway(client, identityCoordinator),
                     autoEnd = SupabaseProbableEndAutoEndGateway(client, identityCoordinator),
@@ -454,6 +459,8 @@ class JourneyContinuityApplication : Application() {
             reconcileAutoEnded = { journeyId, endedAt ->
                 probableEndAutoEndCoordinator.reconcileRemoteAutoEnded(journeyId, endedAt)
             },
+            reconcileAuthoritativeTerminal = { incidentReconciliationCoordinator.reconcileServerTerminal(it) },
+            reconcileExplicitIntent = { incidentReconciliationCoordinator.reconcilePendingExplicit(it) },
         )
     }
 
@@ -519,6 +526,7 @@ class JourneyContinuityApplication : Application() {
         localInferenceScope.launch { probableEndResponseCoordinator.resumeCompletionEffects() }
         localInferenceScope.launch { probableEndDeadlineCoordinator.restore() }
         localInferenceScope.launch { probableEndAutoEndCoordinator.restore() }
+        localInferenceScope.launch { incidentReconciliationCoordinator.restoreEffects() }
     }
 
     /** Also isolates lazy store initialization; only optional inference failures are contained here. */
@@ -624,7 +632,36 @@ class JourneyContinuityApplication : Application() {
             cloudGateways.unresolvedBoundary, ::operationalBoundaryReceipt)
     }
 
+    /** No production caller of advance/restore/requestStop: 10C-3 owns activation and truthful UI. */
+    internal val incidentReconciliationCoordinator by lazy {
+        com.journeycontinuity.app.data.repository.RoomIncidentReconciliationCoordinator(database,
+            cloudGateways.incidentAuthority, cloudGateways.sync, cloudGateways.journeyStop,
+            terminalHandoffGate = terminalHandoffGate,
+            onStoppedEffects = { journeyId ->
+                check(exactJourneyRuntimeTeardown.stop(journeyId)) { "Exact runtime teardown pending" }
+                syncScheduler.schedule(SyncRequestUrgency.URGENT)
+            }, requestRetry = { _, _ -> syncScheduler.schedule(SyncRequestUrgency.ROUTINE) })
+    }
+
+    private val exactJourneyRuntimeTeardown by lazy {
+        com.journeycontinuity.app.service.ExactJourneyRuntimeTeardown(ownerAdmissionGate,
+            { database.journeyDao().getActive()?.id }, journeyServiceController::stopExact)
+    }
+
     private data class CloudGateways(
+        val incidentAuthority: com.journeycontinuity.app.data.unresolved.IncidentAuthorityGateway =
+            object : com.journeycontinuity.app.data.unresolved.IncidentAuthorityGateway {
+                override suspend fun eligibility(journeyId: String) = unavailableIncidentAuthority()
+                override suspend fun finalize(claim: com.journeycontinuity.app.domain.IncidentClaim,
+                    beforeDispatch: suspend () -> Boolean) = unavailableIncidentAuthority()
+                override suspend fun provenance(journeyId: String) = unavailableIncidentAuthority()
+            },
+        val journeyStop: com.journeycontinuity.app.auth.ActiveJourneyStopRemote = object : com.journeycontinuity.app.auth.ActiveJourneyStopRemote {
+            override suspend fun stop(journeyId: String, ownerId: String): com.journeycontinuity.app.auth.MonitoringStopAcknowledgement =
+                throw CloudSyncException(SyncFailureKind.PERMANENT, "Cloud configuration unavailable.")
+            override suspend fun ownerJourneyState(journeyId: String, ownerId: String): com.journeycontinuity.app.sync.RemoteJourneyState? =
+                throw CloudSyncException(SyncFailureKind.PERMANENT, "Cloud configuration unavailable.")
+        },
         val unresolvedBoundary: com.journeycontinuity.app.data.unresolved.UnresolvedBoundaryGateway =
             com.journeycontinuity.app.data.unresolved.UnresolvedBoundaryGateway { null },
         val authBackend: com.journeycontinuity.app.auth.TravellerAuthBackend? = null,
@@ -654,3 +691,6 @@ class JourneyContinuityApplication : Application() {
         val createAccount: TravellerCreateAccountEngine?,
     )
 }
+
+private fun unavailableIncidentAuthority() = com.journeycontinuity.app.data.unresolved.AuthorityRead.Failed(
+    com.journeycontinuity.app.domain.IncidentReconciliationOutcome.UNAVAILABLE)

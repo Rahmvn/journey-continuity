@@ -16,6 +16,8 @@ class ReliableSyncEngine(
     private val provisioningObserver: suspend (journeyId: String) -> Unit = {},
     private val reconcileCancelled: suspend (journeyId: String, endedAt: Long) -> Boolean = { _, _ -> false },
     private val reconcileAutoEnded: suspend (journeyId: String, endedAt: Long) -> Boolean = { _, _ -> false },
+    private val reconcileAuthoritativeTerminal: suspend (RemoteJourneyState) -> Boolean = { false },
+    private val reconcileExplicitIntent: suspend (String) -> Boolean = { true },
 ) {
     suspend fun synchronize(): SyncRunResult {
         var ownerId: String? = null
@@ -29,7 +31,7 @@ class ReliableSyncEngine(
             }
         } catch (error: Throwable) {
             if (error is CancellationException) throw error
-            logger.warning("Active Journey terminal reconciliation is unavailable; local monitoring remains active")
+            logger.warning("Active Journey terminal reconciliation is unavailable; local operational state is retained")
             return SyncRunResult.Retry
         }
         // Legacy blocks are not worker candidates. Reopen only the exact old auth failure,
@@ -69,7 +71,7 @@ class ReliableSyncEngine(
                         reconcileRemoteTerminal(candidate.journeyId, requireNotNull(ownerId))
                     } catch (lookupError: Throwable) {
                         if (lookupError is CancellationException) throw lookupError
-                        logger.warning("Terminal conflict lookup is unavailable; local monitoring remains active")
+                        logger.warning("Terminal conflict lookup is unavailable; local operational state is retained")
                         false
                     }
                     if (reconciled) continue // Re-read the ID-bound Room transition and sync it.
@@ -103,11 +105,12 @@ class ReliableSyncEngine(
 
     private suspend fun reconcileRemoteTerminal(journeyId: String, ownerId: String): Boolean {
         val localJourney = local.journey(journeyId) ?: return false
-        if (localJourney.status != JourneyStatus.ACTIVE) return false
         val remoteJourney = remote.ownerJourneyState(journeyId, ownerId) ?: return false
         if (remoteJourney.journeyId != journeyId || remoteJourney.ownerId != ownerId) {
             throw CloudSyncException(SyncFailureKind.AUTHORIZATION, "Journey owner proof did not match.")
         }
+        if (remoteJourney.status != JourneyStatus.ACTIVE && reconcileAuthoritativeTerminal(remoteJourney)) return true
+        if (localJourney.status != JourneyStatus.ACTIVE) return false
         return when (remoteJourney.status) {
             JourneyStatus.ACTIVE -> false
             JourneyStatus.CANCELLED -> {
@@ -125,6 +128,8 @@ class ReliableSyncEngine(
                 }
                 reconcileAutoEnded(journeyId, endedAt)
             }
+            JourneyStatus.UNRESOLVED_INCIDENT -> throw CloudSyncException(
+                SyncFailureKind.TERMINAL_CONFLICT, "Authoritative incident provenance is unavailable.")
             // The existing completion operation has no Journey-ID guard. Do not
             // manufacture a completion or stop the wrong active Journey here.
             JourneyStatus.COMPLETED -> throw CloudSyncException(
@@ -138,6 +143,8 @@ class ReliableSyncEngine(
         candidate: PendingSyncCandidate,
         ownerId: String,
     ) {
+        if (!reconcileExplicitIntent(candidate.journeyId)) throw CloudSyncException(
+            SyncFailureKind.TRANSIENT, "Explicit Journey intent is awaiting authority reconciliation.")
         val initialJourney = local.journey(candidate.journeyId)
             ?: throw CloudSyncException(
                 SyncFailureKind.PERMANENT,
@@ -195,16 +202,19 @@ class ReliableSyncEngine(
     /** AUTO_ENDED is server-owned; syncing telemetry must not try an owner status write. */
     private suspend fun upsertOrConfirmAutomaticEnd(journey: com.journeycontinuity.app.domain.Journey,
         ownerId: String) {
-        if (journey.status != JourneyStatus.AUTO_ENDED) {
+        if (journey.status !in setOf(JourneyStatus.AUTO_ENDED, JourneyStatus.UNRESOLVED_INCIDENT)) {
             remote.upsertJourney(journey, ownerId)
             return
         }
         val authoritative = remote.ownerJourneyState(journey.id, ownerId)
         if (authoritative?.journeyId != journey.id || authoritative.ownerId != ownerId ||
-            authoritative.status != JourneyStatus.AUTO_ENDED ||
+            authoritative.status != journey.status ||
             authoritative.endedAt != journey.endedAt || authoritative.completedAt != null) {
             throw CloudSyncException(SyncFailureKind.TERMINAL_CONFLICT,
                 "Server automatic-end provenance does not match the local Journey.")
         }
+        if (!reconcileAuthoritativeTerminal(authoritative))
+            throw CloudSyncException(SyncFailureKind.TERMINAL_CONFLICT,
+                "Authoritative terminal provenance could not be confirmed.")
     }
 }

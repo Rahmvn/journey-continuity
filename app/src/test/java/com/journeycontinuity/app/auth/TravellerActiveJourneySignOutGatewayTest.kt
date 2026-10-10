@@ -16,6 +16,24 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class TravellerActiveJourneySignOutGatewayTest {
+    @Test fun failedReservationSendsNoAccountStopRpc() = runTest {
+        val f = Fixture(); f.reservationDenied = true
+        assertEquals(ActiveJourneySignOutResult.JourneyChanged, f.gateway.confirmAndSignOut(journey.id, owner))
+        assertTrue(f.remote.stopIds.isEmpty()); f.assertStillMonitoring()
+    }
+    @Test fun lostReservationBeforeDispatchSendsNoAccountStopRpc() = runTest {
+        val f = Fixture(); f.dispatchDenied = true
+        assertEquals(ActiveJourneySignOutResult.JourneyChanged, f.gateway.confirmAndSignOut(journey.id, owner))
+        assertTrue(f.remote.stopIds.isEmpty()); f.assertStillMonitoring()
+    }
+    @Test fun accountUnknownAcknowledgementRetainsReservationAcrossGatewayRecreation() = runTest {
+        val f = Fixture(); f.remote.stopError = AmbiguousMonitoringStopException(java.io.IOException())
+        assertEquals(ActiveJourneySignOutResult.ConnectionRequired, f.gateway.confirmAndSignOut(journey.id, owner))
+        assertTrue(f.operationDispatched); assertTrue(f.operationUncertain)
+        val fresh = f.newGateway(); f.remote.state = f.remote.cancelledState()
+        assertEquals(ActiveJourneySignOutResult.SignedOut(journey.stopped()), fresh.confirmAndSignOut(journey.id, owner))
+        assertEquals(1, f.remote.stopIds.size)
+    }
     private val owner = "owner-a"
     private val journey = Journey("journey-j", "Ilorin", 20_000L, 1_000L,
         JourneyStatus.ACTIVE, null)
@@ -26,7 +44,7 @@ class TravellerActiveJourneySignOutGatewayTest {
         assertEquals(ActiveJourneySignOutResult.SignedOut(journey.stopped()),
             f.gateway.confirmAndSignOut(journey.id, owner))
         assertEquals(listOf("local_active", "remote_lookup", "remote_stop", "remote_lookup",
-            "local_persist", "local_read",
+            "local_persist", "local_read", "local_read",
             "local_active", "fallback_verify", "runtime_stop", "local_signout"),
             f.events.filter { it != "auth_state" && it != "pending_save" })
         assertEquals(listOf(journey.id), f.remote.stopIds)
@@ -286,12 +304,29 @@ class TravellerActiveJourneySignOutGatewayTest {
         val runtime = FakeRuntime(events)
         val session = FakeSession(events, backend)
         val resultStore = FakeResultStore(events)
+        var reservationDenied = false
+        var dispatchDenied = false
+        var operationDispatched = false
+        var operationUncertain = false
+        val reservation = AccountStopOperation("account-operation", journey.id, owner)
+        val reservations = object : AccountStopReservations {
+            override suspend fun reserve(journeyId: String, ownerId: String) = if (reservationDenied) null else reservation
+            override suspend fun markDispatch(operation: AccountStopOperation) = (!dispatchDenied).also {
+                if (it) operationDispatched = true
+            }
+            override suspend fun uncertain(operation: AccountStopOperation) {
+                if (operationDispatched && local.row.status == JourneyStatus.ACTIVE) operationUncertain = true
+            }
+            override suspend fun releaseUndispatched(operation: AccountStopOperation) = Unit
+            override suspend fun acknowledge(operation: AccountStopOperation, endedAt: Long) =
+                local.persistStopped(operation.journeyId, endedAt) != null
+        }
         var reconciliationCalls = 0
         val gateway = newGateway()
 
         fun newGateway() = GuardedTravellerActiveJourneySignOutGateway(local, remote,
             coordinator, identityStore, backend, session, runtime, resultStore, gate,
-            reconciliationRequested = { reconciliationCalls++ })
+            reconciliationRequested = { reconciliationCalls++ }, reservations = reservations)
 
         fun assertStillMonitoring() {
             assertEquals(journey, local.row)

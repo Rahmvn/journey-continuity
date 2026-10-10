@@ -46,7 +46,7 @@ class OperationalBoundaryMigrationTest {
                 next.query("PRAGMA foreign_key_check").use { assertFalse(it.moveToFirst()) }
             }
             val reopened = Room.databaseBuilder(context, JourneyDatabase::class.java, name)
-                .addMigrations(MIGRATION_19_20).build()
+                .addMigrations(MIGRATION_19_20, MIGRATION_20_21).build()
             try { runBlocking {
                     assertEquals("ACTIVE", reopened.journeyDao().getActive()!!.status.name)
                     assertNull(reopened.operationalBoundaryDao().get("legacy"))

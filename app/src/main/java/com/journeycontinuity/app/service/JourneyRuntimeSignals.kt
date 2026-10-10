@@ -12,6 +12,8 @@ data class CurrentJourneyConnectivity(
 
 internal class JourneyRuntimeSignals {
     private var generation = 0L
+    private var serviceGeneration = 0L
+    private var latestStartId = 0
     private var currentJourneyId: String? = null
     private val _monitoringJourneyId = MutableStateFlow<String?>(null)
     private val _activeRuntimeJourneyId = MutableStateFlow<String?>(null)
@@ -76,11 +78,37 @@ internal class JourneyRuntimeSignals {
     }
 
     @Synchronized
-    fun serviceStarted() { _serviceRunning.value = true }
+    fun serviceStarted(): Long { serviceGeneration++; _serviceRunning.value = true; return serviceGeneration }
+
+    @Synchronized fun startCommand(startId: Int) { latestStartId = startId }
+
+    @Synchronized fun stopTicket(journeyId: String): JourneyRuntimeStopTicket? =
+        if (currentJourneyId == journeyId) JourneyRuntimeStopTicket(journeyId, generation, serviceGeneration, latestStartId)
+        else null
+
+    /** Execution-time identity and Android start IDs also protect newer queued service starts. */
+    @Synchronized fun executeStop(ticket: JourneyRuntimeStopTicket, stopSelfResult: (Int) -> Boolean,
+                                  stopCollection: () -> Unit): Boolean {
+        if (ticket.serviceGeneration != serviceGeneration || !isCurrent(ticket.generation, ticket.journeyId)) return true
+        if (ticket.startId != latestStartId || !stopSelfResult(ticket.startId)) return false
+        stopCollection()
+        return true
+    }
+
+    @Synchronized fun stopRegistration(forGeneration: Long?) {
+        if (forGeneration != null && forGeneration == generation) stop()
+    }
 
     @Synchronized
     fun serviceStopped() { _serviceRunning.value = false }
 
+    @Synchronized fun serviceStopped(forServiceGeneration: Long) {
+        if (forServiceGeneration == serviceGeneration) _serviceRunning.value = false
+    }
+
     private fun isCurrent(forGeneration: Long, journeyId: String): Boolean =
         generation == forGeneration && currentJourneyId == journeyId
 }
+
+internal data class JourneyRuntimeStopTicket(val journeyId: String, val generation: Long,
+    val serviceGeneration: Long, val startId: Int)

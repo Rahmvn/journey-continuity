@@ -40,14 +40,7 @@ class AndroidActiveJourneyRuntimeStop(
     private val controller: JourneyServiceController,
 ) : ActiveJourneyRuntimeStop {
     override suspend fun stopAndAwait(journeyId: String): Boolean {
-        controller.stop()
-        return withTimeoutOrNull(5_000L) {
-            combine(JourneyForegroundService.activeRuntimeJourneyId,
-                JourneyForegroundService.serviceRunning) { activeId, running ->
-                activeId != journeyId && !running
-            }.first { it }
-            true
-        } == true
+        return controller.stopExact(journeyId)
     }
 }
 

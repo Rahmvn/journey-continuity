@@ -16,4 +16,5 @@ enum class JourneyStatus {
     COMPLETED,
     CANCELLED,
     AUTO_ENDED,
+    UNRESOLVED_INCIDENT,
 }

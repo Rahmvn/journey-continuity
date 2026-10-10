@@ -19,7 +19,7 @@ abstract class HeartbeatDao {
     @Query("SELECT * FROM journey_heartbeat_states WHERE journeyId = :journeyId LIMIT 1")
     abstract fun observe(journeyId: String): Flow<JourneyHeartbeatStateEntity?>
 
-    @Query("SELECT status FROM journeys WHERE id = :journeyId LIMIT 1")
+    @Query("SELECT status FROM journeys WHERE id = :journeyId AND activeSlot = 1 LIMIT 1")
     protected abstract suspend fun journeyStatus(journeyId: String): JourneyStatus?
 
     @Query("SELECT * FROM journey_heartbeat_states WHERE journeyId = :journeyId LIMIT 1")
@@ -61,9 +61,20 @@ abstract class HeartbeatDao {
         )
     }
 
-    @Query("""SELECT COUNT(*) FROM journey_operational_boundaries
-        WHERE journeyId = :journeyId AND state = 'PENDING_AUTHORITY'""")
+    @Query("""SELECT (SELECT COUNT(*) FROM journey_operational_boundaries
+        WHERE journeyId = :journeyId AND state = 'PENDING_AUTHORITY') +
+        (SELECT COUNT(*) FROM journey_terminal_reconciliations WHERE journeyId = :journeyId
+        AND explicitAction = 'STOP' AND explicitState IN ('PENDING', 'ACCOUNT_RESERVED', 'ACCOUNT_UNCERTAIN'))""")
     protected abstract suspend fun operationallyPaused(journeyId: String): Int
+
+    @Query("""SELECT EXISTS(SELECT 1 FROM journeys j JOIN journey_heartbeat_states h ON h.journeyId=j.id
+        WHERE j.id=:journeyId AND j.status='ACTIVE' AND j.activeSlot=1
+        AND h.lastAllocatedHeartbeatSequence=:sequence AND h.lastHeartbeatAttemptAt=:clientSentAt
+        AND NOT EXISTS (SELECT 1 FROM journey_operational_boundaries o
+            WHERE o.journeyId=j.id AND o.state='PENDING_AUTHORITY')
+        AND NOT EXISTS (SELECT 1 FROM journey_terminal_reconciliations r
+            WHERE r.journeyId=j.id AND r.explicitAction='STOP' AND r.explicitState IN ('PENDING', 'ACCOUNT_RESERVED', 'ACCOUNT_UNCERTAIN')))""")
+    abstract suspend fun canDispatchAllocation(journeyId: String, sequence: Long, clientSentAt: Long): Boolean
 
     @Query(
         """UPDATE journey_heartbeat_states

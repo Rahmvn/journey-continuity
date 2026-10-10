@@ -63,6 +63,7 @@ class GuardedTravellerActiveJourneySignOutGateway internal constructor(
     private val resultStore: MonitoringStoppedResultStore,
     private val admissionGate: OwnerAdmissionGate,
     private val reconciliationRequested: () -> Unit = {},
+    private val reservations: AccountStopReservations = UnavailableAccountStopReservations,
 ) : TravellerActiveJourneySignOutGateway {
     override suspend fun confirmAndSignOut(
         journeyId: String,
@@ -88,6 +89,9 @@ class GuardedTravellerActiveJourneySignOutGateway internal constructor(
             if (previousPendingId != null && previousPendingId != journeyId) {
                 return@withLock ActiveJourneySignOutResult.JourneyChanged
             }
+            val operation = reservations.reserve(journeyId, expectedOwnerId)
+                ?: return@withLock ActiveJourneySignOutResult.JourneyChanged
+            try {
             // Read on every explicit attempt. A previous timeout may have committed,
             // even though this device could not safely acknowledge it at that time.
             val before = ownerState(journeyId, expectedOwnerId)
@@ -96,11 +100,12 @@ class GuardedTravellerActiveJourneySignOutGateway internal constructor(
                 JourneyStatus.CANCELLED -> before.takeIf(::validStoppedState)
                     ?: return@withLock ActiveJourneySignOutResult.RemoteResultInvalid
                 JourneyStatus.ACTIVE -> null
-                JourneyStatus.COMPLETED, JourneyStatus.AUTO_ENDED ->
+                JourneyStatus.COMPLETED, JourneyStatus.AUTO_ENDED, JourneyStatus.UNRESOLVED_INCIDENT ->
                     return@withLock ActiveJourneySignOutResult.RemoteResultInvalid
             }
 
             val acknowledged = previouslyStopped ?: run {
+                if (!reservations.markDispatch(operation)) return@withLock ActiveJourneySignOutResult.JourneyChanged
                 val response = try { remote.stop(journeyId, expectedOwnerId) } catch (error: Throwable) {
                     if (error is CancellationException) throw error
                     if (error !is AmbiguousMonitoringStopException) {
@@ -131,7 +136,9 @@ class GuardedTravellerActiveJourneySignOutGateway internal constructor(
             if (previousPendingId == null && !resultStore.savePendingJourneyId(journeyId)) {
                 return@withLock localPersistenceFailed()
             }
-            val persisted = try { local.persistStopped(journeyId, endedAt) } catch (error: Throwable) {
+            val persisted = try {
+                if (reservations.acknowledge(operation, endedAt)) local.journey(journeyId) else null
+            } catch (error: Throwable) {
                 if (error is CancellationException) throw error
                 null
             } ?: try { local.journey(journeyId) } catch (error: Throwable) {
@@ -145,6 +152,12 @@ class GuardedTravellerActiveJourneySignOutGateway internal constructor(
                 return@withLock localPersistenceFailed()
             }
             finishTerminal(journeyId, endedAt)
+            } finally {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+                    reservations.uncertain(operation)
+                    reservations.releaseUndispatched(operation)
+                }
+            }
         }
     }
 

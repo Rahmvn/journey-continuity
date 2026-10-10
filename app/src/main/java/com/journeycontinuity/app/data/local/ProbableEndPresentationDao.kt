@@ -47,7 +47,9 @@ interface ProbableEndPresentationDao {
           AND generation = :generation AND revision = :expectedRevision
           AND status = 'PRESENTED' AND liveSlot = 1 AND respondedAtMillis IS NULL
           AND deadlineStatus = 'EXPIRED_PENDING_FINALIZATION'
-          AND serverWindowNotBeforeAtMillis IS NOT NULL""")
+          AND serverWindowNotBeforeAtMillis IS NOT NULL
+          AND NOT EXISTS (SELECT 1 FROM journey_terminal_reconciliations r WHERE r.journeyId = :journeyId
+              AND (r.claimState = 'PENDING' OR r.explicitState IN ('PENDING','ACCOUNT_RESERVED','ACCOUNT_UNCERTAIN')))""")
     suspend fun claimAutomaticEnd(episodeId: String, journeyId: String, candidateId: String,
         generation: Long, expectedRevision: Long, claimedAt: Long): Int
 

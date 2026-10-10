@@ -70,22 +70,7 @@ class RoomOperationalBoundaryCoordinator(
                     now.elapsedRealtimeMillis.takeIf { it >= 0 }) != 1)
                     return@withTransaction OperationalBoundaryAssessment.NOT_TRACKED
                 db.operationalBoundaryDao().deactivateDegradation(journeyId)
-                // A device clock can move backward. Keep historical closure timestamps no earlier
-                // than the candidate and presentation facts read in this same transaction.
-                val candidates = db.probableEndDao().unclosed(journeyId)
-                val presentation = db.probableEndPresentationDao().live(journeyId)
-                val recordedAt = maxOf(diagnosticWallClock(), 1L,
-                    candidates.maxOfOrNull { maxOf(it.createdAtMillis, it.final.observedAtMillis) } ?: 1L,
-                    presentation?.createdAtMillis ?: 1L,
-                    presentation?.presentedAtMillis ?: 1L,
-                    presentation?.deadlineExpiredAtMillis ?: 1L)
-                // Do not erase an already claimed/uncertain Section 09 server outcome.
-                if (presentation?.status != "AUTO_END_CLAIMED") {
-                    db.probableEndDao().closeUnclosed(journeyId,
-                        LocalProbableEndLifecycle.INVALIDATED.name, recordedAt, "OPERATIONAL_BOUNDARY")
-                    db.probableEndGuardDao().invalidate(journeyId)
-                }
-                db.operationalBoundaryDao().invalidateUnclaimedProbableEnd(journeyId, recordedAt)
+                closeProbableEndForOperationalPause(db, journeyId, diagnosticWallClock())
                 OperationalBoundaryAssessment.PAUSED
             }
             if (result == OperationalBoundaryAssessment.PAUSED) {
@@ -95,4 +80,20 @@ class RoomOperationalBoundaryCoordinator(
             }
             result
         }
+}
+
+/** Called under the Room transaction and shared dispatch gate; never a clock authority. */
+internal suspend fun closeProbableEndForOperationalPause(db: JourneyDatabase, journeyId: String, wallAt: Long) {
+    val candidates = db.probableEndDao().unclosed(journeyId)
+    val presentation = db.probableEndPresentationDao().live(journeyId)
+    val recordedAt = maxOf(wallAt, 1L,
+        candidates.maxOfOrNull { maxOf(it.createdAtMillis, it.final.observedAtMillis) } ?: 1L,
+        presentation?.createdAtMillis ?: 1L, presentation?.presentedAtMillis ?: 1L,
+        presentation?.deadlineExpiredAtMillis ?: 1L)
+    if (presentation?.status != "AUTO_END_CLAIMED") {
+        db.probableEndDao().closeUnclosed(journeyId,
+            LocalProbableEndLifecycle.INVALIDATED.name, recordedAt, "OPERATIONAL_BOUNDARY")
+        db.probableEndGuardDao().invalidate(journeyId)
+    }
+    db.operationalBoundaryDao().invalidateUnclaimedProbableEnd(journeyId, recordedAt)
 }

@@ -25,7 +25,7 @@ class RoomFallbackProvisioningLocalStore(
 ) : FallbackProvisioningLocalStore {
     override suspend fun activeJourneyExists(journeyId: String): Boolean =
         database.journeyDao().getById(journeyId)?.status == JourneyStatus.ACTIVE &&
-            database.operationalBoundaryDao().get(journeyId)?.state != "PENDING_AUTHORITY"
+            fallbackAttemptDao.operationallyPaused(journeyId) == 0
 
     override suspend fun binding(journeyId: String): JourneyFallbackBindingEntity? =
         fallbackAttemptDao.getBinding(journeyId)
@@ -33,7 +33,7 @@ class RoomFallbackProvisioningLocalStore(
     override suspend fun persistBinding(binding: JourneyFallbackBindingEntity) {
         database.withTransaction {
             check(database.journeyDao().getById(binding.journeyId)?.status == JourneyStatus.ACTIVE &&
-                database.operationalBoundaryDao().get(binding.journeyId)?.state != "PENDING_AUTHORITY")
+                fallbackAttemptDao.operationallyPaused(binding.journeyId) == 0)
             val current = fallbackAttemptDao.getBinding(binding.journeyId)
             if (current == null) {
                 fallbackAttemptDao.insertBinding(binding)

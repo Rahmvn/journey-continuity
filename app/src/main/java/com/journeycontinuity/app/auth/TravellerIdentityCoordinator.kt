@@ -66,6 +66,14 @@ class TravellerIdentityCoordinator(
     private val admissionGate: OwnerAdmissionGate = OwnerAdmissionGate(),
     private val canEstablishAnonymousOwner: suspend () -> Boolean = { false },
 ) {
+    /** Read-only dispatch recheck of a previously resolved owner; no lock, refresh or identity establishment. */
+    fun authenticatedTravellerStillMatches(ownerId: String): Boolean = try {
+        val session = backend.sessionState() as? TravellerSessionState.Authenticated
+        session != null && identityStore.expectedTravellerUserId() == ownerId && session.userId == ownerId &&
+            !session.accessTokenExpired
+    } catch (cancelled: CancellationException) { throw cancelled }
+      catch (_: Exception) { false }
+
     /** Inspects the existing owner and session without creating a Traveller. */
     suspend fun resolve(): TravellerAuthOutcome = admissionGate.withLock {
         resolveLocked(establishAnonymousOwner = false)

@@ -10,8 +10,10 @@ import com.journeycontinuity.app.degraded.FallbackTransportOutcome
 
 @Dao
 interface FallbackAttemptDao {
-    @Query("""SELECT COUNT(*) FROM journey_operational_boundaries
-        WHERE journeyId = :journeyId AND state = 'PENDING_AUTHORITY'""")
+    @Query("""SELECT (SELECT COUNT(*) FROM journey_operational_boundaries
+        WHERE journeyId = :journeyId AND state = 'PENDING_AUTHORITY') +
+        (SELECT COUNT(*) FROM journey_terminal_reconciliations WHERE journeyId = :journeyId
+        AND explicitAction = 'STOP' AND explicitState = 'PENDING')""")
     suspend fun operationallyPaused(journeyId: String): Int
 
     @Query("""SELECT COUNT(*) FROM fallback_attempts WHERE journeyId = :journeyId
@@ -27,6 +29,8 @@ interface FallbackAttemptDao {
              AND EXISTS (SELECT 1 FROM journeys WHERE id = :journeyId AND status = 'ACTIVE')
              AND NOT EXISTS (SELECT 1 FROM journey_operational_boundaries o
                  WHERE o.journeyId = :journeyId AND o.state = 'PENDING_AUTHORITY')
+             AND NOT EXISTS (SELECT 1 FROM journey_terminal_reconciliations r
+                 WHERE r.journeyId = :journeyId AND r.explicitAction = 'STOP' AND r.explicitState = 'PENDING')
              AND transportAttemptCount < 2
              AND (transportState = :allocated
                OR (transportState = :retryPending AND (nextRetryAt IS NULL OR nextRetryAt <= :atMillis)))
@@ -97,6 +101,9 @@ interface FallbackAttemptDao {
                          WHERE id = fallback_attempts.journeyId AND status = 'ACTIVE')
              AND NOT EXISTS (SELECT 1 FROM journey_operational_boundaries o
                  WHERE o.journeyId = fallback_attempts.journeyId AND o.state = 'PENDING_AUTHORITY')
+             AND NOT EXISTS (SELECT 1 FROM journey_terminal_reconciliations r
+                 WHERE r.journeyId = fallback_attempts.journeyId AND r.explicitAction = 'STOP'
+                   AND r.explicitState = 'PENDING')
              AND transportAttemptCount < 2
              AND (transportState = :allocated
                OR (transportState = :retryPending AND (nextRetryAt IS NULL OR nextRetryAt <= :atMillis)))""",

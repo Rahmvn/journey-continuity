@@ -16,11 +16,42 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class ReliableSyncEngineTest {
+    @Test fun incidentSyncConfirmsProvenanceAndUploadsHistoricalEvidenceWithoutOwnerStatusWrite() = runBlocking {
+        val ended = journey("incident").copy(status = JourneyStatus.UNRESOLVED_INCIDENT, endedAt = 9_000L)
+        val local = FakeLocalSyncStore(ended, telemetry(ended.id, 1..2))
+        val remote = FakeCloudGateway(upsertFailure = CloudSyncException(SyncFailureKind.PERMANENT, "Forbidden status write"))
+            .also { it.cloudJourneys[ended.id] = ended }
+        var reads = 0
+        val engine = ReliableSyncEngine(local, remote, reconcileAuthoritativeTerminal = {
+            reads++; it.status == JourneyStatus.UNRESOLVED_INCIDENT && it.endedAt == ended.endedAt
+        })
+        assertEquals(SyncRunResult.Success, engine.synchronize())
+        assertTrue(reads >= 1); assertEquals(2, remote.cloudTelemetry.size)
+        assertEquals(ended, local.journey(ended.id))
+    }
+    @Test fun missingIncidentProvenanceRetainsUnsentEvidence() = runBlocking {
+        val ended = journey("missing-incident-proof").copy(status = JourneyStatus.UNRESOLVED_INCIDENT, endedAt = 9_000L)
+        val local = FakeLocalSyncStore(ended, telemetry(ended.id, 1..2))
+        val remote = FakeCloudGateway().also { it.cloudJourneys[ended.id] = ended }
+        assertEquals(SyncRunResult.Retry, engine(local, remote).synchronize())
+        assertTrue(remote.cloudTelemetry.isEmpty()); assertFalse(local.noWorkRequested(ended.id))
+    }
+    @Test fun pendingExplicitIntentPreventsStaleActiveUpload() = runBlocking {
+        val active = journey("pending-stop")
+        val local = FakeLocalSyncStore(active, telemetry(active.id, 1..2))
+        val remote = FakeCloudGateway()
+        assertEquals(SyncRunResult.Retry, ReliableSyncEngine(local, remote,
+            reconcileExplicitIntent = { false }).synchronize())
+        assertTrue(remote.cloudJourneys.isEmpty()); assertTrue(remote.cloudTelemetry.isEmpty())
+    }
     @Test fun automaticEndSyncConfirmsServerTerminalStateWithoutOwnerStatusWrite() = runBlocking {
         val ended = journey("server-auto-ended").copy(status = JourneyStatus.AUTO_ENDED, endedAt = 9_000L)
         val local = FakeLocalSyncStore(ended, telemetry(ended.id, 1..2))
         val remote = FakeCloudGateway().also { it.cloudJourneys[ended.id] = ended }
-        assertEquals(SyncRunResult.Success, engine(local, remote).synchronize())
+        var reads = 0
+        assertEquals(SyncRunResult.Success, ReliableSyncEngine(local, remote,
+            reconcileAuthoritativeTerminal = { reads++; it.status == JourneyStatus.AUTO_ENDED }).synchronize())
+        assertTrue(reads >= 1)
         assertEquals(2, remote.cloudTelemetry.size)
         assertEquals(ended, remote.cloudJourneys[ended.id])
         assertTrue(local.noWorkRequested(ended.id))
@@ -35,6 +66,14 @@ class ReliableSyncEngineTest {
         assertEquals(SyncRunResult.Retry, engine(local, remote).synchronize())
         assertEquals(ended, local.journey(ended.id))
         assertFalse(local.noWorkRequested(ended.id))
+    }
+
+    @Test fun automaticEndWithoutOwnerReceiptCannotUploadEvidenceOrClaimSuccessfulSync() = runBlocking {
+        val ended = journey("auto-missing-proof").copy(status = JourneyStatus.AUTO_ENDED, endedAt = 9_000L)
+        val local = FakeLocalSyncStore(ended, telemetry(ended.id, 1..2))
+        val remote = FakeCloudGateway().also { it.cloudJourneys[ended.id] = ended }
+        assertEquals(SyncRunResult.Retry, ReliableSyncEngine(local, remote).synchronize())
+        assertTrue(remote.cloudTelemetry.isEmpty()); assertFalse(local.noWorkRequested(ended.id))
     }
 
     @Test fun structuredOfflineRetryPreservesUuidEvidenceAndActiveStatus() = runBlocking {
