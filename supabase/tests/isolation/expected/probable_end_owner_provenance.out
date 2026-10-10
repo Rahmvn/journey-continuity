@@ -1,0 +1,77 @@
+Parsed test spec with 2 sessions
+
+starting permutation: f_begin f_finalize r_before_commit f_end r_after_commit
+step f_begin: begin;
+step f_finalize: 
+    do $$ declare d text; begin
+      select decision into d from public.finalize_probable_end_auto_end_v1(
+        '20000000-0000-4000-8000-000000000101','30000000-0000-4000-8000-000000000101');
+      assert d='AUTO_ENDED';
+    end $$;
+
+step r_before_commit: 
+    do $$ begin
+      perform * from public.get_owner_probable_end_auto_end_finalization_v1(
+        '20000000-0000-4000-8000-000000000101');
+      raise exception 'Uncommitted automatic end was visible';
+    exception when sqlstate '22023' then null;
+    end $$;
+
+step f_end: commit;
+step r_after_commit: 
+    do $$ declare r record; j public.journeys%rowtype; begin
+      select * into strict r from public.get_owner_probable_end_auto_end_finalization_v1(
+        '20000000-0000-4000-8000-000000000101');
+      select * into strict j from public.journeys where id=r.journey_id;
+      assert r.decision='AUTO_ENDED' and r.journey_status='AUTO_ENDED';
+      assert r.presentation_episode_id='30000000-0000-4000-8000-000000000101'::uuid;
+      assert r.candidate_episode_id='40000000-0000-4000-8000-000000000101'::uuid;
+      assert r.detector_generation=17 and r.guard_version=0;
+      assert r.policy_version='alabarin-probable-end-v1' and r.history_baseline_at is not null;
+      assert r.ended_at=j.ended_at and r.finalized_at=r.ended_at;
+      assert r.not_before_at=r.registered_at+interval '30 minutes' and r.finalized_at>=r.not_before_at;
+    end $$;
+
+
+starting permutation: f_begin f_finalize r_begin_repeatable r_before_commit f_end r_same_snapshot r_end r_after_commit
+step f_begin: begin;
+step f_finalize: 
+    do $$ declare d text; begin
+      select decision into d from public.finalize_probable_end_auto_end_v1(
+        '20000000-0000-4000-8000-000000000101','30000000-0000-4000-8000-000000000101');
+      assert d='AUTO_ENDED';
+    end $$;
+
+step r_begin_repeatable: begin isolation level repeatable read;
+step r_before_commit: 
+    do $$ begin
+      perform * from public.get_owner_probable_end_auto_end_finalization_v1(
+        '20000000-0000-4000-8000-000000000101');
+      raise exception 'Uncommitted automatic end was visible';
+    exception when sqlstate '22023' then null;
+    end $$;
+
+step f_end: commit;
+step r_same_snapshot: 
+    do $$ begin
+      perform * from public.get_owner_probable_end_auto_end_finalization_v1(
+        '20000000-0000-4000-8000-000000000101');
+      raise exception 'Repeatable snapshot changed after writer commit';
+    exception when sqlstate '22023' then null;
+    end $$;
+
+step r_end: commit;
+step r_after_commit: 
+    do $$ declare r record; j public.journeys%rowtype; begin
+      select * into strict r from public.get_owner_probable_end_auto_end_finalization_v1(
+        '20000000-0000-4000-8000-000000000101');
+      select * into strict j from public.journeys where id=r.journey_id;
+      assert r.decision='AUTO_ENDED' and r.journey_status='AUTO_ENDED';
+      assert r.presentation_episode_id='30000000-0000-4000-8000-000000000101'::uuid;
+      assert r.candidate_episode_id='40000000-0000-4000-8000-000000000101'::uuid;
+      assert r.detector_generation=17 and r.guard_version=0;
+      assert r.policy_version='alabarin-probable-end-v1' and r.history_baseline_at is not null;
+      assert r.ended_at=j.ended_at and r.finalized_at=r.ended_at;
+      assert r.not_before_at=r.registered_at+interval '30 minutes' and r.finalized_at>=r.not_before_at;
+    end $$;
+

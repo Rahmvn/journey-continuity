@@ -8,3 +8,4 @@ supabase/migrations/20261005000200_nigeria_operational_boundaries.sql text eol=l
 # PostgreSQL's official isolation runner emits a space after each step label.
 supabase/tests/isolation/expected/unresolved_incident_finalization.out text eol=lf -whitespace
 supabase/tests/isolation/expected/unresolved_incident_owner_provenance.out text eol=lf -whitespace
+supabase/tests/isolation/expected/probable_end_owner_provenance.out text eol=lf -whitespace
