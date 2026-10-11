@@ -175,7 +175,7 @@ The additive migration, core, and Africa's Talking sandbox adapter are repositor
 
 ## 8. Journey Domain
 
-Current minimal domain:
+Milestone 1 baseline domain (historical):
 
 ```text
 Journey
@@ -187,16 +187,18 @@ Journey
 - completedAt
 ```
 
-Current statuses:
+Milestone 1 baseline statuses:
 
 ```text
 ACTIVE
 COMPLETED
 ```
 
-Future states will only be introduced when their milestone requires them.
+At that baseline, later states were to be introduced only when a milestone required them.
 
 Do not pre-build the full state machine prematurely.
+
+**Current implementation cross-reference (2026-10-11):** The later Traveller implementation also persists distinct `CANCELLED`, `AUTO_ENDED` and `UNRESOLVED_INCIDENT` Journey outcomes. An operational `PENDING_AUTHORITY` privacy pause can leave the Journey `ACTIVE` with its slot occupied while collection stops. The locked semantics and server authority are in [Probable End](ALABARIN_PROBABLE_END_CONTRACT_V1.md) and [Unresolved Boundary](ALABARIN_UNRESOLVED_BOUNDARY_CONTRACT_V1.md); authenticated local Android/SQL evidence is in [10C-3C local acceptance](ALABARIN_10C3C_LOCAL_DOCKER_ACCEPTANCE.md). This is not hosted 10C deployment acceptance.
 
 ## 9. Telemetry Direction
 

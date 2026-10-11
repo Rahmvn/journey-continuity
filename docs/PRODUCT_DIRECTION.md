@@ -136,6 +136,8 @@ There will be **no `KIDNAPPED` state**.
 
 The system must not automatically assert that a person is legally or factually “missing.”
 
+**Implementation cross-reference (2026-10-11):** The flow above is product direction, not a list of current persisted Journey statuses. Current Traveller outcomes keep `AUTO_ENDED` (guarded Section 09) distinct from `UNRESOLVED_INCIDENT` (server-authorized Section 10), with an operational `PENDING_AUTHORITY` privacy pause that is not terminal. See the locked [Probable End](ALABARIN_PROBABLE_END_CONTRACT_V1.md) and [Unresolved Boundary](ALABARIN_UNRESOLVED_BOUNDARY_CONTRACT_V1.md) contracts. The [10C-3C report](ALABARIN_10C3C_LOCAL_DOCKER_ACCEPTANCE.md) records local acceptance only; hosted 10C parity is not verified.
+
 ## 7. Escalation Philosophy
 
 Escalation must remain deterministic and evidence-based.

@@ -1,8 +1,12 @@
 # Alabarin Traveller v1 Closure Plan
 
 **Status:** Active working plan
-**Current Traveller position:** Page 05, Section 09 engineering closed; Section 10 pending
+**Current Traveller position:** Page 05 Sections 09 and 10 implemented; 10C-3C local acceptance passed; Traveller v1 closure and hosted 10C parity remain open.
 **Purpose of this file:** Make sure we do not call Traveller v1 finished just because the screens and flows exist.
+
+**Implementation checkpoint — 2026-10-11:** Section 09 `AUTO_ENDED` remains the distinct guarded 30-minute Probable End outcome (`03102c7`, `132142a`). Section 10 `UNRESOLVED_INCIDENT` is a separate server-authorized ETA-plus-24-hour outcome; neither establishes arrival or safety. The 10C-3A pending-authority screens and reviewed Figma handoff are committed at `732ed2e`. The 10C-3B privacy cutoff, automatic authority reconciliation and process/boot recovery are committed at `addb40a`, `1bf3721` and `96c1176`. A pending local Stop retains `ACTIVE` and the occupied slot until server acknowledgement; offline Complete retains its separate local-first intent. The authenticated Android-to-Docker Section 09/10, owner, retry, offline-intent and Room checks passed in `8801b74`; see [10C-3C local acceptance](ALABARIN_10C3C_LOCAL_DOCKER_ACCEPTANCE.md). These commits supersede older future-work statements below, which remain dated implementation history. Local acceptance does **not** verify hosted 10C migration/RPC/Android parity.
+
+**Physical Slice D reboot evidence — 2026-10-11:** Retained files under `%TEMP%/alabarin-slice-d-20261011-110817` include `preboot-bootcount.txt` (178), `postboot-broadcasts-beforelaunch.txt` (the app's `BOOT_COMPLETED` receiver pending), `postboot-logcat-afterdispatch.txt` (receiver process start and recovery worker `SUCCESS`), and before/after Room snapshots. A read-only check of the connected Redmi on 2026-10-11 returned boot count 179. The saved snapshots show the same Journey staying `ACTIVE` with `activeSlot = 1` while operational state changed from `MONITORING` to `PENDING_AUTHORITY` with `LOST_OR_INVALID_BOOT_ANCHOR`; after connectivity returned, the authority wake finished without a fabricated terminal state. Service/location inspections observed no monitoring restart in this run. The automated `JourneyProcessRecoveryAcceptanceTest` exercises controlled process restoration and explicitly does not simulate a reboot. This one physical run does not establish exact reboot wake timing, every OEM behavior, or a platform scheduling guarantee.
 
 Traveller v1 is only closed when the product is:
 
@@ -21,7 +25,7 @@ Finish the remaining current Traveller Page 05 sections first:
 
 - [x] **08 - Connectivity states - system-triggered changes**
 - [x] **09 - Probable end - separate branch** (engineering reacceptance, 2026-10-09; broader frontend closure remains pending)
-- [ ] **10 - Unresolved boundary - separate branch**
+- [ ] **10 - Unresolved boundary - separate branch** (implementation and authenticated local acceptance passed 2026-10-11; hosted parity and wider Traveller closure remain open)
 
 After Section 10, **do not immediately jump to Trusted Viewer, TextBee or Alexa+**.
 
@@ -188,8 +192,8 @@ The audit should test whether the purpose introduced in the first three pages su
 - [ ] Recovery does not imply successful contact with Trusted Contacts.
 - [ ] `COMPLETED` does not automatically mean safe arrival.
 - [ ] `CANCELLED` means intentional monitoring stop, not danger or failure.
-- [ ] Future automatic end does not imply arrival or safety.
-- [ ] Future unresolved end does not imply safe, missing or in danger.
+- [ ] `AUTO_ENDED` does not imply arrival or safety.
+- [ ] `UNRESOLVED_INCIDENT` does not imply safe, missing or in danger.
 
 ## Product-feeling checks
 
@@ -469,7 +473,7 @@ After purpose and feel changes, rerun the core safety boundaries.
 - [ ] Stale `ACTIVE` cannot reopen a terminal Journey.
 - [ ] `CANCELLED` uses authoritative `ended_at`.
 - [ ] `COMPLETED` semantics remain separate.
-- [ ] Future auto-ended/unresolved semantics do not collapse into `COMPLETED`.
+- [ ] `AUTO_ENDED` and `UNRESOLVED_INCIDENT` semantics do not collapse into `COMPLETED`.
 
 ## Connectivity
 
@@ -615,7 +619,7 @@ Before every remaining Traveller UI slice:
 
 - [x] Section 08 implemented and closed
 - [x] Section 09 implemented and closed (engineering reacceptance, 2026-10-09)
-- [ ] Section 10 implemented and closed
+- [ ] Section 10 implemented and closed (implementation/local acceptance passed; hosted parity and Traveller closure not yet verified)
 - [ ] first-three-pages purpose comprehension audited
 - [ ] whole-product purpose comprehension audited
 - [ ] product can be understood without explanations scattered everywhere
@@ -630,3 +634,19 @@ Before every remaining Traveller UI slice:
 - [ ] final Traveller v1 closure record created
 - [ ] Traveller v1 officially closed
 - [ ] primary implementation focus moves to the post-Traveller roadmap
+
+## Closure assessment — 2026-10-11
+
+This assesses the existing gates above; unchecked boxes are not approved by implementation alone.
+
+| Existing requirement | Assessment |
+| --- | --- |
+| Page 05 Sections 08 and 09 | **COMPLETE** for their recorded engineering gates. Section 09 remains distinct from Section 10. |
+| Page 05 Section 10 | **PARTIAL:** committed 10C-3A/3B behavior and 10C-3C authenticated local acceptance passed; Android-to-hosted parity and whole-Traveller closure are unverified. |
+| First-three-page and whole-product purpose comprehension | **NOT IMPLEMENTED as closure audits:** Figma/screens and UI tests exist, but no recorded new-user comprehension assessment or resulting issue list closes sections 3–4. |
+| Truthfulness and product feeling | **PARTIAL:** selected terminal/pending copy and device tests passed; the Section 09 compact checkmark, Home snackbar, late-episode Section 10 wording and full-product truthfulness review remain open. The dedicated native Android feel pass in section 5 is **NOT IMPLEMENTED** as a closure pass. |
+| Real-device Traveller flow matrix and high-priority debts | **PARTIAL:** Milestone 5/6, Section 09, 10C local Android and the bounded physical reboot have evidence; the full section 6 sweep, active sign-out hosted path, genuine same-owner reauthentication during an active Journey, and remaining snackbar/checkmark review are not closed. |
+| Reliability, regression and layout/accessibility | **PARTIAL:** targeted Room, UI, SQL and Redmi checks exist, including selected 320/360/390dp result layouts; the section 8 pass after any closure changes, full keyboard/focus/touch coverage and a TalkBack walkthrough are not recorded as complete. |
+| Hosted 10C parity and real hosted auth/network flows | **RELEASE-ONLY evidence still required** for hosted acceptance; local Docker and the physical reboot cannot substitute. The existing plan calls active sign-out a Traveller closure target, so moving that target after a Trusted Viewer development start needs an explicit sequencing decision, not an assumed pass. |
+| Live SMS fallback | **OBSOLETE OR SUPERSEDED as a Traveller v1 blocker:** section 7 already explicitly defers the live route until after Traveller closure; keep its truthful unavailable presentation rule. |
+| Final closure record, approval and focus shift | **NOT IMPLEMENTED:** section 9's record, approved deviations/limitations/deferred-work account and formal closure decision are still needed. The focus shift in section 13 is a consequence of approval, not independent acceptance evidence. |
