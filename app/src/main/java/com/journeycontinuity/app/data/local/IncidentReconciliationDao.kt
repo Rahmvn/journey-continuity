@@ -5,6 +5,9 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
+import kotlinx.coroutines.flow.Flow
+
+data class PendingAuthorityJourney(val journeyId: String, val retryAtMillis: Long?, val lastOutcome: String?)
 
 @Dao
 interface IncidentReconciliationDao {
@@ -48,6 +51,29 @@ interface IncidentReconciliationDao {
     @Query("""SELECT * FROM journey_terminal_reconciliations WHERE effectsPending = 1
         OR explicitState IN ('PENDING','ACCOUNT_RESERVED','ACCOUNT_UNCERTAIN') OR claimState = 'PENDING'""")
     suspend fun pending(): List<JourneyTerminalReconciliationEntity>
+    /** Includes a privacy-paused Journey even before a claim or explicit intent exists. */
+    @Query("""SELECT j.id AS journeyId, r.retryAtMillis AS retryAtMillis,
+        r.lastOutcome AS lastOutcome FROM journeys j
+        LEFT JOIN journey_operational_boundaries o ON o.journeyId = j.id
+        LEFT JOIN journey_terminal_reconciliations r ON r.journeyId = j.id
+        WHERE j.activeSlot = 1 AND (
+            (j.status = 'ACTIVE' AND (o.state = 'PENDING_AUTHORITY'
+                OR r.explicitState = 'PENDING' OR r.claimState = 'PENDING'))
+            OR (j.status = 'COMPLETED' AND r.explicitAction = 'COMPLETE'
+                AND r.explicitState = 'PENDING'))
+        ORDER BY j.startedAt, j.id""")
+    suspend fun pendingAuthority(): List<PendingAuthorityJourney>
+    @Query("""SELECT j.id AS journeyId, r.retryAtMillis AS retryAtMillis,
+        r.lastOutcome AS lastOutcome FROM journeys j
+        LEFT JOIN journey_operational_boundaries o ON o.journeyId = j.id
+        LEFT JOIN journey_terminal_reconciliations r ON r.journeyId = j.id
+        WHERE j.activeSlot = 1 AND (
+            (j.status = 'ACTIVE' AND (o.state = 'PENDING_AUTHORITY'
+                OR r.explicitState = 'PENDING' OR r.claimState = 'PENDING'))
+            OR (j.status = 'COMPLETED' AND r.explicitAction = 'COMPLETE'
+                AND r.explicitState = 'PENDING'))
+        ORDER BY j.startedAt, j.id""")
+    fun observePendingAuthority(): Flow<List<PendingAuthorityJourney>>
     @Query("""UPDATE journey_sync_states SET changeVersion = changeVersion + 1,
         phase = CASE WHEN permanentlyBlocked = 1 THEN phase ELSE 'PENDING' END,
         workRequested = CASE WHEN permanentlyBlocked = 1 THEN workRequested ELSE 1 END

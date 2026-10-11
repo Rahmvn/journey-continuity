@@ -1,6 +1,9 @@
 package com.journeycontinuity.app
 
 import android.app.Application
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import androidx.room.Room
 import kotlinx.coroutines.flow.first
 import com.journeycontinuity.app.data.local.JourneyDatabase
@@ -25,6 +28,9 @@ import com.journeycontinuity.app.data.local.MIGRATION_18_19
 import com.journeycontinuity.app.data.local.MIGRATION_19_20
 import com.journeycontinuity.app.data.local.MIGRATION_20_21
 import com.journeycontinuity.app.data.repository.RoomProbableEndAutoEndCoordinator
+import com.journeycontinuity.app.data.repository.AuthorityWakeResult
+import com.journeycontinuity.app.data.repository.RoomIncidentReconciliationCoordinator
+import com.journeycontinuity.app.data.repository.WorkManagerAuthorityRetryScheduler
 import com.journeycontinuity.app.data.repository.WorkManagerProbableEndAutoEndScheduler
 import com.journeycontinuity.app.data.probableend.ProbableEndAutoEndGateway
 import com.journeycontinuity.app.data.probableend.ProbableEndFinalization
@@ -104,6 +110,8 @@ import com.journeycontinuity.app.sync.SupabaseConfiguration
 import com.journeycontinuity.app.sync.SyncFailureKind
 import com.journeycontinuity.app.sync.SyncRequestUrgency
 import com.journeycontinuity.app.sync.WorkManagerSyncScheduler
+import com.journeycontinuity.app.telemetry.DeviceContextReader
+import com.journeycontinuity.app.auth.TravellerSessionState
 import com.journeycontinuity.app.trusted.SupabaseTrustedContactGateway
 import com.journeycontinuity.app.trusted.TrustedContactGateway
 import com.journeycontinuity.app.trusted.UnavailableTrustedContactGateway
@@ -118,6 +126,8 @@ import io.github.jan.supabase.auth.status.SessionStatus
 import io.github.jan.supabase.createSupabaseClient
 import io.github.jan.supabase.postgrest.Postgrest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.distinctUntilChanged
 
 open class JourneyContinuityApplication : Application() {
     private val ownerAdmissionGate = OwnerAdmissionGate()
@@ -284,6 +294,82 @@ open class JourneyContinuityApplication : Application() {
     internal val activeMonitoringJourney by lazy { database.journeyDao().observeCollectable() }
     private val localInferenceScope = kotlinx.coroutines.CoroutineScope(
         kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
+    private var authorityConnectivityCallback: ConnectivityManager.NetworkCallback? = null
+    private val authorityRetryScheduler by lazy { WorkManagerAuthorityRetryScheduler(applicationContext, database) }
+
+    /** Event entry point only; Room and the existing coordinator choose exact eligible Journeys. */
+    internal open fun wakePendingAuthority() {
+        localInferenceScope.launch {
+            try { reconcilePendingAuthorityNow() }
+            catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (_: Exception) { /* Durable pending rows remain for a later event or retry. */ }
+        }
+    }
+
+    internal open suspend fun reconcilePendingAuthorityNow(journeyId: String? = null,
+        scheduledToken: String? = null): AuthorityWakeResult {
+        val pending = database.incidentReconciliationDao().pendingAuthority()
+            .filter { journeyId == null || it.journeyId == journeyId }
+        if (pending.isEmpty()) return AuthorityWakeResult.NO_PENDING
+        if (scheduledToken != null && pending.none {
+                WorkManagerAuthorityRetryScheduler.desiredToken(it) == scheduledToken })
+            return AuthorityWakeResult.OBSOLETE_WORK
+        if (pending.none { RoomIncidentReconciliationCoordinator.retryDue(it.retryAtMillis, System.currentTimeMillis()) })
+            return AuthorityWakeResult.BEFORE_DUE
+        if (!authorityInternetUsable()) return AuthorityWakeResult.OFFLINE
+        val owner = authorityBoundOwner()
+            ?: return AuthorityWakeResult.AUTHENTICATION_REQUIRED
+        if (!authorityAuthenticatedOwnerMatches(owner))
+            return AuthorityWakeResult.AUTHENTICATION_REQUIRED
+        if (incidentReconciliationCoordinator.advancePending(journeyId) > 0)
+            return AuthorityWakeResult.ATTEMPTED
+        // The deadline or exact active slot changed between the two Room reads.
+        return if (database.incidentReconciliationDao().pendingAuthority()
+                .any { journeyId == null || it.journeyId == journeyId })
+            AuthorityWakeResult.BEFORE_DUE else AuthorityWakeResult.NO_PENDING
+    }
+
+    internal open fun authorityInternetUsable(): Boolean = DeviceContextReader(applicationContext).usableInternet()
+    internal open fun authorityBoundOwner(): String? = cloudGateways.ownerStore?.expectedTravellerUserId()
+    internal open fun authorityAuthenticatedOwnerMatches(owner: String): Boolean =
+        cloudGateways.identityCoordinator?.authenticatedTravellerStillMatches(owner) == true
+
+    internal open suspend fun scheduledAuthorityWakeStillCurrent(journeyId: String, token: String): Boolean =
+        database.incidentReconciliationDao().pendingAuthority()
+            .any { it.journeyId == journeyId && WorkManagerAuthorityRetryScheduler.desiredToken(it) == token }
+
+    internal fun wakeForAuthorityConnectivity(hasInternet: Boolean, validated: Boolean) {
+        if (hasInternet && validated) wakePendingAuthority()
+    }
+
+    internal fun wakeForAuthorityForeground() = wakePendingAuthority()
+
+    internal fun wakeForAuthoritySession(session: TravellerSessionState, expectedOwnerId: String?) {
+        if (session is TravellerSessionState.Authenticated && !session.accessTokenExpired &&
+            session.userId == expectedOwnerId) wakePendingAuthority()
+    }
+
+    private fun watchAuthorityConnectivity(pending: Boolean) {
+        val manager = getSystemService(ConnectivityManager::class.java)
+        if (pending && authorityConnectivityCallback == null) {
+            val callback = object : ConnectivityManager.NetworkCallback() {
+                override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
+                    wakeForAuthorityConnectivity(
+                        capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET),
+                        capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED))
+                }
+            }
+            try {
+                manager.registerDefaultNetworkCallback(callback)
+                authorityConnectivityCallback = callback
+            } catch (_: Exception) { /* Foreground and persisted retry remain available. */ }
+        } else if (!pending) {
+            authorityConnectivityCallback?.let { callback ->
+                runCatching { manager.unregisterNetworkCallback(callback) }
+            }
+            authorityConnectivityCallback = null
+        }
+    }
 
     val journeyRepository: JourneyRepository by lazy {
         RoomJourneyRepository(
@@ -533,6 +619,34 @@ open class JourneyContinuityApplication : Application() {
         localInferenceScope.launch { probableEndDeadlineCoordinator.restore() }
         localInferenceScope.launch { probableEndAutoEndCoordinator.restore() }
         localInferenceScope.launch { incidentReconciliationCoordinator.restoreEffects() }
+        localInferenceScope.launch {
+            try {
+                incidentReconciliationCoordinator.observePendingAuthority().distinctUntilChanged().collect { rows ->
+                    watchAuthorityConnectivity(rows.isNotEmpty())
+                    rows.forEach { row ->
+                        val due = row.retryAtMillis
+                        try {
+                            if (due != null && RoomIncidentReconciliationCoordinator.shouldScheduleRetry(row.lastOutcome) ||
+                                due == null && row.lastOutcome == "EXPLICIT_PENDING")
+                                authorityRetryScheduler.schedule(row.journeyId, due)
+                            else authorityRetryScheduler.retireObsolete(row.journeyId)
+                        } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                        catch (_: Exception) { /* The durable Room row remains for another event or restart. */ }
+                    }
+                    if (rows.any { RoomIncidentReconciliationCoordinator.retryDue(it.retryAtMillis, System.currentTimeMillis()) })
+                        wakePendingAuthority()
+                }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (_: Exception) { /* Foreground and retry wakes can still read durable Room state. */ }
+        }
+        localInferenceScope.launch {
+            try {
+                cloudGateways.authBackend?.observeSessionStates()?.collect { session ->
+                    wakeForAuthoritySession(session, cloudGateways.ownerStore?.expectedTravellerUserId())
+                }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (_: Exception) { /* Foreground and connectivity wakes remain available. */ }
+        }
     }
 
     /** Also isolates lazy store initialization; only optional inference failures are contained here. */
@@ -693,7 +807,8 @@ open class JourneyContinuityApplication : Application() {
             onStoppedEffects = { journeyId ->
                 check(exactJourneyRuntimeTeardown.stop(journeyId)) { "Exact runtime teardown pending" }
                 syncScheduler.schedule(SyncRequestUrgency.URGENT)
-            }, requestRetry = { _, _ -> syncScheduler.schedule(SyncRequestUrgency.ROUTINE) })
+            }, requestRetry = authorityRetryScheduler::schedule,
+            localOwner = { cloudGateways.ownerStore?.expectedTravellerUserId() })
     }
 
     internal val travellerAuthorityActions by lazy {

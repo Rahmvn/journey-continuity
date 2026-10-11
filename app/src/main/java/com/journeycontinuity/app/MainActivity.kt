@@ -313,6 +313,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        app.wakeForAuthorityForeground()
         refreshPrerequisiteState()
         refreshSmsFallbackState()
         if (!isAdmitted()) {

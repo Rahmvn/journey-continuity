@@ -38,7 +38,9 @@ class IncidentReconciliationDatabaseTest {
     private var server = RemoteJourneyState(id, owner, JourneyStatus.ACTIVE, null, null)
     private var offline = false
     private var authFailure = false
+    private var authenticatedAs = owner
     private var finalCalls = 0
+    private var eligibilityCalls = 0
     private var stopCalls = 0
     private var effects = 0
     private var reads = 0
@@ -72,6 +74,7 @@ class IncidentReconciliationDatabaseTest {
     }
     private fun coordinator() = RoomIncidentReconciliationCoordinator(db, object : IncidentAuthorityGateway {
         override suspend fun eligibility(journeyId: String): AuthorityRead<IncidentEligibility> {
+            eligibilityCalls++
             beforeEligibility()
             return AuthorityRead.Value(IncidentEligibility(if (eligibleReason == UnresolvedReason.CURRENT_UNRESOLVED)
                 UnresolvedEligibility.ELIGIBLE else UnresolvedEligibility.NOT_ELIGIBLE,
@@ -105,14 +108,15 @@ class IncidentReconciliationDatabaseTest {
         if (failEffects) error("Simulated process interruption before teardown")
         effectOverride(target)
         effects++
-    })
+    }, localOwner = { owner })
     private val cloud = object : CloudSyncGateway {
         override suspend fun authenticatedOwnerId(): String {
             if (authFailure) throw CloudSyncException(SyncFailureKind.AUTHENTICATION, "Expired")
             if (offline) throw CloudSyncException(SyncFailureKind.TRANSIENT, "Offline")
-            return owner
+            return authenticatedAs
         }
-        override suspend fun ownerJourneyState(journeyId: String, ownerId: String) = server.takeUnless { serverMissing }
+        override suspend fun ownerJourneyState(journeyId: String, ownerId: String) =
+            server.takeIf { ownerId == owner && !serverMissing }
         override suspend fun upsertJourney(journey: Journey, ownerId: String) {
             assertEquals(owner, ownerId)
             if (server.status != JourneyStatus.ACTIVE) throw CloudSyncException(SyncFailureKind.TERMINAL_CONFLICT, "Terminal")
@@ -138,6 +142,210 @@ class IncidentReconciliationDatabaseTest {
         Unit
     }
     @After fun cleanup() { db.close(); context.deleteDatabase(name) }
+
+    @Test fun automaticWakeSelectsPausedJourneyWithoutClaimOrIntent() = runBlocking {
+        val pending = db.incidentReconciliationDao().pendingAuthority().single()
+        assertEquals(id, pending.journeyId)
+        assertNull(pending.retryAtMillis)
+        assertNull(db.incidentReconciliationDao().get(id))
+        assertEquals(pending, db.incidentReconciliationDao().observePendingAuthority().first().single())
+        coordinator().advancePending()
+        assertEquals(1, finalCalls)
+        assertEquals(JourneyStatus.UNRESOLVED_INCIDENT, db.journeyDao().getById(id)?.status)
+        assertNull(db.journeyDao().getActive())
+        assertTrue(db.incidentReconciliationDao().pendingAuthority().isEmpty())
+        assertNull(db.journeyDao().observeCollectable().first())
+    }
+
+    @Test fun thrownEligibilityReadPersistsRetryInsteadOfConsumingWake() = runBlocking {
+        beforeEligibility = { throw java.io.IOException("Simulated authority read failure") }
+        coordinator().advancePending()
+        val row = requireNotNull(db.incidentReconciliationDao().get(id))
+        assertEquals("UNAVAILABLE", row.lastOutcome)
+        assertEquals(now + RoomIncidentReconciliationCoordinator.RETRY_MILLIS, row.retryAtMillis)
+        assertEquals(JourneyStatus.ACTIVE, db.journeyDao().getActive()?.status)
+        assertEquals(0, finalCalls)
+    }
+
+    @Test fun backwardWallClockChangeRecoversThePersistedRetryOnce() = runBlocking {
+        now += 3_600_000
+        offline = true
+        val reconciler = coordinator()
+        reconciler.advancePending()
+        val retryAt = requireNotNull(db.incidentReconciliationDao().get(id)?.retryAtMillis)
+        now -= 600_000
+        assertTrue(retryAt - now > RoomIncidentReconciliationCoordinator.RETRY_MILLIS)
+        offline = false
+        reconciler.advancePending()
+        assertEquals(1, finalCalls)
+        assertEquals("TERMINAL", db.incidentReconciliationDao().get(id)?.lastOutcome)
+        reconciler.advancePending()
+        assertEquals(1, finalCalls)
+    }
+
+    @Test fun forwardWallClockChangeGetsOneDueAttempt() = runBlocking {
+        offline = true
+        val reconciler = coordinator()
+        reconciler.advancePending()
+        val retryAt = requireNotNull(db.incidentReconciliationDao().get(id)?.retryAtMillis)
+        now = retryAt + 3_600_000
+        offline = false
+        reconciler.advancePending()
+        assertEquals(1, finalCalls)
+        assertEquals("TERMINAL", db.incidentReconciliationDao().get(id)?.lastOutcome)
+        reconciler.advancePending()
+        assertEquals(1, finalCalls)
+    }
+
+    @Test fun automaticWakeWaitsForPersistedRetryAfterOfflineFailure() = runBlocking {
+        val reconciler = coordinator()
+        offline = true
+        reconciler.advancePending()
+        val retryAt = requireNotNull(db.incidentReconciliationDao().get(id)?.retryAtMillis)
+        assertEquals("UNAVAILABLE", db.incidentReconciliationDao().get(id)?.lastOutcome)
+        assertEquals(0, finalCalls)
+        offline = false
+        reconciler.advancePending() // foreground and connectivity events before the due time
+        assertEquals(0, finalCalls)
+        now = retryAt
+        reconciler.advancePending() // persisted due worker
+        assertEquals(1, finalCalls)
+        assertEquals(JourneyStatus.UNRESOLVED_INCIDENT, db.journeyDao().getById(id)?.status)
+    }
+
+    @Test fun automaticWakeRejectsWrongOwnerAndRecoversOnlyCorrectOwner() = runBlocking {
+        val reconciler = coordinator()
+        authenticatedAs = "10000000-0000-4000-8000-000000000022"
+        reconciler.advancePending()
+        assertEquals(0, finalCalls)
+        assertEquals(0, eligibilityCalls)
+        assertEquals(JourneyStatus.ACTIVE, db.journeyDao().getActive()?.status)
+        assertNull(db.incidentReconciliationDao().get(id)?.claimId)
+        assertEquals("AUTHENTICATION_REQUIRED", db.incidentReconciliationDao().get(id)?.lastOutcome)
+        authenticatedAs = owner
+        now = requireNotNull(db.incidentReconciliationDao().get(id)?.retryAtMillis)
+        reconciler.advancePending()
+        assertEquals(1, finalCalls)
+    }
+
+    @Test fun automaticWakeWaitsForAuthenticationRestorationAndDueBackoff() = runBlocking {
+        val reconciler = coordinator()
+        authFailure = true
+        reconciler.advancePending()
+        val row = requireNotNull(db.incidentReconciliationDao().get(id))
+        assertEquals("AUTHENTICATION_REQUIRED", row.lastOutcome)
+        assertTrue(RoomIncidentReconciliationCoordinator.shouldScheduleRetry(row.lastOutcome))
+        assertEquals(0, finalCalls)
+        authFailure = false
+        reconciler.advancePending()
+        assertEquals(0, finalCalls)
+        now = requireNotNull(row.retryAtMillis)
+        reconciler.advancePending()
+        assertEquals(1, finalCalls)
+    }
+
+    @Test fun automaticWakeGivesPendingCompleteAndStopPrecedence() = runBlocking {
+        assertNotNull(db.journeyDao().completeActive(now, retainActiveSlot = true, expectedJourneyId = id))
+        assertEquals("COMPLETE", db.incidentReconciliationDao().get(id)?.explicitAction)
+        assertEquals(id, db.incidentReconciliationDao().pendingAuthority().single().journeyId)
+        coordinator().advancePending()
+        assertEquals(JourneyStatus.COMPLETED, db.journeyDao().getById(id)?.status)
+        assertEquals("ACKNOWLEDGED", db.incidentReconciliationDao().get(id)?.explicitState)
+        assertEquals(0, finalCalls)
+        assertEquals(0, stopCalls)
+    }
+
+    @Test fun automaticWakeDispatchesExactPendingStopBeforeAnyIncidentClaim() = runBlocking {
+        val reconciler = coordinator()
+        assertTrue(reconciler.requestStop(id, owner))
+        assertEquals("STOP", db.incidentReconciliationDao().get(id)?.explicitAction)
+        reconciler.advancePending()
+        assertEquals(1, stopCalls)
+        assertEquals(0, finalCalls)
+        assertEquals(JourneyStatus.CANCELLED, db.journeyDao().getById(id)?.status)
+        assertNull(db.journeyDao().getActive())
+    }
+
+    @Test fun automaticWakeWaitsForExplicitLocalTeardownBeforeRemoteDispatch() = runBlocking {
+        assertNotNull(db.journeyDao().completeActive(now, retainActiveSlot = true, expectedJourneyId = id))
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        effectOverride = { target ->
+            assertEquals(id, target)
+            entered.complete(Unit)
+            release.await()
+        }
+        val wake = async(start = CoroutineStart.UNDISPATCHED) { coordinator().advancePending() }
+        withTimeout(5_000) { entered.await() }
+        assertEquals(JourneyStatus.ACTIVE, server.status)
+        assertEquals("NEVER_DISPATCHED", db.incidentReconciliationDao().get(id)?.explicitDispatch)
+        release.complete(Unit)
+        withTimeout(5_000) { wake.await() }
+        assertEquals(JourneyStatus.COMPLETED, server.status)
+        assertEquals("ACKNOWLEDGED", db.incidentReconciliationDao().get(id)?.explicitState)
+    }
+
+    @Test fun failedExplicitLocalTeardownDefersRemoteDispatch() = runBlocking {
+        assertNotNull(db.journeyDao().completeActive(now, retainActiveSlot = true, expectedJourneyId = id))
+        failEffects = true
+        coordinator().advancePending()
+        val row = requireNotNull(db.incidentReconciliationDao().get(id))
+        assertEquals("EXPLICIT_PENDING", row.lastOutcome)
+        assertEquals("NEVER_DISPATCHED", row.explicitDispatch)
+        assertEquals(JourneyStatus.ACTIVE, server.status)
+        assertTrue(row.effectsPending)
+        failEffects = false
+        now = requireNotNull(row.retryAtMillis)
+        coordinator().advancePending()
+        assertEquals(JourneyStatus.COMPLETED, server.status)
+        assertEquals("ACKNOWLEDGED", db.incidentReconciliationDao().get(id)?.explicitState)
+    }
+
+    @Test fun automaticWakeDoesNotInventIncidentWhenServerHasNoCurrentVerification() = runBlocking {
+        eligibleReason = UnresolvedReason.NOT_VERIFYING
+        coordinator().advancePending()
+        val row = requireNotNull(db.incidentReconciliationDao().get(id))
+        assertEquals("NO_CURRENT_VERIFICATION", row.lastOutcome)
+        assertFalse(RoomIncidentReconciliationCoordinator.shouldScheduleRetry(row.lastOutcome))
+        assertEquals(0, finalCalls)
+        assertEquals(JourneyStatus.ACTIVE, db.journeyDao().getActive()?.status)
+        assertNull(db.journeyDao().observeCollectable().first())
+    }
+
+    @Test fun concurrentAutomaticWakesUseTheSameDurableClaim() = runBlocking {
+        val reconciler = coordinator()
+        val first = async { reconciler.advancePending() }
+        val second = async { reconciler.advancePending() }
+        first.await(); second.await()
+        assertEquals(1, finalCalls)
+        assertEquals("TERMINAL", db.incidentReconciliationDao().get(id)?.lastOutcome)
+    }
+
+    @Test fun automaticWakeAndGuardedManualRetryNeverDispatchTwoFinalizers() = runBlocking {
+        val reconciler = coordinator()
+        offline = true
+        reconciler.advancePending()
+        now = requireNotNull(db.incidentReconciliationDao().get(id)?.retryAtMillis)
+        offline = false
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        beforeEligibility = { entered.complete(Unit); release.await() }
+        val unusedAuthority = object : IncidentAuthorityGateway {
+            override suspend fun eligibility(journeyId: String): AuthorityRead<IncidentEligibility> = error("unused")
+            override suspend fun finalize(claim: IncidentClaim, beforeDispatch: suspend () -> Boolean):
+                AuthorityRead<IncidentFinalizerResponse> = error("unused")
+            override suspend fun provenance(journeyId: String): AuthorityRead<IncidentProvenance> = error("unused")
+        }
+        val actions = TravellerAuthorityActions(db, cloud, unusedAuthority, { false }, { _, _ -> false },
+            { owner }, { }, { }, clock = { now }, retryReconciliation = reconciler::advance)
+        val manual = async(start = CoroutineStart.UNDISPATCHED) { actions.retryFailed(id) }
+        withTimeout(5_000) { entered.await() }
+        val automatic = async(start = CoroutineStart.UNDISPATCHED) { reconciler.advancePending() }
+        release.complete(Unit)
+        withTimeout(5_000) { assertEquals("TERMINAL", manual.await()); automatic.await() }
+        assertEquals(1, finalCalls)
+        assertEquals(JourneyStatus.UNRESOLVED_INCIDENT, db.journeyDao().getById(id)?.status)
+    }
 
     @Test fun travellerOfflineCompleteOccupiesSlotUntilExactServerReconciliation() = runBlocking {
         offline = true
@@ -264,13 +472,15 @@ class IncidentReconciliationDatabaseTest {
     }
     @Test fun committedButLostFinalizerAckRecoversAfterDatabaseReopen() = runBlocking {
         loseFinalAck = true
-        assertEquals(IncidentReconciliationOutcome.UNAVAILABLE, coordinator().advance(id))
+        coordinator().advancePending()
+        assertEquals("UNAVAILABLE", db.incidentReconciliationDao().get(id)?.lastOutcome)
         assertEquals(JourneyStatus.ACTIVE, db.journeyDao().getActive()!!.status)
         assertNull(db.incidentReconciliationDao().provenance(id))
         val persistedClaim = db.incidentReconciliationDao().get(id)!!.claimJson
         assertFalse(coordinator().requestStop(id, owner)); assertNull(db.journeyDao().completeActive(now))
         reopen(); now += RoomIncidentReconciliationCoordinator.RETRY_MILLIS
-        assertEquals(IncidentReconciliationOutcome.TERMINAL, coordinator().advance(id))
+        coordinator().advancePending()
+        assertEquals("TERMINAL", db.incidentReconciliationDao().get(id)?.lastOutcome)
         assertEquals(persistedClaim, db.incidentReconciliationDao().get(id)!!.claimJson)
         assertEquals(1, finalCalls); assertEquals(1, reads)
         assertEquals(terminalProof, Json.decodeFromString<IncidentProvenance>(db.incidentReconciliationDao().provenance(id)!!.provenanceJson))
@@ -297,7 +507,8 @@ class IncidentReconciliationDatabaseTest {
     }
     @Test fun tooEarlyRetainsPauseAndReleasesOnlyTheExactClaim() = runBlocking {
         finalDecision = "TOO_EARLY"
-        assertEquals(IncidentReconciliationOutcome.TOO_EARLY, coordinator().advance(id))
+        coordinator().advancePending()
+        assertEquals("TOO_EARLY", db.incidentReconciliationDao().get(id)?.lastOutcome)
         assertEquals("BLOCKED", db.incidentReconciliationDao().get(id)!!.claimState)
         assertEquals(JourneyStatus.ACTIVE, db.journeyDao().getActive()!!.status)
         assertNull(db.journeyDao().observeCollectable().first()); assertNull(db.incidentReconciliationDao().provenance(id))
@@ -570,14 +781,19 @@ class IncidentReconciliationDatabaseTest {
         release.complete(Unit); assertEquals(IncidentReconciliationOutcome.TERMINAL, pending.await())
     }
 
-    @Test fun undispatchedAccountReservationIsSafelyRecoverableAfterReopen() = runBlocking {
+    @Test fun undispatchedAccountReservationReplaysExactStopAfterReopen() = runBlocking {
         val op = requireNotNull(RoomAccountStopReservations(db, handoffGate).reserve(id, owner))
         reopen(); coordinator().advance(id)
-        assertEquals("REFUSED", db.incidentReconciliationDao().get(id)!!.explicitState)
+        assertEquals("ACCOUNT_RESERVED", db.incidentReconciliationDao().get(id)!!.explicitState)
         assertEquals(op.id, db.incidentReconciliationDao().get(id)!!.explicitActionId)
         assertEquals(0, stopCalls); assertEquals(0, finalCalls)
-        assertTrue(coordinator().requestStop(id, owner))
-        assertNotEquals(op.id, db.incidentReconciliationDao().get(id)!!.explicitActionId)
+        val restored = RoomAccountStopReservations(db, handoffGate)
+        assertEquals(op, restored.reserve(id, owner))
+        assertTrue(restored.markDispatch(op))
+        server = RemoteJourneyState(id, owner, JourneyStatus.CANCELLED, now, null)
+        assertEquals(IncidentReconciliationOutcome.TERMINAL, coordinator().advance(id))
+        assertEquals("ACKNOWLEDGED", db.incidentReconciliationDao().get(id)!!.explicitState)
+        assertEquals(0, finalCalls)
     }
 
     @Test fun offlineFirstAdmissionIsUploadedBeforeExplicitStopWithoutMovingEta() = runBlocking {
@@ -627,7 +843,7 @@ class IncidentReconciliationDatabaseTest {
         remoteAutoEnd()
         val original = db.journeyDao().getById(id)!!
         val boundary = db.unresolvedBoundaryDao().get(id)!!
-        assertTrue(coordinator().reconcileServerTerminal(server))
+        coordinator().advancePending()
         val receipt = db.incidentReconciliationDao().autoEndProvenance(id)!!
         assertEquals(autoProof, Json.decodeFromString<AutoEndProvenance>(receipt.provenanceJson))
         assertEquals(JourneyStatus.AUTO_ENDED, db.journeyDao().getById(id)!!.status)
@@ -842,6 +1058,7 @@ class IncidentReconciliationDatabaseTest {
         var afterHeartbeat: suspend (String) -> Unit = {}
         var afterPreparation: suspend () -> Unit = {}
         var afterPermission: suspend () -> Unit = {}
+        var beforeAccountOwnerRead: suspend () -> Unit = {}
         val stopEntered = CompletableDeferred<Unit>()
         val releaseStop = CompletableDeferred<Unit>()
         val authEntered = CompletableDeferred<Unit>()
@@ -863,7 +1080,10 @@ class IncidentReconciliationDatabaseTest {
                 error("Acknowledgement must use actual RoomAccountStopReservations")
             override suspend fun fallbackStopped(journeyId: String) = db.fallbackAttemptDao().countUnsentForJourney(journeyId) == 0
         }, object : ActiveJourneyStopRemote {
-            override suspend fun ownerJourneyState(journeyId: String, ownerId: String) = remoteState
+            override suspend fun ownerJourneyState(journeyId: String, ownerId: String): RemoteJourneyState {
+                beforeAccountOwnerRead()
+                return remoteState
+            }
             override suspend fun stop(journeyId: String, ownerId: String): MonitoringStopAcknowledgement {
                 assertEquals(id, journeyId); assertEquals(owner, ownerId)
                 stopEntered.complete(Unit); releaseStop.await()
@@ -895,6 +1115,53 @@ class IncidentReconciliationDatabaseTest {
                 return HeartbeatServerState(CloudMonitoringPhase.EVIDENCE_FRESH, now, heartbeat.sequence)
             }
         }, clock = { now }, terminalHandoffGate = handoff, provisioningObserver = { afterHeartbeat(it) })
+    }
+
+    @Test fun persistentCompetingTerminalStaysPendingWithoutScheduledPolling() = runBlocking {
+        remoteAutoEnd()
+        val serverProof = requireNotNull(autoProof)
+        val conflicting = serverProof.copy(guardVersion = serverProof.guardVersion + 1)
+        db.incidentReconciliationDao().insertAutoEndProvenance(
+            JourneyAutoEndFinalizationEntity(id, Json.encodeToString(conflicting)))
+        coordinator().advancePending()
+        val row = requireNotNull(db.incidentReconciliationDao().get(id))
+        assertEquals("COMPETING_TERMINAL", row.lastOutcome)
+        assertFalse(RoomIncidentReconciliationCoordinator.shouldScheduleRetry(row.lastOutcome))
+        assertEquals(JourneyStatus.ACTIVE, db.journeyDao().getActive()?.status)
+        assertEquals(id, db.incidentReconciliationDao().pendingAuthority().single().journeyId)
+        assertEquals(0, finalCalls)
+        assertEquals(conflicting, Json.decodeFromString<AutoEndProvenance>(
+            db.incidentReconciliationDao().autoEndProvenance(id)!!.provenanceJson))
+    }
+
+    @Test fun automaticWakeBetweenAccountReservationAndDispatchPreservesConfirmedStop() = runBlocking {
+        val f = SharedRoomStopFixture()
+        val reserved = CompletableDeferred<Unit>()
+        val continueOwnerRead = CompletableDeferred<Unit>()
+        f.beforeAccountOwnerRead = {
+            if (!reserved.isCompleted) { reserved.complete(Unit); continueOwnerRead.await() }
+        }
+        val account = async(start = CoroutineStart.UNDISPATCHED) { f.account.confirmAndSignOut(id, owner) }
+        withTimeout(5_000) { reserved.await() }
+        val before = requireNotNull(db.incidentReconciliationDao().get(id))
+        assertEquals("ACCOUNT_RESERVED", before.explicitState)
+        assertEquals("NEVER_DISPATCHED", before.explicitDispatch)
+        assertEquals(IncidentReconciliationOutcome.EXPLICIT_PENDING, coordinator().advance(id))
+        assertEquals(before, db.incidentReconciliationDao().get(id))
+        assertEquals(0, finalCalls)
+        assertNull(db.incidentReconciliationDao().get(id)?.claimId)
+        continueOwnerRead.complete(Unit)
+        withTimeout(5_000) { f.stopEntered.await() }
+        assertEquals("MAY_HAVE_DISPATCHED", db.incidentReconciliationDao().get(id)?.explicitDispatch)
+        assertEquals(IncidentReconciliationOutcome.EXPLICIT_PENDING, coordinator().advance(id))
+        assertEquals("ACCOUNT_RESERVED", db.incidentReconciliationDao().get(id)?.explicitState)
+        assertEquals(0, finalCalls)
+        f.releaseStop.complete(Unit)
+        withTimeout(5_000) { assertTrue(account.await() is ActiveJourneySignOutResult.SignedOut) }
+        assertEquals(JourneyStatus.CANCELLED, db.journeyDao().getById(id)?.status)
+        assertEquals("ACKNOWLEDGED", db.incidentReconciliationDao().get(id)?.explicitState)
+        assertNull(db.incidentReconciliationDao().get(id)?.claimId)
+        assertNull(db.journeyDao().getActive())
     }
 
     private fun seedMonitoringFixture() {
@@ -1005,15 +1272,19 @@ class IncidentReconciliationDatabaseTest {
         assertEquals(1, db.telemetryDao().getAfterSequence(id, 0, 50).size)
     }
 
-    @Test fun authoritativeActiveRecoveryReleasesOnlyUndispatchedReservationAndRespectsPause() = runBlocking {
+    @Test fun automaticActiveReadPreservesAccountReservationUntilExplicitAbort() = runBlocking {
         seedMonitoringFixture()
         val f = SharedRoomStopFixture()
         val op = requireNotNull(f.reservations.reserve(id, owner))
         assertNull(db.heartbeatDao().allocateForActiveJourney(id, now, 0))
-        // Existing recovery reads authenticated exact-owner ACTIVE before settling NEVER_DISPATCHED.
+        // An ACTIVE server read does not prove that the Account caller has abandoned its Stop.
         assertEquals(IncidentReconciliationOutcome.EXPLICIT_PENDING, coordinator().advance(id))
-        assertEquals("REFUSED", db.incidentReconciliationDao().get(id)!!.explicitState)
+        assertEquals("ACCOUNT_RESERVED", db.incidentReconciliationDao().get(id)!!.explicitState)
         assertEquals(op.id, db.incidentReconciliationDao().get(id)!!.explicitActionId)
+        assertNull(db.heartbeatDao().allocateForActiveJourney(id, now, 0))
+        assertFalse(coordinator().requestStop(id, owner))
+        f.reservations.releaseUndispatched(op)
+        assertEquals("REFUSED", db.incidentReconciliationDao().get(id)!!.explicitState)
         assertEquals(HeartbeatAttemptResult.Sent,
             f.heartbeat.sendFreshHeartbeat(id, null, null, ConnectivityState.WIFI, true))
         assertEquals(1, f.sends)

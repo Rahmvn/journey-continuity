@@ -7,6 +7,7 @@ import com.journeycontinuity.app.data.unresolved.*
 import com.journeycontinuity.app.degraded.JourneyTerminalHandoffGate
 import com.journeycontinuity.app.domain.*
 import com.journeycontinuity.app.sync.*
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -14,7 +15,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.util.UUID
 
-/** Internal 10C-2 entry points; production does not invoke advance/restore/requestStop. */
+/** The single authority reconciliation path for exact pending Journeys. */
 class RoomIncidentReconciliationCoordinator(
     private val db: JourneyDatabase,
     private val authority: IncidentAuthorityGateway,
@@ -23,10 +24,26 @@ class RoomIncidentReconciliationCoordinator(
     private val terminalHandoffGate: JourneyTerminalHandoffGate = JourneyTerminalHandoffGate(),
     private val clock: JourneyClock = JourneyClock(System::currentTimeMillis),
     private val onStoppedEffects: suspend (String) -> Unit = {},
-    private val requestRetry: (String, Long) -> Unit = { _, _ -> },
+    private val requestRetry: suspend (String, Long?) -> Unit = { _, _ -> },
+    private val localOwner: suspend () -> String?,
 ) {
     private val runMutex = Mutex()
     private val effectsMutex = Mutex()
+
+    fun observePendingAuthority(): Flow<List<PendingAuthorityJourney>> =
+        db.incidentReconciliationDao().observePendingAuthority()
+
+    suspend fun advancePending(journeyId: String? = null): Int {
+        var attempts = 0
+        db.incidentReconciliationDao().pendingAuthority().forEach { pending ->
+            if ((journeyId == null || pending.journeyId == journeyId) &&
+                retryDue(pending.retryAtMillis, clock.nowMillis())) {
+                attempts++
+                advance(pending.journeyId)
+            }
+        }
+        return attempts
+    }
 
     suspend fun requestStop(journeyId: String, expectedOwnerId: String): Boolean {
         uuid(expectedOwnerId)
@@ -51,34 +68,56 @@ class RoomIncidentReconciliationCoordinator(
             true
         } }
         // No admission lock may be acquired while holding the dispatch gate.
-        if (accepted) { finishEffects(journeyId); requestRetry(journeyId, clock.nowMillis()) }
+        if (accepted) { finishEffects(journeyId); requestRetry(journeyId, null) }
         return accepted
     }
 
     suspend fun advance(journeyId: String): IncidentReconciliationOutcome = runMutex.withLock {
         try { attempt(journeyId) }
-        catch (e: Exception) { if (e is CancellationException) throw e; IncidentReconciliationOutcome.INCONSISTENT }
+        catch (e: Exception) {
+            if (e is CancellationException) throw e
+            // Persist or rethrow: the worker must never report success for a lost attempt.
+            failure(journeyId, db.incidentReconciliationDao().get(journeyId), e)
+        }
     }
 
     private suspend fun attempt(journeyId: String): IncidentReconciliationOutcome {
-        val prior = db.incidentReconciliationDao().get(journeyId)
-        if (prior?.retryAtMillis != null && clock.nowMillis() < prior.retryAtMillis) return prior.outcome()
+        var prior = db.incidentReconciliationDao().get(journeyId)
+        if (prior != null && !retryDue(prior.retryAtMillis, clock.nowMillis())) return prior.outcome()
+        // The Room observer can wake as soon as an explicit intent commits. Complete its local
+        // stop effect before an automatic wake may dispatch the corresponding remote operation.
+        if (prior?.effectsPending == true) {
+            finishEffects(journeyId)
+            prior = db.incidentReconciliationDao().get(journeyId)
+            if (prior?.effectsPending == true)
+                return record(journeyId, prior, IncidentReconciliationOutcome.EXPLICIT_PENDING)
+        }
         val owner = try { cloud.authenticatedOwnerId() } catch (e: Exception) { return failure(journeyId, prior, e) }
+        val boundOwner = try { localOwner() } catch (e: Exception) { return failure(journeyId, prior, e) }
+        if (boundOwner != owner)
+            return record(journeyId, prior, IncidentReconciliationOutcome.AUTHENTICATION_REQUIRED)
         if (prior?.explicitOwnerId != null && prior.explicitOwnerId != owner)
             return record(journeyId, prior, IncidentReconciliationOutcome.AUTHENTICATION_REQUIRED)
         val server = try { cloud.ownerJourneyState(journeyId, owner) }
             catch (e: Exception) { return failure(journeyId, prior, e) }
         if (server != null && server.status != JourneyStatus.ACTIVE) {
             return if (reconcileServerTerminal(server)) IncidentReconciliationOutcome.TERMINAL
-                else record(journeyId, prior, if (server.status == JourneyStatus.AUTO_ENDED)
-                    IncidentReconciliationOutcome.COMPETING_TERMINAL else IncidentReconciliationOutcome.INCONSISTENT)
+                else {
+                    // A failed exact terminal comparison may have inserted only an empty
+                    // workflow row. Record the conflict on that row, but never overwrite a
+                    // concurrent operation or a typed transient provenance-read failure.
+                    val current = db.incidentReconciliationDao().get(journeyId)
+                    val expected = if (prior == null && current?.lastOutcome == null &&
+                        current?.explicitAction == null && current?.claimId == null) current else prior
+                    record(journeyId, expected, if (server.status == JourneyStatus.AUTO_ENDED)
+                        IncidentReconciliationOutcome.COMPETING_TERMINAL else IncidentReconciliationOutcome.INCONSISTENT)
+                }
         }
         if (prior?.blocksExplicitOrClaim() == true) {
             if (prior.explicitState in ACCOUNT_STATES) {
-                // An account reservation is never an automatically queued Stop/sign-out.
-                if (prior.explicitDispatch == "NEVER_DISPATCHED")
-                    return record(journeyId, prior, IncidentReconciliationOutcome.EXPLICIT_PENDING, releaseAccount = true)
-                return record(journeyId, prior, IncidentReconciliationOutcome.EXPLICIT_PENDING)
+                // Account owns this exact operation. An ACTIVE server read is expected before
+                // its Stop dispatch and cannot prove that a reservation was abandoned.
+                return IncidentReconciliationOutcome.EXPLICIT_PENDING
             }
             return reconcileExplicit(prior, owner, server == null)
         }
@@ -148,7 +187,7 @@ class RoomIncidentReconciliationCoordinator(
         JourneyTerminalReconciliationEntity? = db.withTransaction {
         val current = db.incidentReconciliationDao().get(expected.journeyId) ?: return@withTransaction null
         if (!sameOperation(expected, current) || current.lastOutcome == "TERMINAL" ||
-            current.retryAtMillis?.let { clock.nowMillis() < it } == true) return@withTransaction null
+            !retryDue(current.retryAtMillis, clock.nowMillis())) return@withTransaction null
         if (claim && (current.claimState != "PENDING" || current.blocksExplicitOrClaim() ||
                 db.journeyDao().getById(current.journeyId)?.status != JourneyStatus.ACTIVE)) return@withTransaction null
         if (!claim && current.explicitState != "PENDING") return@withTransaction null
@@ -316,7 +355,7 @@ class RoomIncidentReconciliationCoordinator(
             a.explicitActionId == b.explicitActionId && a.explicitState == b.explicitState
 
     private suspend fun record(journeyId: String, expected: JourneyTerminalReconciliationEntity?,
-        outcome: IncidentReconciliationOutcome, releaseClaim: Boolean = false, releaseAccount: Boolean = false):
+        outcome: IncidentReconciliationOutcome, releaseClaim: Boolean = false):
         IncidentReconciliationOutcome {
         val at = retryAt()
         val applied = db.withTransaction {
@@ -332,11 +371,15 @@ class RoomIncidentReconciliationCoordinator(
                     IncidentReconciliationOutcome.AUTHENTICATION_REQUIRED)
             check(cas(row, row.copy(lastOutcome = outcome.name, retryAtMillis = at,
                 claimState = if ((releaseClaim || neverDispatched) && row.claimState == "PENDING") "BLOCKED" else row.claimState,
-                claimDispatch = if ((releaseClaim || neverDispatched) && row.claimState == "PENDING") "REFUSED" else row.claimDispatch,
-                explicitState = if (releaseAccount && row.explicitDispatch == "NEVER_DISPATCHED") "REFUSED" else row.explicitState)))
+                claimDispatch = if ((releaseClaim || neverDispatched) && row.claimState == "PENDING") "REFUSED" else row.claimDispatch)))
             true
         }
-        if (applied) requestRetry(journeyId, at)
+        // Definitive ineligibility waits for a new foreground/auth/connectivity event. A durable
+        // deferred wake is needed only while a transport or authority result can still converge.
+        if (applied && shouldScheduleRetry(outcome.name)) {
+            try { requestRetry(journeyId, at) }
+            catch (e: Exception) { if (e is CancellationException) throw e }
+        }
         return if (applied) outcome else currentOutcome(journeyId)
     }
     private suspend fun failure(journeyId: String, expected: JourneyTerminalReconciliationEntity?, error: Exception):
@@ -359,5 +402,18 @@ class RoomIncidentReconciliationCoordinator(
         const val RETRY_MILLIS = 5 * 60 * 1000L
         private val ACCOUNT_STATES = setOf("ACCOUNT_RESERVED", "ACCOUNT_UNCERTAIN")
         private val BLOCKING_EXPLICIT = setOf("PENDING", "ACCOUNT_RESERVED", "ACCOUNT_UNCERTAIN")
+        private val RETRYABLE_OUTCOMES = setOf(IncidentReconciliationOutcome.UNAVAILABLE,
+            IncidentReconciliationOutcome.CLAIM_PENDING, IncidentReconciliationOutcome.EXPLICIT_PENDING,
+            IncidentReconciliationOutcome.TOO_EARLY,
+            IncidentReconciliationOutcome.AUTHENTICATION_REQUIRED)
+        fun shouldScheduleRetry(outcome: String?): Boolean =
+            RETRYABLE_OUTCOMES.any { it.name == outcome }
+
+        /** A deadline more than one retry interval ahead signals a backward wall-clock jump.
+         * Allow one event-driven attempt; any failed attempt persists a fresh bounded deadline. */
+        fun retryDue(retryAtMillis: Long?, nowMillis: Long): Boolean =
+            retryAtMillis == null || nowMillis >= retryAtMillis ||
+                runCatching { Math.subtractExact(retryAtMillis, nowMillis) }
+                    .getOrDefault(Long.MAX_VALUE) > RETRY_MILLIS
     }
 }
