@@ -67,6 +67,13 @@ android {
             buildConfigField("String", "SUPABASE_URL", "\"\"")
             buildConfigField("String", "SUPABASE_PUBLISHABLE_KEY", "\"\"")
         }
+        create("boundaryAcceptance") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".boundaryacceptance"
+            matchingFallbacks += listOf("debug")
+            buildConfigField("String", "SUPABASE_URL", "\"\"")
+            buildConfigField("String", "SUPABASE_PUBLISHABLE_KEY", "\"\"")
+        }
         release {
             optimization {
                 enable = false
@@ -88,6 +95,9 @@ androidComponents {
         it.enableAndroidTest = true
     }
     beforeVariants(selector().withBuildType("travellerUiAcceptance")) {
+        it.enableAndroidTest = true
+    }
+    beforeVariants(selector().withBuildType("boundaryAcceptance")) {
         it.enableAndroidTest = true
     }
 }

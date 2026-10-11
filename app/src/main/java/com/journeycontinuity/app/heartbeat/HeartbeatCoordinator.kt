@@ -96,6 +96,7 @@ class HeartbeatCoordinator(
         charging: Boolean?,
         connectivity: ConnectivityState,
         networkUsable: Boolean,
+        permitNow: () -> Boolean = { true },
     ): HeartbeatAttemptResult {
         if (!networkUsable || connectivity == ConnectivityState.NONE) {
             logger.info("Heartbeat skipped: no usable network reported")
@@ -119,7 +120,8 @@ class HeartbeatCoordinator(
             return HeartbeatAttemptResult.Failed
         }
         val result = terminalHandoffGate.withLock {
-            sendFreshHeartbeatUnderGate(journeyId, batteryPercent, charging, connectivity, identity)
+            sendFreshHeartbeatUnderGate(journeyId, batteryPercent, charging, connectivity,
+                identity, permitNow)
         }
         // Optional provisioning keeps its established after-success semantics. It can resolve
         // identity/acquire admission, so neither it nor its callbacks may run under the handoff gate.
@@ -134,9 +136,10 @@ class HeartbeatCoordinator(
     private suspend fun sendFreshHeartbeatUnderGate(
         journeyId: String, batteryPercent: Int?, charging: Boolean?,
         connectivity: ConnectivityState, identity: HeartbeatDispatchCheck,
+        permitNow: () -> Boolean,
     ): HeartbeatAttemptResult {
         // A preparation result is not a lease. These checks perform no owner resolution or refresh.
-        if (!identity.isCurrent()) return HeartbeatAttemptResult.Skipped
+        if (!identity.isCurrent() || !permitNow()) return HeartbeatAttemptResult.Skipped
         val now = clock()
         val allocation = local.allocate(
             journeyId,
@@ -144,7 +147,8 @@ class HeartbeatCoordinator(
             HeartbeatConfiguration.MINIMUM_ATTEMPT_SPACING_MILLIS,
         ) ?: return HeartbeatAttemptResult.Skipped
         if (allocation.journeyId != journeyId || allocation.clientSentAt != now || allocation.sequence <= 0 ||
-            !local.canDispatch(allocation) || !identity.isCurrent()) return HeartbeatAttemptResult.Skipped
+            !local.canDispatch(allocation) || !identity.isCurrent() || !permitNow())
+            return HeartbeatAttemptResult.Skipped
         val heartbeat = DeviceHeartbeat(
             journeyId = allocation.journeyId,
             sequence = allocation.sequence,
@@ -159,6 +163,7 @@ class HeartbeatCoordinator(
                 "charging=${heartbeat.isCharging}",
         )
         return try {
+            if (!permitNow()) return HeartbeatAttemptResult.Skipped
             logger.info("Starting fresh heartbeat sequence ${heartbeat.sequence}")
             val serverState = remote.recordFreshHeartbeat(heartbeat)
             local.recordSuccess(journeyId, clock(), serverState)

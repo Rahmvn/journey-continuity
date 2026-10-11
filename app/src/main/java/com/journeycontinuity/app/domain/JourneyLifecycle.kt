@@ -116,6 +116,12 @@ class JourneyLifecycle(
         return CompleteJourneyResult.Completed(completed)
     }
 
+    suspend fun completeExact(journeyId: String): CompleteJourneyResult {
+        val completed = repository.completeExact(journeyId, clock.nowMillis())
+            ?: return CompleteJourneyResult.NoActiveJourney
+        return CompleteJourneyResult.Completed(completed)
+    }
+
     /**
      * Local persistence step only. Account must first receive the authenticated cloud
      * closure acknowledgement and pass its ended_at, in epoch milliseconds, here.

@@ -118,7 +118,7 @@ fun JourneyScreen(
                     syncState = state.syncState,
                     monitoringState = state.monitoringState,
                     actionInProgress = state.isActionInProgress,
-                    onEnd = viewModel::endJourney,
+                    onEnd = { viewModel.endJourney(checkNotNull(state.activeJourney).id) },
                     onRetryMonitoring = onRetryMonitoring,
                     onOpenLocationSettings = onOpenLocationSettings,
                 )

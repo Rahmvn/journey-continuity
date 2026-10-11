@@ -45,6 +45,54 @@ class FallbackHandoffCoordinatorTest {
     }
 
     @Test
+    fun dueBoundaryPreflightRejectsLateSmsBeforeClaim() = runBlocking {
+        val store = FakeStore(validAttempt())
+        val gateway = FakeGateway()
+        var evaluated: String? = null
+        val result = coordinator(store, gateway, beforeHandoff = { journeyId ->
+            evaluated = journeyId
+            null
+        }).handoff(ATTEMPT_ID)
+        assertEquals(store.attempt.journeyId, evaluated)
+        assertEquals(FallbackHandoffResult.NotReady, result)
+        assertEquals(0, store.claims)
+        assertTrue(gateway.sent.isEmpty())
+    }
+
+    @Test
+    fun boundaryBecomingDueWhileWaitingForDispatchGateRejectsSms() = runBlocking {
+        val gate = JourneyTerminalHandoffGate()
+        val store = FakeStore(validAttempt())
+        val gateway = FakeGateway()
+        var permitted = true
+        val pending = gate.withLock {
+            val queued = async(start = CoroutineStart.UNDISPATCHED) {
+                coordinator(store, gateway, terminalGate = gate,
+                    beforeHandoff = { { permitted } }).handoff(ATTEMPT_ID)
+            }
+            permitted = false
+            queued
+        }
+        assertEquals(FallbackHandoffResult.NotReady, pending.await())
+        assertEquals(0, store.claims)
+        assertTrue(gateway.sent.isEmpty())
+    }
+
+    @Test
+    fun boundaryBecomingDueAfterClaimDoesNotSendSms() = runBlocking {
+        val store = FakeStore(validAttempt())
+        val gateway = FakeGateway()
+        var checks = 0
+        val result = coordinator(store, gateway, beforeHandoff = {
+            { ++checks < 3 }
+        }).handoff(ATTEMPT_ID)
+        assertEquals(FallbackHandoffResult.NotReady, result)
+        assertEquals(1, store.claims)
+        assertTrue(gateway.sent.isEmpty())
+        assertEquals(FallbackTransportState.SUPERSEDED, store.attempt.transportState)
+    }
+
+    @Test
     fun unavailableTransportRetainsPendingAttemptAndLaterSubmitsSamePersistedEnvelope() = runBlocking {
         val original = validAttempt()
         val store = FakeStore(original)
@@ -285,6 +333,7 @@ class FallbackHandoffCoordinatorTest {
         uncertaintyWindow: Long = 100,
         scheduler: FallbackHandoffScheduler = NoOpFallbackHandoffScheduler,
         terminalGate: JourneyTerminalHandoffGate = JourneyTerminalHandoffGate(),
+        beforeHandoff: suspend (String) -> (() -> Boolean)? = { { true } },
     ) = FallbackHandoffCoordinator(
         attempts = store,
         configuration = object : SmsFallbackConfiguration {
@@ -297,6 +346,7 @@ class FallbackHandoffCoordinatorTest {
         scheduler = scheduler,
         uncertaintyWindowMillis = uncertaintyWindow,
         terminalHandoffGate = terminalGate,
+        beforeHandoff = beforeHandoff,
     )
 
     private fun validAttempt(): FallbackAttemptEntity {
@@ -372,6 +422,10 @@ class FallbackHandoffCoordinatorTest {
                 lastTransportOutcome = null,
             )
             return true
+        }
+        override suspend fun suppressUndispatchedClaim(localAttemptId: Long, generation: Int,
+            atMillis: Long) = mutateInProgress(localAttemptId, generation) {
+            it.copy(transportState = FallbackTransportState.SUPERSEDED, terminalAt = atMillis)
         }
         override suspend fun preflightPermanent(localAttemptId: Long, atMillis: Long): Boolean {
             attempt = attempt.copy(transportState = FallbackTransportState.PERMANENT_FAILURE, terminalAt = atMillis)

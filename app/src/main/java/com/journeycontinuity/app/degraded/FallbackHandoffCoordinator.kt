@@ -13,17 +13,25 @@ class FallbackHandoffCoordinator(
     private val clock: () -> Long = System::currentTimeMillis,
     private val uncertaintyWindowMillis: Long = DEFAULT_UNCERTAINTY_WINDOW_MILLIS,
     private val terminalHandoffGate: JourneyTerminalHandoffGate = JourneyTerminalHandoffGate(),
+    /** Preparation may use Room; returned permit is a nonblocking check under dispatch. */
+    private val beforeHandoff: suspend (String) -> (() -> Boolean)? = { { true } },
 ) {
     suspend fun processNextReady(journeyId: String): FallbackHandoffResult {
         val attempt = attempts.nextReady(journeyId, clock()) ?: return FallbackHandoffResult.NotReady
         return handoff(attempt.localAttemptId)
     }
 
-    suspend fun handoff(localAttemptId: Long): FallbackHandoffResult = terminalHandoffGate.withLock {
+    suspend fun handoff(localAttemptId: Long): FallbackHandoffResult {
+        val journeyId = attempts.get(localAttemptId)?.journeyId
+            ?: return FallbackHandoffResult.AlreadyHandled
+        val permitNow = beforeHandoff(journeyId) ?: return FallbackHandoffResult.NotReady
+        var expired = false
+        val result = terminalHandoffGate.withLock {
         val now = clock()
         val attempt = attempts.get(localAttemptId)
             ?: return@withLock FallbackHandoffResult.AlreadyHandled
         if (!attempt.isReady(now)) return@withLock FallbackHandoffResult.NotReady
+        if (!permitNow()) { expired = true; return@withLock FallbackHandoffResult.NotReady }
 
         validatePersistedAttempt(attempt)?.let { safeReason ->
             attempts.preflightPermanent(localAttemptId, now)
@@ -45,6 +53,7 @@ class FallbackHandoffCoordinator(
             attempts.preflightPermanent(localAttemptId, now)
             return@withLock FallbackHandoffResult.Rejected("The persisted JC1 payload is not one SMS segment.")
         }
+        if (!permitNow()) { expired = true; return@withLock FallbackHandoffResult.NotReady }
         if (!attempts.claim(localAttemptId, now)) {
             return@withLock FallbackHandoffResult.AlreadyHandled
         }
@@ -57,6 +66,11 @@ class FallbackHandoffCoordinator(
             exactPersistedText = claimed.protectedPayloadText,
         )
         scheduler.scheduleUncertainCheck(localAttemptId, claimed.handoffGeneration, uncertaintyWindowMillis)
+        if (!permitNow()) {
+            expired = true
+            attempts.suppressUndispatchedClaim(localAttemptId, claimed.handoffGeneration, clock())
+            return@withLock FallbackHandoffResult.NotReady
+        }
         return@withLock try {
             telephony.send(request)
             FallbackHandoffResult.SubmittedAwaitingCallback
@@ -70,6 +84,9 @@ class FallbackHandoffCoordinator(
             // An unexpected exception is not proof that the modem did not accept the request.
             FallbackHandoffResult.SubmittedAwaitingCallback
         }
+        }
+        if (expired) beforeHandoff(journeyId) // Re-evaluate outside dispatch to persist the due pause.
+        return result
     }
 
     suspend fun sentResult(localAttemptId: Long, generation: Int, resultCode: Int): Boolean {
@@ -152,6 +169,7 @@ interface FallbackHandoffAttemptStore {
     suspend fun nextReady(journeyId: String, atMillis: Long): FallbackAttemptEntity?
     suspend fun get(localAttemptId: Long): FallbackAttemptEntity?
     suspend fun claim(localAttemptId: Long, atMillis: Long): Boolean
+    suspend fun suppressUndispatchedClaim(localAttemptId: Long, generation: Int, atMillis: Long): Boolean
     suspend fun preflightPermanent(localAttemptId: Long, atMillis: Long): Boolean
     suspend fun handedOff(localAttemptId: Long, generation: Int, atMillis: Long, resultCode: Int): Boolean
     suspend fun retryPending(

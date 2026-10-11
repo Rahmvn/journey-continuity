@@ -2,6 +2,7 @@ package com.journeycontinuity.app
 
 import android.app.Application
 import androidx.room.Room
+import kotlinx.coroutines.flow.first
 import com.journeycontinuity.app.data.local.JourneyDatabase
 import com.journeycontinuity.app.data.local.MIGRATION_1_2
 import com.journeycontinuity.app.data.local.MIGRATION_2_3
@@ -118,7 +119,7 @@ import io.github.jan.supabase.createSupabaseClient
 import io.github.jan.supabase.postgrest.Postgrest
 import kotlinx.coroutines.launch
 
-class JourneyContinuityApplication : Application() {
+open class JourneyContinuityApplication : Application() {
     private val ownerAdmissionGate = OwnerAdmissionGate()
     private val terminalHandoffGate = com.journeycontinuity.app.degraded.JourneyTerminalHandoffGate()
     private val database: JourneyDatabase by lazy {
@@ -179,6 +180,7 @@ class JourneyContinuityApplication : Application() {
             telephony = AndroidSmsTelephonyGateway(applicationContext),
             scheduler = WorkManagerFallbackHandoffScheduler(applicationContext),
             terminalHandoffGate = terminalHandoffGate,
+            beforeHandoff = ::prepareFallbackHandoff,
         )
     }
 
@@ -194,6 +196,7 @@ class JourneyContinuityApplication : Application() {
                 fallbackAttemptDao = database.fallbackAttemptDao(),
                 allocator = fallbackAttemptAllocator,
                 policy = degradedConnectivityPolicy,
+                beforeUpdate = ::evaluateDegradedBoundary,
             ),
             latestTelemetryReader = { journeyId ->
                 database.telemetryDao().getLatest(journeyId)?.toDomain()
@@ -294,6 +297,9 @@ class JourneyContinuityApplication : Application() {
             terminalHandoffGate = terminalHandoffGate,
             probableEndObserver = { resumeLocalProbableEnd(it) },
             admissionReceipt = { runCatching { operationalBoundaryReceipt() }.getOrNull() },
+            afterExactCompletion = { journeyId ->
+                check(journeyServiceController.stopExact(journeyId)) { "Exact completion teardown pending" }
+            },
         )
     }
 
@@ -611,7 +617,7 @@ class JourneyContinuityApplication : Application() {
         )
     }
 
-    private fun operationalBoundaryReceipt(): com.journeycontinuity.app.domain.BoundaryReceipt {
+    internal open fun operationalBoundaryReceipt(): com.journeycontinuity.app.domain.BoundaryReceipt {
         val preferences = getSharedPreferences("unresolved-boundary-observation", MODE_PRIVATE)
         val installation = preferences.getString("installationId", null) ?: java.util.UUID.randomUUID().toString().also {
             check(preferences.edit().putString("installationId", it).commit())
@@ -621,10 +627,54 @@ class JourneyContinuityApplication : Application() {
                 android.provider.Settings.Global.BOOT_COUNT) }.getOrNull(), installation)
     }
 
-    /** 10C-1 machinery is deliberately not scheduled or called by production startup. */
     val operationalBoundaryCoordinator by lazy {
         com.journeycontinuity.app.data.repository.RoomOperationalBoundaryCoordinator(database,
-            terminalHandoffGate, afterPause = { journeyServiceController.stop() })
+            terminalHandoffGate, afterPause = { journeyId ->
+                check(exactJourneyRuntimeTeardown.stopPrivacy(journeyId)) { "Exact runtime teardown pending" }
+            })
+    }
+
+    /** Used only before local monitoring work; no incident finalizer or authority polling. */
+    internal suspend fun evaluateMonitoringBoundary(journeyId: String): Boolean {
+        val permitted = operationalBoundaryCoordinator.evaluate(journeyId, operationalBoundaryReceipt()) ==
+            com.journeycontinuity.app.domain.OperationalBoundaryAssessment.BEFORE_APPROXIMATE_CAP
+        if (!permitted) exactJourneyRuntimeTeardown.stopPrivacy(journeyId)
+        return permitted
+    }
+
+    private suspend fun evaluateDegradedBoundary(journeyId: String): Boolean {
+        val journey = database.journeyDao().getById(journeyId) ?: return false
+        return if (journey.status == com.journeycontinuity.app.domain.JourneyStatus.ACTIVE)
+            evaluateMonitoringBoundary(journeyId) else true
+    }
+
+    private suspend fun prepareFallbackHandoff(journeyId: String): (() -> Boolean)? {
+        if (!evaluateMonitoringBoundary(journeyId)) return null
+        val (admission, anchor) = monitoringBoundaryWatch(journeyId) ?: return null
+        // A surviving process cannot cross a device reboot. Boot/install were verified by
+        // the Room preflight; this closure only advances elapsedRealtime under dispatch.
+        return {
+            com.journeycontinuity.app.domain.approximateOperationalCapReached(admission, anchor,
+                com.journeycontinuity.app.domain.BoundaryReceipt(
+                    android.os.SystemClock.elapsedRealtime(), anchor.bootCount, anchor.installationId)) == false
+        }
+    }
+
+    internal suspend fun stopMonitoringExact(journeyId: String): Boolean =
+        exactJourneyRuntimeTeardown.stopPrivacy(journeyId)
+
+    internal suspend fun stopMonitoringServiceIfIdle(stop: () -> Unit) = ownerAdmissionGate.withLock {
+        if (database.journeyDao().observeCollectable().first() == null) stop()
+    }
+
+    internal suspend fun monitoringBoundaryWatch(journeyId: String):
+        Pair<com.journeycontinuity.app.domain.BoundaryAdmission,
+            com.journeycontinuity.app.domain.BoundaryReceipt>? {
+        val boundary = database.unresolvedBoundaryDao().get(journeyId) ?: return null
+        val operational = database.operationalBoundaryDao().get(journeyId) ?: return null
+        if (operational.state != "MONITORING" || operational.admissionId != boundary.admissionId)
+            return null
+        return boundary.admission() to (operational.anchor() ?: return null)
     }
 
     internal suspend fun mayStartContinuousMonitoring(journeyId: String): Boolean =
@@ -660,7 +710,8 @@ class JourneyContinuityApplication : Application() {
 
     private val exactJourneyRuntimeTeardown by lazy {
         com.journeycontinuity.app.service.ExactJourneyRuntimeTeardown(ownerAdmissionGate,
-            { database.journeyDao().getActive()?.id }, journeyServiceController::stopExact)
+            { database.journeyDao().getActive()?.id }, journeyServiceController::stopExact,
+            journeyServiceController::stopPrivacyExact)
     }
 
     private data class CloudGateways(

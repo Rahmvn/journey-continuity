@@ -33,6 +33,7 @@ class RoomJourneyRepository(
     private val terminalHandoffGate: JourneyTerminalHandoffGate = JourneyTerminalHandoffGate(),
     private val probableEndObserver: suspend (String) -> Unit = {},
     private val admissionReceipt: () -> com.journeycontinuity.app.domain.BoundaryReceipt? = { null },
+    private val afterExactCompletion: suspend (String) -> Unit = {},
 ) : JourneyRepository {
     override val activeJourney: Flow<Journey?> =
         journeyDao.observeActive().map { it?.toDomain() }
@@ -54,6 +55,22 @@ class RoomJourneyRepository(
             runCatching { degradedConnectivityCoordinator.journeyCompleted(it.id, completedAt) }
             scheduleSyncWithoutAffectingLocalWrite(SyncRequestUrgency.URGENT)
         }
+
+    override suspend fun completeExact(journeyId: String, completedAt: Long): Journey? {
+        val completed = admissionGate.withLock {
+            val completed = terminalHandoffGate.withLock {
+                journeyDao.completeActive(completedAt, expectedJourneyId = journeyId)?.toDomain()
+            } ?: return@withLock null
+            // Keep a later admission behind the actual exact service acknowledgement.
+            try { afterExactCompletion(journeyId) }
+            catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (_: Exception) { /* Room's collectable projection also tears down the listener. */ }
+            completed
+        } ?: return null
+        runCatching { degradedConnectivityCoordinator.journeyCompleted(completed.id, completedAt) }
+        scheduleSyncWithoutAffectingLocalWrite(SyncRequestUrgency.URGENT)
+        return completed
+    }
 
     override suspend fun stopMonitoringActive(journeyId: String, endedAt: Long): Journey? =
         terminalHandoffGate.withLock {

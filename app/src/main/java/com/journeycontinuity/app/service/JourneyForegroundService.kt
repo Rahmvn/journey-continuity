@@ -24,6 +24,9 @@ import com.journeycontinuity.app.JourneyContinuityApplication
 import com.journeycontinuity.app.MainActivity
 import com.journeycontinuity.app.R
 import com.journeycontinuity.app.domain.TelemetrySample
+import com.journeycontinuity.app.domain.BoundaryAdmission
+import com.journeycontinuity.app.domain.BoundaryReceipt
+import com.journeycontinuity.app.domain.approximateOperationalCapReached
 import com.journeycontinuity.app.heartbeat.HeartbeatConfiguration
 import com.journeycontinuity.app.heartbeat.HeartbeatAttemptResult
 import com.journeycontinuity.app.domain.probableend.GuardReconciliationTrigger
@@ -32,6 +35,8 @@ import com.journeycontinuity.app.sync.SyncRequestUrgency
 import com.journeycontinuity.app.telemetry.DeviceContextReader
 import com.journeycontinuity.app.telemetry.ForegroundLocationAccess
 import com.journeycontinuity.app.telemetry.FusedJourneyLocationSource
+import com.journeycontinuity.app.telemetry.LocationRegistrationOwner
+import com.journeycontinuity.app.telemetry.LocationReleaseEvidence
 import com.journeycontinuity.app.telemetry.LocationPrerequisites
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -44,16 +49,20 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CancellationException
 
 class JourneyForegroundService : Service() {
     private var serviceGeneration = 0L
+    private var latestStartId = 0
     private var collectionGeneration: Long? = null
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var activeJourneyJob: Job? = null
     private var persistenceJob: Job? = null
+    private var probableEndResumeJob: Job? = null
     private var heartbeatJob: Job? = null
     private var heartbeatTimerJob: Job? = null
     private var heartbeatSignal: Channel<Unit>? = null
@@ -76,6 +85,41 @@ class JourneyForegroundService : Service() {
     private val fallbackHandoffCoordinator
         get() = (application as JourneyContinuityApplication).fallbackHandoffCoordinator
 
+    private val journeyApp get() = application as JourneyContinuityApplication
+
+    private data class BoundaryWatch(val admission: BoundaryAdmission, val anchor: BoundaryReceipt) {
+        fun remaining(now: BoundaryReceipt): Long? {
+            if (approximateOperationalCapReached(admission, anchor, now) == null) return null
+            return (admission.boundaryMillis - admission.admittedAtMillis) -
+                (now.elapsedRealtimeMillis - anchor.elapsedRealtimeMillis)
+        }
+    }
+
+    private suspend fun preflight(journeyId: String): BoundaryWatch? {
+        if (!assessBoundary(journeyId)) return null
+        val (admission, anchor) = journeyApp.monitoringBoundaryWatch(journeyId) ?: return null
+        val watch = BoundaryWatch(admission, anchor)
+        return watch.takeIf { it.remaining(journeyApp.operationalBoundaryReceipt())?.let { remaining -> remaining > 0 } == true }
+    }
+
+    private suspend fun assessBoundary(journeyId: String): Boolean = try {
+        journeyApp.evaluateMonitoringBoundary(journeyId)
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        // A failed Room preflight cannot grant collection permission.
+        journeyApp.stopMonitoringExact(journeyId)
+        false
+    }
+
+    private fun callbackMayCollect(journeyId: String, registration: Long, watch: BoundaryWatch): Boolean {
+        if (!runtimeSignals.isRegistrationCurrent(registration, journeyId)) return false
+        val remaining = runCatching { watch.remaining(journeyApp.operationalBoundaryReceipt()) }.getOrNull()
+        if (remaining != null && remaining > 0) return true
+        serviceScope.launch { assessBoundary(journeyId) }
+        return false
+    }
+
     private val locationModeReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (!LocationPrerequisites.locationServicesEnabled(this@JourneyForegroundService)) {
@@ -88,7 +132,11 @@ class JourneyForegroundService : Service() {
         super.onCreate()
         serviceGeneration = runtimeSignals.serviceStarted()
         liveService = this
-        locationSource = FusedJourneyLocationSource(this)
+        locationSource = FusedJourneyLocationSource(this, onRelease = { evidence ->
+            lastLocationReleaseMutable.value = evidence
+            if (evidence is LocationReleaseEvidence.RemovalFailed)
+                AndroidSyncDiagnosticLogger.warning("Location removal failed; the old callback remains disabled.")
+        })
         deviceContextReader = DeviceContextReader(this)
         createNotificationChannel()
         ContextCompat.registerReceiver(
@@ -104,6 +152,7 @@ class JourneyForegroundService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        latestStartId = startId
         runtimeSignals.startCommand(startId)
         if (!hasLocationPrerequisites()) {
             stopServiceCompletely()
@@ -133,9 +182,23 @@ class JourneyForegroundService : Service() {
                 (application as JourneyContinuityApplication).activeMonitoringJourney.collectLatest { journey ->
                     if (journey == null) {
                         currentDestination = null
-                        stopServiceCompletely()
+                        // Room's collectable projection drops a committed privacy pause. This
+                        // service-owned observer survives cancellation of the evaluating worker.
+                        // Recheck the exact runtime's durable state before touching it: a stale
+                        // null emission from A must never stop a newly admitted B.
+                        runtimeSignals.activeRuntimeJourneyId.value?.let { runtimeJourneyId ->
+                            if (!journeyApp.mayStartContinuousMonitoring(runtimeJourneyId))
+                                journeyApp.stopMonitoringExact(runtimeJourneyId)
+                        }
+                        journeyApp.stopMonitoringServiceIfIdle(::stopServiceCompletely)
                     } else {
-                        startCollecting(journey.id)
+                        val watch = preflight(journey.id)
+                        if (watch == null) {
+                            journeyApp.stopMonitoringExact(journey.id)
+                            journeyApp.stopMonitoringServiceIfIdle(::stopServiceCompletely)
+                            return@collectLatest
+                        }
+                        startCollecting(journey.id, watch)
                         currentDestination = journey.destination
                         showRecordingNotification(journey.destination)
                     }
@@ -145,18 +208,16 @@ class JourneyForegroundService : Service() {
         return START_STICKY
     }
 
-    private fun startCollecting(journeyId: String) {
+    private fun startCollecting(journeyId: String, watch: BoundaryWatch) {
         stopCollecting()
         val registration = runtimeSignals.begin(journeyId)
         collectionGeneration = registration
         val channel = Channel<Location>(Channel.UNLIMITED)
         locationChannel = channel
-        // Historical catch-up must not sit ahead of fresh telemetry on the persistence channel.
-        serviceScope.launch(Dispatchers.IO) {
-            (application as JourneyContinuityApplication).resumeLocalProbableEnd(journeyId, drain = true)
-        }
         persistenceJob = serviceScope.launch {
             for (location in channel) {
+                if (!runtimeSignals.isRegistrationCurrent(registration, journeyId) ||
+                    !assessBoundary(journeyId)) break
                 val battery = deviceContextReader.battery()
                 repository.recordTelemetry(
                     TelemetrySample(
@@ -172,21 +233,32 @@ class JourneyForegroundService : Service() {
                 )
             }
         }
+        if (!callbackMayCollect(journeyId, registration, watch)) return
         locationSource.start(
+            owner = LocationRegistrationOwner(journeyId, registration),
             onLocation = { location ->
-                if (location.isUsableObservation()) channel.trySend(location)
+                if (callbackMayCollect(journeyId, registration, watch) && location.isUsableObservation())
+                    channel.trySend(location)
             },
-            onFailure = { stopServiceCompletely() },
+            onFailure = {
+                if (runtimeSignals.isRegistrationCurrent(registration, journeyId))
+                    serviceScope.launch { journeyApp.stopMonitoringExact(journeyId) }
+            },
             onReady = { runtimeSignals.listenerRegistered(registration, journeyId) },
         )
-        startHeartbeats(journeyId, registration)
+        // Historical catch-up stays off the fresh telemetry channel and is canceled on teardown.
+        probableEndResumeJob = serviceScope.launch(Dispatchers.IO) {
+            if (assessBoundary(journeyId)) journeyApp.resumeLocalProbableEnd(journeyId, drain = true)
+        }
+        startHeartbeats(journeyId, registration, watch)
     }
 
-    private fun startHeartbeats(journeyId: String, registration: Long) {
+    private fun startHeartbeats(journeyId: String, registration: Long, watch: BoundaryWatch) {
         val signal = Channel<Unit>(Channel.CONFLATED)
         val degradedStateInitialized = CompletableDeferred<Unit>()
         heartbeatSignal = signal
         heartbeatJob = serviceScope.launch(Dispatchers.IO) {
+            if (!assessBoundary(journeyId)) return@launch
             val initiallyUsable = deviceContextReader.usableInternet()
             degradedConnectivityCoordinator.activate(
                 journeyId = journeyId,
@@ -205,6 +277,8 @@ class JourneyForegroundService : Service() {
             )
             degradedStateInitialized.complete(Unit)
             for (ignored in signal) {
+                if (!runtimeSignals.isRegistrationCurrent(registration, journeyId) ||
+                    !assessBoundary(journeyId)) break
                 // A cloud failure can interrupt recovery without a NetworkCallback transition.
                 // Reconcile the currently validated network before capturing the heartbeat start.
                 val usableInternet = deviceContextReader.usableInternet()
@@ -226,11 +300,17 @@ class JourneyForegroundService : Service() {
                     charging = battery.isCharging,
                     connectivity = deviceContextReader.connectivity(),
                     networkUsable = deviceContextReader.usableInternet(),
+                    permitNow = {
+                        runtimeSignals.isRegistrationCurrent(registration, journeyId) &&
+                            runCatching { watch.remaining(journeyApp.operationalBoundaryReceipt()) }
+                                .getOrNull()?.let { it > 0 } == true
+                    },
                 )) {
                     HeartbeatAttemptResult.Sent -> {
                         degradedConnectivityCoordinator.freshHeartbeatSucceeded(journeyId, heartbeatStartedAt)
-                        (application as JourneyContinuityApplication).requestProbableEndGuard(
-                            journeyId, GuardReconciliationTrigger.HEARTBEAT_SUCCEEDED)
+                        if (callbackMayCollect(journeyId, registration, watch))
+                            (application as JourneyContinuityApplication).requestProbableEndGuard(
+                                journeyId, GuardReconciliationTrigger.HEARTBEAT_SUCCEEDED)
                     }
                     HeartbeatAttemptResult.RetryableFailure -> {
                         runtimeSignals.connectivityReconciled(registration, journeyId, false)
@@ -240,15 +320,19 @@ class JourneyForegroundService : Service() {
                     HeartbeatAttemptResult.Skipped,
                     -> Unit
                 }
+                if (!callbackMayCollect(journeyId, registration, watch)) break
             }
         }
         heartbeatTimerJob = serviceScope.launch {
             degradedStateInitialized.await()
             while (isActive) {
+                if (!runtimeSignals.isRegistrationCurrent(registration, journeyId) ||
+                    !assessBoundary(journeyId)) break
                 degradedConnectivityCoordinator.timeAdvanced(journeyId)
                 fallbackHandoffCoordinator.processNextReady(journeyId)
                 signal.trySend(Unit)
-                delay(HeartbeatConfiguration.INTERVAL_MILLIS)
+                val remaining = runCatching { watch.remaining(journeyApp.operationalBoundaryReceipt()) }.getOrNull()
+                delay(minOf(HeartbeatConfiguration.INTERVAL_MILLIS, (remaining ?: 0L).coerceAtLeast(1L)))
             }
         }
         val manager = getSystemService(ConnectivityManager::class.java)
@@ -259,6 +343,8 @@ class JourneyForegroundService : Service() {
                     capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
                 if (nowUsable && usable.compareAndSet(false, true)) {
                     serviceScope.launch(Dispatchers.IO) {
+                        if (!runtimeSignals.isRegistrationCurrent(registration, journeyId) ||
+                            !assessBoundary(journeyId)) return@launch
                         degradedConnectivityCoordinator.validatedInternetAvailable(journeyId)
                         runtimeSignals.connectivityReconciled(
                             registration, journeyId, deviceContextReader.usableInternet(),
@@ -275,6 +361,8 @@ class JourneyForegroundService : Service() {
                     runtimeSignals.connectivityReconciled(registration, journeyId, false)
                     if (usable.compareAndSet(true, false)) {
                         serviceScope.launch(Dispatchers.IO) {
+                            if (!runtimeSignals.isRegistrationCurrent(registration, journeyId) ||
+                                !assessBoundary(journeyId)) return@launch
                             degradedConnectivityCoordinator.validatedInternetLost(journeyId)
                         }
                     }
@@ -285,6 +373,8 @@ class JourneyForegroundService : Service() {
                 runtimeSignals.connectivityReconciled(registration, journeyId, false)
                 if (usable.compareAndSet(true, false)) {
                     serviceScope.launch(Dispatchers.IO) {
+                        if (!runtimeSignals.isRegistrationCurrent(registration, journeyId) ||
+                            !assessBoundary(journeyId)) return@launch
                         degradedConnectivityCoordinator.validatedInternetLost(journeyId)
                     }
                 }
@@ -301,6 +391,8 @@ class JourneyForegroundService : Service() {
         locationChannel = null
         persistenceJob?.cancel()
         persistenceJob = null
+        probableEndResumeJob?.cancel()
+        probableEndResumeJob = null
         heartbeatTimerJob?.cancel()
         heartbeatTimerJob = null
         heartbeatJob?.cancel()
@@ -332,7 +424,7 @@ class JourneyForegroundService : Service() {
     private fun stopServiceCompletely() {
         stopCollecting()
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
-        stopSelf()
+        stopSelfResult(latestStartId)
     }
 
     override fun onDestroy() {
@@ -392,6 +484,8 @@ class JourneyForegroundService : Service() {
             accuracy.isFinite() && accuracy >= 0f
 
     companion object {
+        private val lastLocationReleaseMutable = MutableStateFlow<LocationReleaseEvidence?>(null)
+        val lastLocationRelease: StateFlow<LocationReleaseEvidence?> = lastLocationReleaseMutable
         private var liveService: JourneyForegroundService? = null
         /** Process-local evidence that the location foreground service started for this Journey. */
         private val runtimeSignals = JourneyRuntimeSignals()
@@ -420,6 +514,21 @@ class JourneyForegroundService : Service() {
                 }.first { it }
                 true
             } == true
+        }
+
+        /** Close the exact listener immediately; a newer Android start ID retains its service. */
+        internal suspend fun stopPrivacyExact(journeyId: String): Boolean {
+            val ticket = runtimeSignals.stopTicket(journeyId)
+                ?: return activeRuntimeJourneyId.value != journeyId
+            return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main.immediate) {
+                val service = liveService ?: return@withContext true
+                runtimeSignals.executePrivacyStop(ticket,
+                    stopCollection = { service.stopCollecting() },
+                    stopSelfResult = service::stopSelfResult,
+                    stopForeground = {
+                        ServiceCompat.stopForeground(service, ServiceCompat.STOP_FOREGROUND_REMOVE)
+                    })
+            }
         }
         private const val CHANNEL_ID = "active_journey"
         private const val NOTIFICATION_ID = 1001

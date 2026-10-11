@@ -2,6 +2,7 @@ package com.journeycontinuity.app.auth
 
 import com.journeycontinuity.app.domain.Journey
 import com.journeycontinuity.app.domain.JourneyStatus
+import com.journeycontinuity.app.service.ExactJourneyRuntimeTeardown
 import com.journeycontinuity.app.sync.RemoteJourneyState
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -16,6 +17,27 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class TravellerActiveJourneySignOutGatewayTest {
+    @Test fun privacyTeardownDoesNotWaitForSlowAccountStopUnderAdmissionLock() = runTest {
+        val f = Fixture()
+        val releaseRemote = CompletableDeferred<Unit>()
+        f.remote.release = releaseRemote
+        val signOut = async { f.gateway.confirmAndSignOut(journey.id, owner) }
+        runCurrent()
+        assertTrue(f.events.contains("remote_stop"))
+        var privacyStops = 0
+        val teardown = ExactJourneyRuntimeTeardown(f.gate,
+            { f.local.activeJourney()?.id }, { id ->
+                assertEquals(journey.id, id)
+                privacyStops++
+                true
+            })
+        assertTrue(teardown.stopPrivacy(journey.id))
+        assertEquals(1, privacyStops)
+        assertFalse(signOut.isCompleted)
+        releaseRemote.complete(Unit)
+        assertTrue(signOut.await() is ActiveJourneySignOutResult.SignedOut)
+    }
+
     @Test fun failedReservationSendsNoAccountStopRpc() = runTest {
         val f = Fixture(); f.reservationDenied = true
         assertEquals(ActiveJourneySignOutResult.JourneyChanged, f.gateway.confirmAndSignOut(journey.id, owner))

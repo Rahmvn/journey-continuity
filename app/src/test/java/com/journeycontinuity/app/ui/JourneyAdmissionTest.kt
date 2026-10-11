@@ -253,13 +253,27 @@ class JourneyAdmissionTest {
         rig.viewModel.requestStructuredStart(draft(DestinationEvidenceFixtures.locality()), false) {}
         rig.viewModel.startStructuredAnyway(rig.viewModel::startJourney)
         advanceUntilIdle()
-        rig.viewModel.endJourney()
+        rig.viewModel.endJourney(rig.repository.active.value!!.id)
         assertTrue(rig.viewModel.uiState.value.isActionInProgress)
         rig.viewModel.openContacts()
         assertTrue(rig.viewModel.uiState.value.isActionInProgress)
         advanceUntilIdle()
         assertFalse(rig.viewModel.uiState.value.isActionInProgress)
         assertEquals(1, rig.repository.created.size)
+    }
+
+    @Test fun staleActiveSheetCompletionCannotCompleteLaterAdmission() = admissionTest { rig ->
+        val earlier = Journey("earlier", "Earlier", 5_000, 1_000, JourneyStatus.ACTIVE, null)
+        val later = Journey("later", "Later", 5_000, 1_000, JourneyStatus.ACTIVE, null)
+        assertTrue(rig.repository.createIfNoActive(earlier))
+        advanceUntilIdle()
+        rig.repository.completeActive(2_000)
+        assertTrue(rig.repository.createIfNoActive(later))
+        advanceUntilIdle()
+        rig.viewModel.endJourney(earlier.id)
+        advanceUntilIdle()
+        assertEquals(later, rig.repository.active.value)
+        assertFalse(rig.viewModel.uiState.value.isActionInProgress)
     }
 
     private fun catalogue(): AdminCatalogue = AdminCatalogue.parse(listOf(

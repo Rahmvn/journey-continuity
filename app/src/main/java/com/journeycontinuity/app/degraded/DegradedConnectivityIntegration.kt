@@ -63,11 +63,14 @@ class RoomDegradedConnectivityStateStore(
     private val fallbackAttemptDao: com.journeycontinuity.app.data.local.FallbackAttemptDao,
     private val allocator: DurableFallbackAttemptAllocator,
     private val policy: DegradedConnectivityPolicy,
+    private val beforeUpdate: suspend (String) -> Boolean = { true },
 ) : DegradedConnectivityStateStore {
     override suspend fun updateAtomically(
         journeyId: String,
         transform: (DegradedConnectivityState?, RecoveryBacklogSnapshot) -> DegradedConnectivityReduction?,
-    ): DegradedConnectivityReduction? = database.withTransaction {
+    ): DegradedConnectivityReduction? {
+        if (!beforeUpdate(journeyId)) return null
+        return database.withTransaction {
         val backlog = RecoveryBacklogSnapshot(
             latestSequence = database.telemetryDao().getLatest(journeyId)?.sequence ?: 0,
             synchronizedThrough = database.syncStateDao().get(journeyId)?.highestTelemetrySequenceSynced ?: 0,
@@ -111,6 +114,7 @@ class RoomDegradedConnectivityStateStore(
             }
         }
         reduction.copy(state = state)
+        }
     }
 
     override fun observe(journeyId: String): Flow<DegradedConnectivityState?> =

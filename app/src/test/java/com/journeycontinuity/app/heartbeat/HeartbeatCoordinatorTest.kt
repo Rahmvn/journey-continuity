@@ -297,6 +297,25 @@ class HeartbeatCoordinatorTest {
         assertNull(local.success)
     }
 
+    @Test fun localCapExpiringWhileAuthenticationWaitsCannotDispatchHeartbeat() = runBlocking {
+        val f = SharedStopFixture()
+        val held = CompletableDeferred<Unit>(); val release = CompletableDeferred<Unit>()
+        var permitted = true
+        val blocker = async { f.handoff.withLock { held.complete(Unit); release.await() } }
+        held.await()
+        val send = async {
+            f.heartbeat.sendFreshHeartbeat(f.id, null, null, ConnectivityState.WIFI, true,
+                permitNow = { permitted })
+        }
+        f.prepared.await()
+        permitted = false
+        release.complete(Unit)
+        assertEquals(HeartbeatAttemptResult.Skipped, withTimeout(1_000) { send.await() })
+        blocker.await()
+        assertEquals(0, f.allocations)
+        assertEquals(0, f.sends)
+    }
+
     @Test
     fun permanentAuthenticationFailureIsNotClassifiedAsRetryableConnectivityEvidence() = runBlocking {
         val coordinator = HeartbeatCoordinator(

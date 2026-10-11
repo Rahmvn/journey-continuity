@@ -10,9 +10,15 @@ class ExactJourneyRuntimeTeardown(
     private val admission: OwnerAdmissionGate,
     private val activeJourneyId: suspend () -> String?,
     private val stopExactAndAwait: suspend (String) -> Boolean,
+    private val stopPrivacyExact: suspend (String) -> Boolean = stopExactAndAwait,
 ) {
     suspend fun stop(journeyId: String): Boolean = admission.withLock {
         val active = activeJourneyId()
         if (active != null && active != journeyId) true else stopExactAndAwait(journeyId)
     }
+
+    /** A committed privacy pause cannot wait for account/network work under admission.
+     * Runtime identity and generations guard collection; the start-ID guarded idle path stops the service.
+     */
+    suspend fun stopPrivacy(journeyId: String): Boolean = stopPrivacyExact(journeyId)
 }

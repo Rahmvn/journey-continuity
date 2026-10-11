@@ -17,8 +17,18 @@ import com.journeycontinuity.app.domain.*
 import com.journeycontinuity.app.domain.probableend.DestinationEvidenceReference
 import com.journeycontinuity.app.domain.probableend.ObservationEvidenceReference
 import com.journeycontinuity.app.domain.probableend.ProbableEndPolicy
+import com.journeycontinuity.app.degraded.JourneyTerminalHandoffGate
+import com.journeycontinuity.app.auth.OwnerAdmissionGate
+import com.journeycontinuity.app.service.ExactJourneyRuntimeTeardown
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
+import java.util.concurrent.CancellationException
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -85,6 +95,7 @@ class OperationalBoundaryDatabaseTest {
         assertEquals(OperationalBoundaryAssessment.BEFORE_APPROXIMATE_CAP, before)
         assertEquals(BoundaryProof.INSUFFICIENT_PROOF, boundary().proof())
         assertNotNull(db.telemetryDao().insertForActiveJourney(sample()))
+        val preparedHeartbeat = db.heartbeatDao().allocateForActiveJourney(id, start + 3_000, 0)!!
         assertEquals(OperationalBoundaryAssessment.PAUSED,
             coordinator(1).evaluate(id, now(anchor.elapsedRealtimeMillis + duration)))
         val paused = operational()
@@ -99,6 +110,8 @@ class OperationalBoundaryDatabaseTest {
         assertNull(db.journeyDao().observeCollectable().first())
         assertNull(db.telemetryDao().insertForActiveJourney(sample()))
         assertNull(db.heartbeatDao().allocateForActiveJourney(id, start + 6_000, 0))
+        assertFalse(db.heartbeatDao().canDispatchAllocation(id, preparedHeartbeat.sequence,
+            preparedHeartbeat.clientSentAt))
         assertNotNull(db.telemetryDao().getLatest(id)) // Existing unsent evidence is retained.
         assertEquals(LocalProbableEndRunStatus.INELIGIBLE, RoomProbableEndStore(db).consumePending(id).status)
         assertNotNull(db.telemetryDao().getLatest(id))
@@ -263,5 +276,165 @@ class OperationalBoundaryDatabaseTest {
         assertEquals(FallbackDisposition.INACTIVE,
             db.degradedConnectivityDao().get(id)!!.fallbackDisposition)
         assertFalse(provisioning.activeJourneyExists(id))
+    }
+
+    @Test fun claimedButUndispatchedFallbackCanBeSuppressedAtCutoff() = runBlocking {
+        val attemptId = db.fallbackAttemptDao().insert(FallbackAttemptEntity(
+            journeyId = id, degradationEpisodeId = 1, envelopeSequence = 1,
+            telemetrySequence = 0, observationEventTime = start,
+            eventType = FallbackEnvelopeV1.EventType.OBSERVATION,
+            protectedPayloadText = "JC1:synthetic", nonce = ByteArray(12),
+            payloadSha256 = ByteArray(32), allocatedAt = start))
+        assertEquals(1, db.fallbackAttemptDao().claimForHandoff(attemptId, start + 1))
+        val generation = db.fallbackAttemptDao().getByLocalAttemptId(attemptId)!!.handoffGeneration
+        val duration = boundary().boundaryMillis - start
+        assertEquals(OperationalBoundaryAssessment.PAUSED,
+            coordinator().evaluate(id, now(anchor.elapsedRealtimeMillis + duration)))
+        assertEquals(1, db.fallbackAttemptDao().suppressUndispatchedClaim(attemptId,
+            generation, start + 2))
+        assertEquals(FallbackTransportState.SUPERSEDED,
+            db.fallbackAttemptDao().getByLocalAttemptId(attemptId)!!.transportState)
+        assertEquals(0, db.fallbackAttemptDao().markUnknownOutcome(attemptId,
+            generation, start + 2, start + 3))
+    }
+
+    @Test fun offlineCapPreservesPendingExplicitIntentAndOccupiedSlot() = runBlocking {
+        db.incidentReconciliationDao().insert(JourneyTerminalReconciliationEntity(id,
+            explicitActionId = "stop-action", explicitAction = "STOP",
+            explicitAtMillis = start + 500, explicitState = "PENDING", explicitOwnerId = owner))
+        val before = db.incidentReconciliationDao().get(id)
+        val duration = boundary().boundaryMillis - start
+        assertEquals(OperationalBoundaryAssessment.PAUSED,
+            coordinator().evaluate(id, now(anchor.elapsedRealtimeMillis + duration)))
+        assertEquals(before, db.incidentReconciliationDao().get(id))
+        assertEquals(id, db.journeyDao().getActive()?.id)
+        assertEquals(JourneyStatus.ACTIVE, db.journeyDao().getActive()?.status)
+        assertNull(db.journeyDao().observeCollectable().first())
+    }
+
+    @Test fun cutoffDoesNotRewritePendingCompleteIntent() = runBlocking {
+        db.incidentReconciliationDao().insert(JourneyTerminalReconciliationEntity(id,
+            explicitActionId = "complete-action", explicitAction = "COMPLETE",
+            explicitAtMillis = start + 500, explicitState = "PENDING", explicitOwnerId = owner))
+        val before = db.incidentReconciliationDao().get(id)
+        val duration = boundary().boundaryMillis - start
+        assertEquals(OperationalBoundaryAssessment.PAUSED,
+            coordinator().evaluate(id, now(anchor.elapsedRealtimeMillis + duration)))
+        assertEquals(before, db.incidentReconciliationDao().get(id))
+        assertEquals(id, db.journeyDao().getActive()?.id)
+    }
+
+    @Test fun transactionFailureRollsBackPauseAndDoesNotRunTeardown() = runBlocking {
+        var effects = 0
+        val coordinator = RoomOperationalBoundaryCoordinator(db,
+            afterPause = { effects++ }, diagnosticWallClock = { error("injected Room failure") })
+        val duration = boundary().boundaryMillis - start
+        assertTrue(runCatching { coordinator.evaluate(id,
+            now(anchor.elapsedRealtimeMillis + duration)) }.isFailure)
+        assertEquals(0, effects)
+        assertEquals(OperationalBoundaryState.MONITORING.name, operational().state)
+        assertNotNull(db.telemetryDao().insertForActiveJourney(sample()))
+    }
+
+    @Test fun pauseEffectRunsAfterDispatchGateIsReleased() = runBlocking {
+        val gate = JourneyTerminalHandoffGate()
+        var effects = 0
+        val coordinator = RoomOperationalBoundaryCoordinator(db, terminalHandoffGate = gate,
+            afterPause = { gate.withLock { effects++ } })
+        val duration = boundary().boundaryMillis - start
+        assertEquals(OperationalBoundaryAssessment.PAUSED,
+            kotlinx.coroutines.withTimeout(5_000) {
+                coordinator.evaluate(id, now(anchor.elapsedRealtimeMillis + duration))
+            })
+        assertEquals(1, effects)
+    }
+
+    @Test fun committedCutoffInitiatesExactStopWhileAccountAdmissionIsHeld() = runBlocking {
+        val admission = OwnerAdmissionGate()
+        val held = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val slowAccountOperation = async {
+            admission.withLock { held.complete(Unit); release.await() }
+        }
+        held.await()
+        var stops = 0
+        val teardown = ExactJourneyRuntimeTeardown(admission, { id }, stopExactAndAwait = { exact ->
+            assertEquals(id, exact)
+            stops++
+            true
+        })
+        val coordinator = RoomOperationalBoundaryCoordinator(db,
+            afterPause = { check(teardown.stopPrivacy(it)) })
+        val duration = boundary().boundaryMillis - start
+        assertEquals(OperationalBoundaryAssessment.PAUSED,
+            kotlinx.coroutines.withTimeout(5_000) {
+                coordinator.evaluate(id, now(anchor.elapsedRealtimeMillis + duration))
+            })
+        assertEquals(OperationalBoundaryState.PENDING_AUTHORITY.name, operational().state)
+        assertEquals(1, stops)
+        assertFalse(slowAccountOperation.isCompleted)
+        release.complete(Unit)
+        slowAccountOperation.await()
+    }
+
+    @Test fun evaluatorCancellationAfterCommitStillDispatchesExactTeardown() = runBlocking {
+        lateinit var evaluator: Job
+        var stops = 0
+        val coordinator = RoomOperationalBoundaryCoordinator(db, afterPause = { exact ->
+            assertEquals(OperationalBoundaryState.PENDING_AUTHORITY.name, operational().state)
+            evaluator.cancel()
+            withContext(Dispatchers.Default) { assertEquals(id, exact); stops++ }
+        })
+        val duration = boundary().boundaryMillis - start
+        val evaluation = async {
+            evaluator = currentCoroutineContext()[Job]!!
+            coordinator.evaluate(id, now(anchor.elapsedRealtimeMillis + duration))
+        }
+        assertTrue(runCatching { evaluation.await() }.exceptionOrNull() is CancellationException)
+        assertEquals(1, stops)
+        assertEquals(OperationalBoundaryState.PENDING_AUTHORITY.name, operational().state)
+        assertNull(db.journeyDao().observeCollectable().first())
+    }
+
+    @Test fun canceledEvaluatorTeardownDoesNotWaitForSlowSignOut() = runBlocking {
+        val admission = OwnerAdmissionGate()
+        val held = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val slowSignOut = async { admission.withLock { held.complete(Unit); release.await() } }
+        held.await()
+        lateinit var evaluator: Job
+        var stops = 0
+        val teardown = ExactJourneyRuntimeTeardown(admission, { id }, stopExactAndAwait = { exact ->
+            assertEquals(id, exact)
+            stops++
+            true
+        })
+        val coordinator = RoomOperationalBoundaryCoordinator(db, afterPause = { exact ->
+            assertEquals(OperationalBoundaryState.PENDING_AUTHORITY.name, operational().state)
+            evaluator.cancel()
+            withContext(Dispatchers.Default) { check(teardown.stopPrivacy(exact)) }
+        })
+        val duration = boundary().boundaryMillis - start
+        val evaluation = async {
+            evaluator = currentCoroutineContext()[Job]!!
+            coordinator.evaluate(id, now(anchor.elapsedRealtimeMillis + duration))
+        }
+        assertTrue(runCatching { evaluation.await() }.exceptionOrNull() is CancellationException)
+        assertEquals(1, stops)
+        assertFalse(slowSignOut.isCompleted)
+        release.complete(Unit)
+        slowSignOut.await()
+    }
+
+    @Test fun staleActiveCompletionCannotMutateLaterAdmission() = runBlocking {
+        assertNotNull(db.journeyDao().completeActive(start + 1))
+        val later = "20000000-0000-4000-8000-000000000022"
+        assertTrue(db.journeyDao().insertIfNoActive(Journey(later, "Later", start + 2_000,
+            start, JourneyStatus.ACTIVE, null).toEntity(), anchor))
+        assertNull(db.journeyDao().completeActive(start + 2, expectedJourneyId = id))
+        assertNull(db.journeyDao().stopMonitoringActive(id, start + 3))
+        assertEquals(later, db.journeyDao().getActive()?.id)
+        assertEquals(JourneyStatus.ACTIVE, db.journeyDao().getActive()?.status)
+        assertNull(db.incidentReconciliationDao().get(later)?.explicitAction)
     }
 }

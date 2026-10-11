@@ -13,17 +13,20 @@ import com.journeycontinuity.app.domain.OperationalPauseReason
 import com.journeycontinuity.app.domain.approximateOperationalCapReached
 import com.journeycontinuity.app.degraded.JourneyTerminalHandoffGate
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 
-/** Inactive in production until truthful pending UI and authority reconciliation ship. */
+/** Durable local privacy boundary; server authority remains separate. */
 class RoomOperationalBoundaryCoordinator(
     private val db: JourneyDatabase,
     private val terminalHandoffGate: JourneyTerminalHandoffGate = JourneyTerminalHandoffGate(),
     private val afterPause: suspend (String) -> Unit = {},
     private val diagnosticWallClock: () -> Long = System::currentTimeMillis,
 ) {
-    suspend fun evaluate(journeyId: String, now: BoundaryReceipt): OperationalBoundaryAssessment =
-        terminalHandoffGate.withLock {
-            val result = db.withTransaction {
+    suspend fun evaluate(journeyId: String, now: BoundaryReceipt): OperationalBoundaryAssessment {
+        val result = terminalHandoffGate.withLock {
+            db.withTransaction {
                 val journey = db.journeyDao().getById(journeyId)
                     ?: return@withTransaction OperationalBoundaryAssessment.NOT_ACTIVE
                 if (journey.status != JourneyStatus.ACTIVE || journey.activeSlot != 1)
@@ -73,13 +76,17 @@ class RoomOperationalBoundaryCoordinator(
                 closeProbableEndForOperationalPause(db, journeyId, diagnosticWallClock())
                 OperationalBoundaryAssessment.PAUSED
             }
-            if (result == OperationalBoundaryAssessment.PAUSED) {
-                try { afterPause(journeyId) }
-                catch (cancelled: CancellationException) { throw cancelled }
-                catch (_: Exception) { /* Room gate and service restoration remain authoritative. */ }
-            }
-            result
         }
+        // The Room pause is durable before this point. Give its exact teardown a bounded chance
+        // even when the evaluating worker is cancelled; the service's Room observer is the
+        // independent backup if cancellation occurred while the transaction returned.
+        if (result == OperationalBoundaryAssessment.PAUSED) {
+            try { withContext(NonCancellable) { withTimeout(5_000L) { afterPause(journeyId) } } }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { /* Persisted pause and entry preflight remain authoritative. */ }
+        }
+        return result
+    }
 }
 
 /** Called under the Room transaction and shared dispatch gate; never a clock authority. */

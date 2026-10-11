@@ -24,4 +24,7 @@ class JourneyServiceController(
     }
 
     suspend fun stopExact(journeyId: String): Boolean = JourneyForegroundService.stopExact(journeyId)
+
+    suspend fun stopPrivacyExact(journeyId: String): Boolean =
+        JourneyForegroundService.stopPrivacyExact(journeyId)
 }

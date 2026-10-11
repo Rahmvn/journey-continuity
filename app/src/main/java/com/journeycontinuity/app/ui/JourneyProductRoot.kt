@@ -310,7 +310,7 @@ fun JourneyProductRoot(
                                 onRetry = onRetryMonitoring,
                                 onEndCompleted = {
                                     if (pendingAuthority?.journey?.id == journey.id) pendingOpen = true
-                                    else viewModel.endJourney()
+                                    else viewModel.endJourney(journey.id)
                                 },
                                 probableEnd = if (showProbableEnd) probableEndPresentation else null,
                                 onProbableEndRendered = onProbableEndRendered,

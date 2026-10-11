@@ -98,7 +98,7 @@ class TravellerAuthorityNavigationTest {
             }
             compose.onNodeWithText("Open Journey").performClick()
             compose.onNodeWithText("End Journey").assertIsDisplayed()
-            val staleActiveSheetCallback = journey::endJourney
+            val staleActiveSheetCallback = { journey.endJourney(id) }
             runBlocking {
                 val op = requireNotNull(db.operationalBoundaryDao().get(id))
                 assertEquals(1, db.operationalBoundaryDao().pauseExact(id, op.admissionId, op.revision,

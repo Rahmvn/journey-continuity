@@ -13,6 +13,9 @@ class RoomFallbackHandoffAttemptStore(
     override suspend fun claim(localAttemptId: Long, atMillis: Long) =
         dao.claimForHandoff(localAttemptId, atMillis) == 1
 
+    override suspend fun suppressUndispatchedClaim(localAttemptId: Long, generation: Int, atMillis: Long) =
+        dao.suppressUndispatchedClaim(localAttemptId, generation, atMillis) == 1
+
     override suspend fun preflightPermanent(localAttemptId: Long, atMillis: Long) =
         dao.markPreflightPermanentFailure(localAttemptId, atMillis) == 1
 

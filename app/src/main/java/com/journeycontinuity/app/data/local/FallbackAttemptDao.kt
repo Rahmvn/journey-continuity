@@ -116,6 +116,12 @@ interface FallbackAttemptDao {
         retryPending: FallbackTransportState = FallbackTransportState.RETRY_PENDING,
     ): Int
 
+    /** Caller has not invoked telephony for this exact claimed generation. */
+    @Query("""UPDATE fallback_attempts SET transportState = 'SUPERSEDED', terminalAt = :atMillis
+        WHERE localAttemptId = :localAttemptId AND handoffGeneration = :generation
+        AND transportState = 'HANDOFF_IN_PROGRESS'""")
+    suspend fun suppressUndispatchedClaim(localAttemptId: Long, generation: Int, atMillis: Long): Int
+
     @Query(
         """UPDATE fallback_attempts
            SET transportState = :handedOff, terminalAt = :atMillis,

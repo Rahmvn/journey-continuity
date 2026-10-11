@@ -24,4 +24,38 @@ class ExactJourneyRuntimeTeardownTest {
         repeat(2) { assertTrue(restored.stop("a")) }
         assertEquals("b", active)
     }
+
+    @Test fun delayedCutoffEffectForOldJourneyCannotStopNewAdmission() = runTest {
+        var active: String? = "journey-b"
+        var stopped = 0
+        val teardown = ExactJourneyRuntimeTeardown(OwnerAdmissionGate(), { active }, stopExactAndAwait = {
+            stopped++
+            true
+        })
+        assertTrue(teardown.stop("journey-a"))
+        assertEquals("journey-b", active)
+        assertEquals(0, stopped)
+    }
+
+    @Test fun lockFreeDelayedPrivacyStopStillHonorsRuntimeGenerationAndStartId() = runTest {
+        val signals = JourneyRuntimeSignals()
+        signals.serviceStarted()
+        signals.startCommand(1)
+        signals.begin("journey-a")
+        signals.startCommand(2)
+        signals.begin("journey-b")
+        var stopped = 0
+        val teardown = ExactJourneyRuntimeTeardown(OwnerAdmissionGate(), { "journey-b" },
+            stopExactAndAwait = { error("Privacy stop must not use ordinary teardown") },
+            stopPrivacyExact = { id ->
+            val ticket = signals.stopTicket(id)
+            if (ticket == null) true else signals.executePrivacyStop(ticket,
+                stopCollection = { stopped++ },
+                stopSelfResult = { error("Old A must not stop B's service") },
+                stopForeground = { error("Old A must not remove B's foreground") })
+        })
+        assertTrue(teardown.stopPrivacy("journey-a"))
+        assertEquals("journey-b", signals.activeRuntimeJourneyId.value)
+        assertEquals(0, stopped)
+    }
 }

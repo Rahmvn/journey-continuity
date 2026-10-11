@@ -95,6 +95,18 @@ internal class JourneyRuntimeSignals {
         return true
     }
 
+    /** Privacy closes A's listener first. Android may then stop only A's current start ID. */
+    @Synchronized fun executePrivacyStop(ticket: JourneyRuntimeStopTicket,
+                                         stopCollection: () -> Unit,
+                                         stopSelfResult: (Int) -> Boolean,
+                                         stopForeground: () -> Unit): Boolean {
+        if (ticket.serviceGeneration != serviceGeneration || !isCurrent(ticket.generation, ticket.journeyId))
+            return true
+        stopCollection()
+        if (ticket.startId == latestStartId && stopSelfResult(ticket.startId)) stopForeground()
+        return true
+    }
+
     @Synchronized fun stopRegistration(forGeneration: Long?) {
         if (forGeneration != null && forGeneration == generation) stop()
     }
@@ -108,6 +120,9 @@ internal class JourneyRuntimeSignals {
 
     private fun isCurrent(forGeneration: Long, journeyId: String): Boolean =
         generation == forGeneration && currentJourneyId == journeyId
+
+    @Synchronized fun isRegistrationCurrent(forGeneration: Long, journeyId: String): Boolean =
+        isCurrent(forGeneration, journeyId)
 }
 
 internal data class JourneyRuntimeStopTicket(val journeyId: String, val generation: Long,

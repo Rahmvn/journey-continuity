@@ -7,11 +7,14 @@ import com.journeycontinuity.app.domain.TelemetryObservation
 import com.journeycontinuity.app.domain.TelemetrySample
 import com.journeycontinuity.app.domain.TelemetrySummary
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 
 interface JourneyRepository {
     val activeJourney: Flow<Journey?>
     suspend fun createIfNoActive(journey: Journey): Boolean
     suspend fun completeActive(completedAt: Long): Journey?
+    suspend fun completeExact(journeyId: String, completedAt: Long): Journey? =
+        if (activeJourney.first()?.id == journeyId) completeActive(completedAt) else null
     /** Persist only after the owner-authenticated cloud terminal transition is acknowledged. */
     suspend fun stopMonitoringActive(journeyId: String, endedAt: Long): Journey?
     fun observeTelemetry(journeyId: String): Flow<TelemetrySummary>

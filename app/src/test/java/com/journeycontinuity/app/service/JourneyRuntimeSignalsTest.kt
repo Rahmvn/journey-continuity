@@ -34,6 +34,55 @@ class JourneyRuntimeSignalsTest {
         assertEquals("journey-a", signals.activeRuntimeJourneyId.value)
     }
 
+    @Test fun privacyStopClosesExactListenerDespiteNewStartIdWithoutStoppingService() {
+        val signals = JourneyRuntimeSignals()
+        signals.serviceStarted(); signals.startCommand(1)
+        val a = signals.begin("journey-a")
+        signals.listenerRegistered(a, "journey-a")
+        val ticket = requireNotNull(signals.stopTicket("journey-a"))
+        signals.startCommand(2)
+        var removed = 0
+        assertTrue(signals.executePrivacyStop(ticket,
+            stopCollection = {
+                removed++
+                signals.stopRegistration(a)
+            },
+            stopSelfResult = { error("New start ID must retain its service") },
+            stopForeground = { error("New start ID must retain its foreground") }))
+        assertEquals(1, removed)
+        assertNull(signals.monitoringJourneyId.value)
+        assertTrue(signals.serviceRunning.value)
+        val b = signals.begin("journey-b")
+        signals.listenerRegistered(b, "journey-b")
+        assertTrue(signals.executePrivacyStop(ticket,
+            stopCollection = { error("Old A cannot remove B") },
+            stopSelfResult = { error("Old A cannot stop B") },
+            stopForeground = { error("Old A cannot remove B's foreground") }))
+        assertEquals("journey-b", signals.monitoringJourneyId.value)
+    }
+
+    @Test fun privacyStopClosesListenerBeforeStoppingOnlyItsCurrentStartId() {
+        val signals = JourneyRuntimeSignals()
+        signals.serviceStarted(); signals.startCommand(3)
+        val a = signals.begin("journey-a")
+        signals.listenerRegistered(a, "journey-a")
+        val ticket = requireNotNull(signals.stopTicket("journey-a"))
+        var foregroundRemoved = 0
+        assertTrue(signals.executePrivacyStop(ticket,
+            stopCollection = { signals.stopRegistration(a) },
+            stopSelfResult = { startId ->
+                assertEquals(3, startId)
+                assertNull(signals.monitoringJourneyId.value)
+                true
+            },
+            stopForeground = { foregroundRemoved++ }))
+        assertEquals(1, foregroundRemoved)
+        assertTrue(signals.executePrivacyStop(ticket,
+            stopCollection = { error("Duplicate stop") },
+            stopSelfResult = { error("Duplicate Android stop") },
+            stopForeground = { error("Duplicate foreground removal") }))
+    }
+
     @Test fun oldServiceDestructionCannotClearRestoredServiceSignals() {
         val signals = JourneyRuntimeSignals()
         val oldService = signals.serviceStarted(); signals.startCommand(1); signals.begin("journey-a")
@@ -111,6 +160,8 @@ class JourneyRuntimeSignalsTest {
 
         signals.listenerRegistered(repeated, "journey-a")
         val later = signals.begin("journey-b")
+        assertFalse(signals.isRegistrationCurrent(repeated, "journey-a"))
+        assertTrue(signals.isRegistrationCurrent(later, "journey-b"))
         assertNull(signals.monitoringJourneyId.value)
         signals.listenerRegistered(repeated, "journey-a")
         signals.connectivityReconciled(repeated, "journey-a", true)

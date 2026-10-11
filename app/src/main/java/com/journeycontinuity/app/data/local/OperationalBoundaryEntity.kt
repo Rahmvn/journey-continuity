@@ -24,8 +24,8 @@ data class OperationalBoundaryEntity(
     val revision: Long = 0,
 ) {
     fun anchor(): BoundaryReceipt? {
-        val elapsed = anchorElapsedRealtimeMillis ?: return null
-        val installation = anchorInstallationId ?: return null
+        val elapsed = anchorElapsedRealtimeMillis?.takeIf { it >= 0 } ?: return null
+        val installation = anchorInstallationId?.takeIf { it.isNotBlank() } ?: return null
         return BoundaryReceipt(elapsed, anchorBootCount, installation)
     }
 

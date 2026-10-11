@@ -453,19 +453,18 @@ class JourneyViewModel(
         }
     }
 
-    fun endJourney() {
-        if (_uiState.value.isActionInProgress || _uiState.value.activeJourney == null) return
+    fun endJourney(expectedJourneyId: String) {
+        if (_uiState.value.isActionInProgress ||
+            _uiState.value.activeJourney?.id != expectedJourneyId) return
         _uiState.update { it.copy(isActionInProgress = true, message = null) }
         viewModelScope.launch {
-            runCatching { lifecycle.complete() }.fold(
+            runCatching { lifecycle.completeExact(expectedJourneyId) }.fold(
                 onSuccess = { result ->
                     when (result) {
                         is CompleteJourneyResult.Completed -> {
-                            serviceController.stop()
                             setMessage("Journey completed.")
                         }
                         CompleteJourneyResult.NoActiveJourney -> {
-                            serviceController.stop()
                             setMessage("Journey status changed. Check the saved Journey status.")
                         }
                     }

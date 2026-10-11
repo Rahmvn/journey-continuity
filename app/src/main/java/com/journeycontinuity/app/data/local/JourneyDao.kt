@@ -163,8 +163,10 @@ abstract class JourneyDao {
     }
 
     @Transaction
-    open suspend fun completeActive(completedAt: Long, retainActiveSlot: Boolean = false): JourneyEntity? {
+    open suspend fun completeActive(completedAt: Long, retainActiveSlot: Boolean = false,
+                                    expectedJourneyId: String? = null): JourneyEntity? {
         val active = getActive() ?: return null
+        if (expectedJourneyId != null && active.id != expectedJourneyId) return null
         if (markCompleted(active.id, completedAt, JourneyStatus.COMPLETED, retainActiveSlot) != 1) return null
         insertTerminalWorkflow(JourneyTerminalReconciliationEntity(active.id))
         recordCompletionIntent(active.id, java.util.UUID.randomUUID().toString(), completedAt)
