@@ -74,6 +74,18 @@ android {
             buildConfigField("String", "SUPABASE_URL", "\"\"")
             buildConfigField("String", "SUPABASE_PUBLISHABLE_KEY", "\"\"")
         }
+        create("localAcceptance") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".localacceptance"
+            matchingFallbacks += listOf("debug")
+            val localKey = journeyLocalProperties.getProperty("LOCAL_ACCEPTANCE_PUBLISHABLE_KEY")
+                ?: System.getenv("LOCAL_ACCEPTANCE_PUBLISHABLE_KEY").orEmpty()
+            require(localKey.isBlank() || localKey.startsWith("sb_publishable_")) {
+                "Local acceptance APK requires a publishable key, never a privileged key."
+            }
+            buildConfigField("String", "SUPABASE_URL", "\"http://127.0.0.1:57421\"")
+            buildConfigField("String", "SUPABASE_PUBLISHABLE_KEY", configuredString("LOCAL_ACCEPTANCE_PUBLISHABLE_KEY"))
+        }
         release {
             optimization {
                 enable = false
@@ -98,6 +110,9 @@ androidComponents {
         it.enableAndroidTest = true
     }
     beforeVariants(selector().withBuildType("boundaryAcceptance")) {
+        it.enableAndroidTest = true
+    }
+    beforeVariants(selector().withBuildType("localAcceptance")) {
         it.enableAndroidTest = true
     }
 }
@@ -138,5 +153,6 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     add("m6AcceptanceImplementation", libs.androidx.compose.ui.test.manifest)
     add("travellerUiAcceptanceImplementation", libs.androidx.compose.ui.test.manifest)
+    add("localAcceptanceImplementation", libs.androidx.compose.ui.test.manifest)
     debugImplementation(libs.androidx.compose.ui.tooling)
 }

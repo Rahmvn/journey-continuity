@@ -13,6 +13,10 @@ data class SupabaseConfiguration(
     val isHttpsUrl: Boolean
         get() = parsedUri?.scheme.equals("https", ignoreCase = true) && !parsedUri?.host.isNullOrBlank()
 
+    private val isIsolatedLocalUrl: Boolean
+        get() = BuildConfig.BUILD_TYPE == "localAcceptance" &&
+            url == "http://127.0.0.1:57421"
+
     val hasExpectedProjectHostShape: Boolean
         get() = parsedUri?.host?.matches(SUPABASE_PROJECT_HOST) == true
 
@@ -28,7 +32,7 @@ data class SupabaseConfiguration(
         get() = when {
             url.isBlank() -> "Supabase URL is missing from this build."
             publishableKey.isBlank() -> "Supabase publishable key is missing from this build."
-            !isHttpsUrl -> "Supabase URL is not a valid HTTPS URL."
+            !isHttpsUrl && !isIsolatedLocalUrl -> "Supabase URL is not a valid HTTPS URL."
             keyCategory == "unrecognized" -> "Supabase client key has an unrecognized prefix."
             else -> null
         }

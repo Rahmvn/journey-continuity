@@ -22,7 +22,8 @@ class IsolatedTestRunner : AndroidJUnitRunner() {
         cl,
         if (context?.packageName == "com.journeycontinuity.app.boundaryacceptance") {
             BoundaryAcceptanceApplication::class.java.name
-        } else if (context?.packageName in setOf("com.journeycontinuity.app.m6isolation",
+        } else if (context?.packageName in setOf("com.journeycontinuity.app.localacceptance",
+                "com.journeycontinuity.app.m6isolation",
                 "com.journeycontinuity.app.structuredadmissionaudit", "com.journeycontinuity.app.probableendguardacceptance",
                 )) {
             JourneyContinuityApplication::class.java.name
