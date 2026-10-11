@@ -7,6 +7,8 @@ import android.net.NetworkCapabilities
 import androidx.room.Room
 import kotlinx.coroutines.flow.first
 import com.journeycontinuity.app.data.local.JourneyDatabase
+import com.journeycontinuity.app.data.local.PendingAuthorityJourney
+import com.journeycontinuity.app.service.JourneyBootRecoveryWorker
 import com.journeycontinuity.app.data.local.MIGRATION_1_2
 import com.journeycontinuity.app.data.local.MIGRATION_2_3
 import com.journeycontinuity.app.data.local.MIGRATION_3_4
@@ -611,6 +613,19 @@ open class JourneyContinuityApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // A worker or restarted service can create the process without an Activity. Persist
+        // the recovery request before it may commit a privacy pause needing an authority wake.
+        try {
+            val handoff = JourneyBootRecoveryWorker.enqueue(applicationContext)
+            handoff.result.addListener({
+                try { handoff.result.get() }
+                catch (error: Exception) {
+                    android.util.Log.e("JourneyRecovery", "Process recovery enqueue failed", error)
+                }
+            }, java.util.concurrent.Executor { it.run() })
+        } catch (error: Exception) {
+            android.util.Log.e("JourneyRecovery", "Process recovery enqueue unavailable", error)
+        }
         // Re-evaluate durable requested state after process restart. An urgent wake can
         // bypass a legacy/retrying worker without cancelling work that is already running.
         runCatching { syncScheduler.schedule(SyncRequestUrgency.URGENT) }
@@ -624,12 +639,8 @@ open class JourneyContinuityApplication : Application() {
                 incidentReconciliationCoordinator.observePendingAuthority().distinctUntilChanged().collect { rows ->
                     watchAuthorityConnectivity(rows.isNotEmpty())
                     rows.forEach { row ->
-                        val due = row.retryAtMillis
                         try {
-                            if (due != null && RoomIncidentReconciliationCoordinator.shouldScheduleRetry(row.lastOutcome) ||
-                                due == null && row.lastOutcome == "EXPLICIT_PENDING")
-                                authorityRetryScheduler.schedule(row.journeyId, due)
-                            else authorityRetryScheduler.retireObsolete(row.journeyId)
+                            restoreAuthorityWake(row)
                         } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
                         catch (_: Exception) { /* The durable Room row remains for another event or restart. */ }
                     }
@@ -754,6 +765,32 @@ open class JourneyContinuityApplication : Application() {
             com.journeycontinuity.app.domain.OperationalBoundaryAssessment.BEFORE_APPROXIMATE_CAP
         if (!permitted) exactJourneyRuntimeTeardown.stopPrivacy(journeyId)
         return permitted
+    }
+
+    /** Process entry never starts a location service; Room owns the privacy decision. */
+    internal open suspend fun recoverOperationalBoundaryOnEntry(): Boolean {
+        val active = database.journeyDao().getActive() ?: return false
+        if (active.status != com.journeycontinuity.app.domain.JourneyStatus.ACTIVE) return false
+        return evaluateMonitoringBoundary(active.id)
+    }
+
+    /** A boot broadcast can start this process without an Activity or any surviving service. */
+    internal suspend fun recoverAfterBoot() {
+        recoverOperationalBoundaryOnEntry()
+        // A concurrent authority attempt can replace a deadline while a wake is being
+        // scheduled. Retry the bounded local read; WorkManager retries if it keeps changing.
+        repeat(3) {
+            val rows = database.incidentReconciliationDao().pendingAuthority()
+            rows.forEach { restoreAuthorityWake(it) }
+            if (database.incidentReconciliationDao().pendingAuthority() == rows) return
+        }
+        error("Pending authority changed throughout recovery handoff")
+    }
+
+    private suspend fun restoreAuthorityWake(row: PendingAuthorityJourney) {
+        if (WorkManagerAuthorityRetryScheduler.desiredToken(row) != null)
+            authorityRetryScheduler.schedule(row.journeyId, row.retryAtMillis)
+        else authorityRetryScheduler.retireObsolete(row.journeyId)
     }
 
     private suspend fun evaluateDegradedBoundary(journeyId: String): Boolean {

@@ -1,7 +1,7 @@
 package com.journeycontinuity.app.service
 
 import android.Manifest
-import android.content.Intent
+import android.os.ParcelFileDescriptor
 import androidx.room.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -69,9 +69,19 @@ class OperationalBoundaryRuntimeAcceptanceTest {
     }
 
     private suspend fun openForegroundActivity() {
-        context.startActivity(Intent(context, MainActivity::class.java)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        delay(1_000)
+        ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand(
+            "am start -n ${context.packageName}/${MainActivity::class.java.name}",
+        )).use { it.readBytes() }
+        withTimeout(10_000) {
+            var resumed = false
+            while (!resumed) {
+                instrumentation.runOnMainSync {
+                    resumed = ActivityLifecycleMonitorRegistry.getInstance()
+                        .getActivitiesInStage(Stage.RESUMED).any { it is MainActivity }
+                }
+                if (!resumed) delay(100)
+            }
+        }
     }
 
     private suspend fun awaitStopped(id: String) = withTimeout(15_000) {
@@ -116,6 +126,27 @@ class OperationalBoundaryRuntimeAcceptanceTest {
         assertFalse(JourneyForegroundService.serviceRunning.value)
     }
 
+    @Test fun sameBootServiceRestartRestoresOnlyTheExactActiveJourney() = runBlocking {
+        val id = requireNotNull(fixtureId)
+        openForegroundActivity()
+        app.journeyServiceController.start()
+        awaitListener(id)
+        app.journeyServiceController.stop()
+        awaitStopped(id)
+        assertEquals(OperationalBoundaryState.MONITORING.name,
+            requireNotNull(database).operationalBoundaryDao().get(id)?.state)
+        app.journeyServiceController.start()
+        awaitListener(id)
+        assertEquals(id, JourneyForegroundService.activeRuntimeJourneyId.value)
+    }
+
+    @Test fun processRecoveryKeepsValidSameBootMonitoringWithoutStartingAService() = runBlocking {
+        val id = requireNotNull(fixtureId)
+        assertTrue(app.recoverOperationalBoundaryOnEntry())
+        assertEquals(OperationalBoundaryState.MONITORING.name,
+            requireNotNull(database).operationalBoundaryDao().get(id)?.state)
+    }
+
     @Test fun backgroundServiceTimerInitiatesCutoffAndRemovesListener() = runBlocking {
         val id = requireNotNull(fixtureId)
         armServiceTimerNearCap(id)
@@ -138,7 +169,20 @@ class OperationalBoundaryRuntimeAcceptanceTest {
         requireNotNull(database).openHelper.writableDatabase.execSQL(
             "UPDATE journey_operational_boundaries SET anchorBootCount = anchorBootCount + 1 WHERE journeyId = ?",
             arrayOf(id))
+        val previousEntries = clockApp.processRecoveryCalls
+        instrumentation.uiAutomation.executeShellCommand("input keyevent KEYCODE_HOME").close()
+        delay(500)
         openForegroundActivity()
+        assertEquals("Activity foreground recovery did not run",
+            true, withTimeoutOrNull(5_000) {
+                while (clockApp.processRecoveryCalls <= previousEntries) delay(100)
+                true
+            })
+        withTimeout(15_000) {
+            while (requireNotNull(database).operationalBoundaryDao().get(id)?.state !=
+                OperationalBoundaryState.PENDING_AUTHORITY.name) delay(100)
+        }
+        assertNull(JourneyForegroundService.monitoringJourneyId.value)
         app.journeyServiceController.start()
         delay(1_500)
         assertEquals(OperationalBoundaryState.PENDING_AUTHORITY.name,

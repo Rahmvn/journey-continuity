@@ -89,7 +89,8 @@ class WorkManagerAuthorityRetryScheduler(
             row == null -> null
             row.retryAtMillis != null && RoomIncidentReconciliationCoordinator.shouldScheduleRetry(row.lastOutcome) ->
                 deadlineToken(row.retryAtMillis)
-            row.retryAtMillis == null && row.lastOutcome == IncidentReconciliationOutcome.EXPLICIT_PENDING.name ->
+            row.retryAtMillis == null && (row.lastOutcome == null ||
+                row.lastOutcome == IncidentReconciliationOutcome.EXPLICIT_PENDING.name) ->
                 IMMEDIATE_TOKEN
             else -> null
         }

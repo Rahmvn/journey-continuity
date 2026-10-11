@@ -173,6 +173,11 @@ class JourneyForegroundService : Service() {
         } catch (_: SecurityException) {
             stopServiceCompletely()
             return START_NOT_STICKY
+        } catch (_: IllegalStateException) {
+            // Android can refuse a location foreground service during a background restart.
+            // Keep the Journey durable; a later visible entry rechecks its boundary.
+            stopServiceCompletely()
+            return START_NOT_STICKY
         }
 
         currentDestination?.let(::showRecordingNotification)

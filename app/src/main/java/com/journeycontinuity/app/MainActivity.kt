@@ -314,6 +314,13 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         app.wakeForAuthorityForeground()
+        // A visible return must reassess the persisted exact Journey even when auth or UI
+        // routing does not currently attempt to start its location service.
+        lifecycleScope.launch {
+            try { app.recoverOperationalBoundaryOnEntry() }
+            catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (_: Exception) { /* Service entry still has its own fail-closed preflight. */ }
+        }
         refreshPrerequisiteState()
         refreshSmsFallbackState()
         if (!isAdmitted()) {
@@ -399,7 +406,7 @@ class MainActivity : ComponentActivity() {
         ) {
             val journeyId = requireNotNull(journeyViewModel.uiState.value.activeJourney?.id)
             lifecycleScope.launch {
-                if (!app.mayStartContinuousMonitoring(journeyId) ||
+                if (!monitoringRecoveryEligible(journeyId) ||
                     !lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) ||
                     journeyViewModel.uiState.value.activeJourney?.id != journeyId ||
                     com.journeycontinuity.app.service.JourneyForegroundService.activeRuntimeJourneyId.value == journeyId)
@@ -422,13 +429,21 @@ class MainActivity : ComponentActivity() {
         )
     }
 
+    private suspend fun monitoringRecoveryEligible(journeyId: String): Boolean = try {
+        app.evaluateMonitoringBoundary(journeyId)
+    } catch (cancelled: kotlinx.coroutines.CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        false
+    }
+
     /** Local monitoring can resume during a cloud-auth outage without constructing JourneyViewModel. */
     private fun resumeEstablishedLocalMonitoring() {
         if (locationUiState.access == ForegroundLocationAccess.NONE ||
             !locationUiState.locationServicesEnabled) return
         lifecycleScope.launch {
             val journeyId = runCatching { app.journeyRepository.activeJourney.first()?.id }.getOrNull()
-            if (journeyId != null && app.mayStartContinuousMonitoring(journeyId) &&
+            if (journeyId != null && monitoringRecoveryEligible(journeyId) &&
                 lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
                 runCatching { app.journeyServiceController.start() }
             }

@@ -1,10 +1,20 @@
 package com.journeycontinuity.app.data.repository
 
+import com.journeycontinuity.app.data.local.PendingAuthorityJourney
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class IncidentAuthorityRetryPolicyTest {
+    @Test fun newlyPausedJourneyGetsImmediateWakeIdentity() {
+        assertEquals(WorkManagerAuthorityRetryScheduler.IMMEDIATE_TOKEN,
+            WorkManagerAuthorityRetryScheduler.desiredToken(PendingAuthorityJourney("journey", null, null)))
+        assertNull(WorkManagerAuthorityRetryScheduler.desiredToken(
+            PendingAuthorityJourney("journey", null, "COMPETING_TERMINAL")))
+    }
+
     @Test fun uncertainResultsGetADeferredWake() {
         listOf("UNAVAILABLE", "CLAIM_PENDING", "EXPLICIT_PENDING", "TOO_EARLY",
             "AUTHENTICATION_REQUIRED").forEach {
