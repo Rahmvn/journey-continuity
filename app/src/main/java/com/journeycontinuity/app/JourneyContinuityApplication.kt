@@ -848,6 +848,15 @@ open class JourneyContinuityApplication : Application() {
             localOwner = { cloudGateways.ownerStore?.expectedTravellerUserId() })
     }
 
+    internal suspend fun requestOrdinaryJourneyStop(journeyId: String): Boolean {
+        val owner = cloudGateways.ownerStore?.expectedTravellerUserId() ?: return false
+        val accepted = incidentReconciliationCoordinator.requestStop(journeyId, owner)
+        if (accepted) try { incidentReconciliationCoordinator.advance(journeyId) }
+        catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+        catch (_: Exception) { /* The durable retry owns a failed foreground attempt. */ }
+        return accepted
+    }
+
     internal val travellerAuthorityActions by lazy {
         com.journeycontinuity.app.data.repository.TravellerAuthorityActions(database,
             cloudGateways.sync, cloudGateways.incidentAuthority,

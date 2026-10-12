@@ -73,6 +73,7 @@ class MainActivity : ComponentActivity() {
             serviceController = app.journeyServiceController,
             trustedContactGateway = app.trustedContactGateway,
             degradedConnectivityCoordinator = app.degradedConnectivityCoordinator,
+            requestOrdinaryStop = app::requestOrdinaryJourneyStop,
         )
     }
 

@@ -2,6 +2,8 @@ package com.journeycontinuity.app.ui.destination
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -15,12 +17,20 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.journeycontinuity.app.R
+import com.journeycontinuity.app.ui.TravellerNavigationRippleRadius
+import com.journeycontinuity.app.ui.TravellerNavigationRippleColor
+import com.journeycontinuity.app.ui.TravellerBackVisual
 
 private val mapBackground = Color(0xFFFBFBF8)
 private val mapInk = Color(0xFF161B20)
@@ -65,25 +75,35 @@ fun DestinationMapScreen(
             "$unit, ${area.region.canonicalName}", "You can name this place after selecting it.")
     }
     BoxWithConstraints(Modifier.fillMaxSize().background(mapBackground)) {
-        Column(Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 16.dp)) {
+        Column(Modifier.fillMaxSize().padding(horizontal = 24.dp)
+            .padding(top = 28.dp, bottom = if (maxHeight >= 700.dp) 60.dp else 16.dp)) {
             Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = back, modifier = Modifier.size(48.dp).testTag("map_back"),
-                    contentPadding = PaddingValues(0.dp)) {
-                    Text("‹", color = mapInk, fontSize = 30.sp,
-                        modifier = Modifier.semantics { contentDescription = "Back" })
+                Box(Modifier.size(48.dp).clip(CircleShape)
+                    .clickable(interactionSource = null,
+                        indication = ripple(bounded = false, radius = TravellerNavigationRippleRadius,
+                            color = TravellerNavigationRippleColor),
+                        role = Role.Button, onClick = back)
+                    .testTag("map_back").semantics { contentDescription = "Back" },
+                    contentAlignment = Alignment.Center) {
+                    TravellerBackVisual()
                 }
+                Spacer(Modifier.width(8.dp))
                 Text("Choose on map", color = mapInk, fontSize = 22.sp, lineHeight = 27.sp,
                     fontWeight = FontWeight.Bold)
             }
             BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
                 val compact = maxHeight < 400.dp || LocalDensity.current.fontScale > 1.5f
-                val mapHeight = (maxHeight * if (compact) 0.4f else 0.65f).coerceAtMost(454.dp)
+                val mapHeight = when {
+                    maxHeight >= 600.dp && !compact -> 454.dp
+                    compact && maxHeight >= 300.dp -> (maxHeight * 0.5f).coerceAtLeast(160.dp)
+                    else -> (maxHeight * if (compact) 0.4f else 0.65f).coerceAtMost(454.dp)
+                }
                 Column(Modifier.fillMaxSize()) {
                     if (!compact) {
-                        Spacer(Modifier.height(12.dp))
+                        Spacer(Modifier.height(16.dp))
                         Text(copy.first, color = mapMuted, fontSize = 14.sp, lineHeight = 20.sp,
                             modifier = Modifier.testTag("map_helper"))
-                        Spacer(Modifier.height(20.dp))
+                        Spacer(Modifier.height(24.dp))
                     }
                     // The entire viewport stays visible; only the supporting copy/name pane scrolls.
                     // Native attribution must not disappear beneath a clipped scrolling map.
@@ -126,19 +146,20 @@ fun DestinationMapScreen(
                             Text("Name this place (optional)", color = mapInk, fontSize = 14.sp,
                                 fontWeight = FontWeight.Medium)
                             Spacer(Modifier.height(8.dp))
-                            OutlinedTextField(value = naming.name, onValueChange = viewModel::updateName,
-                                modifier = Modifier.fillMaxWidth().testTag("map_optional_name"), singleLine = true,
-                                placeholder = { Text("e.g. Grandma’s house", fontSize = 13.sp) },
-                                isError = naming.issue != null, shape = RoundedCornerShape(4.dp),
-                                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = mapBrand,
-                                    unfocusedBorderColor = mapMuted.copy(alpha = 0.75f)))
+                            DestinationInput(naming.name, viewModel::updateName,
+                                "e.g. Grandma’s house", "map_optional_name", 54.dp, 4.dp,
+                                isError = naming.issue != null, imeAction = ImeAction.Done,
+                                hintFontSize = 13.sp, label = "Name this place (optional)",
+                                capitalization = KeyboardCapitalization.Words,
+                                autoCorrectEnabled = true)
                             Spacer(Modifier.height(8.dp))
                             Text(when (naming.issue) {
                                 MapNameIssue.TOO_LONG -> "Use 160 characters or fewer."
                                 MapNameIssue.CONTROL_CHARACTERS -> "Remove control characters from the name."
                                 null -> if (naming.label == MapNamingLabel.Resolving) "Finding a location label…"
                                     else "Optional. If left blank, Alabarin will use a simple location label."
-                            }, color = mapMuted, fontSize = 12.sp, lineHeight = 17.sp,
+                            }, color = if (naming.issue == null) mapMuted else Color(0xFF992E2E),
+                                fontSize = 12.sp, lineHeight = 17.sp,
                                 modifier = Modifier.testTag("map_name_helper"))
                         }
                         Spacer(Modifier.height(16.dp))
@@ -171,8 +192,10 @@ fun DestinationMapScreen(
 }
 
 @Composable private fun MapAction(text: String, tag: String, enabled: Boolean = true, onClick: () -> Unit) {
-    Button(onClick, enabled = enabled, modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp).testTag(tag),
+    Button(onClick, enabled = enabled, modifier = Modifier.fillMaxWidth()
+        .heightIn(min = if (tag == "map_use_location") 58.dp else 64.dp).testTag(tag),
         shape = RoundedCornerShape(18.dp), colors = ButtonDefaults.buttonColors(containerColor = mapBrand,
+            contentColor = Color.White,
             disabledContainerColor = Color(0xFFD5D7D7), disabledContentColor = mapMuted)) {
         Text(text, fontSize = 16.sp, lineHeight = 20.sp, fontWeight = FontWeight.Bold)
     }

@@ -7,6 +7,7 @@ import com.journeycontinuity.app.data.repository.JourneyRepository
 import com.journeycontinuity.app.domain.CompleteJourneyResult
 import com.journeycontinuity.app.domain.CloudMonitoringState
 import com.journeycontinuity.app.domain.Journey
+import com.journeycontinuity.app.domain.JourneyStatus
 import com.journeycontinuity.app.domain.JourneyLifecycle
 import com.journeycontinuity.app.domain.JourneyInputValidation
 import com.journeycontinuity.app.domain.JourneySyncState
@@ -35,6 +36,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CancellationException
@@ -47,7 +49,7 @@ enum class TrustedContactsAvailability {
     UNAVAILABLE,
 }
 
-enum class JourneyProductRoute { HOME, START, CHECKPOINT, ACTIVE, CONTACTS, RESILIENCE }
+enum class JourneyProductRoute { HOME, START, CHECKPOINT, ACTIVE, END, END_RESULT, CONTACTS, RESILIENCE }
 enum class TrustedContactsPage { LIST, ADD, READY }
 
 internal fun trustedContactsReturnRoute(route: JourneyProductRoute): JourneyProductRoute =
@@ -68,7 +70,7 @@ internal fun trustedContactsFailurePresentation(error: Throwable) = when {
     error is CloudSyncException && error.kind == SyncFailureKind.AUTHENTICATION ->
         TrustedContactsFailurePresentation(
             TrustedContactsAvailability.UNAVAILABLE,
-            "Trusted contacts unavailable because traveller identity needs attention.",
+            "Trusted contacts are unavailable right now. Try again here.",
         )
     else -> TrustedContactsFailurePresentation(
         TrustedContactsAvailability.UNAVAILABLE,
@@ -87,6 +89,10 @@ data class JourneyUiState(
     val monitoringJourneyId: String? = null,
     val currentConnectivity: CurrentJourneyConnectivity? = null,
     val productRoute: JourneyProductRoute = JourneyProductRoute.HOME,
+    val endFlowJourneyId: String? = null,
+    val endResult: Journey? = null,
+    val endStopPending: Boolean = false,
+    val endError: String? = null,
     val utilityReturnRoute: JourneyProductRoute = JourneyProductRoute.HOME,
     val resiliencePage: ResiliencePage = ResiliencePage.STATUS,
     val draftDestination: String = "",
@@ -95,6 +101,7 @@ data class JourneyUiState(
     val trustedContacts: List<TrustedContactSummary> = emptyList(),
     val trustedContactsAvailability: TrustedContactsAvailability = TrustedContactsAvailability.LOADING,
     val trustedContactsUnavailableMessage: String? = null,
+    val trustedContactActionError: String? = null,
     val trustedContactActionInProgress: Boolean = false,
     val trustedContactsPage: TrustedContactsPage = TrustedContactsPage.LIST,
     val invitationReadyId: String? = null,
@@ -134,13 +141,14 @@ internal fun JourneyUiState.withTrustedContactsSnapshot(
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class JourneyViewModel(
-    repository: JourneyRepository,
+    private val repository: JourneyRepository,
     private val lifecycle: JourneyLifecycle,
     private val serviceController: JourneyMonitoringController,
     private val trustedContactGateway: TrustedContactGateway,
     private val degradedConnectivityCoordinator: DegradedConnectivityCoordinator,
     currentConnectivity: StateFlow<CurrentJourneyConnectivity?> =
         JourneyForegroundService.currentConnectivity,
+    private val requestOrdinaryStop: suspend (String) -> Boolean = { false },
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(JourneyUiState())
     val uiState: StateFlow<JourneyUiState> = _uiState.asStateFlow()
@@ -220,6 +228,24 @@ class JourneyViewModel(
         if (it.activeJourney != null) it.copy(productRoute = JourneyProductRoute.ACTIVE) else it
     }
 
+    fun openEndJourney(expectedJourneyId: String) = _uiState.update {
+        if (it.activeJourney?.id == expectedJourneyId && !it.isActionInProgress)
+            it.copy(productRoute = JourneyProductRoute.END, endFlowJourneyId = expectedJourneyId,
+                endResult = null, endStopPending = false, endError = null) else it
+    }
+
+    fun returnToActiveFromEnd() = _uiState.update {
+        if (it.productRoute == JourneyProductRoute.END && !it.isActionInProgress && !it.endStopPending &&
+            it.activeJourney?.id == it.endFlowJourneyId)
+            it.copy(productRoute = JourneyProductRoute.ACTIVE, endFlowJourneyId = null, endError = null) else it
+    }
+
+    fun doneWithEndResult() = _uiState.update {
+        if (it.productRoute == JourneyProductRoute.END_RESULT && it.endResult?.id == it.endFlowJourneyId)
+            it.copy(productRoute = JourneyProductRoute.HOME, endFlowJourneyId = null,
+                endResult = null, endStopPending = false, endError = null) else it
+    }
+
     fun openContacts() {
         cancelPendingStart()
         _uiState.update {
@@ -233,14 +259,16 @@ class JourneyViewModel(
                 invitationReadyId = if (pendingResult) it.invitationReadyId else null,
                 invitationReadyName = if (pendingResult) it.invitationReadyName else null,
                 invitationReadyEmail = if (pendingResult) it.invitationReadyEmail else null,
-                invitationShareUrl = if (pendingResult) it.invitationShareUrl else null)
+                 invitationShareUrl = if (pendingResult) it.invitationShareUrl else null,
+                 trustedContactActionError = null)
         }
         refreshTrustedContacts()
     }
 
     fun openAddTrustedContact() = _uiState.update {
         if (it.productRoute == JourneyProductRoute.CONTACTS)
-            it.copy(trustedContactsPage = TrustedContactsPage.ADD) else it
+            it.copy(trustedContactsPage = TrustedContactsPage.ADD,
+                trustedContactActionError = null) else it
     }
 
     fun doneWithInvitation() {
@@ -248,7 +276,7 @@ class JourneyViewModel(
             it.copy(trustedContactsPage = TrustedContactsPage.LIST,
                 invitationReadyId = null,
                 invitationReadyName = null, invitationReadyEmail = null,
-                invitationShareUrl = null)
+                 invitationShareUrl = null, trustedContactActionError = null)
         }
         refreshTrustedContacts()
     }
@@ -279,7 +307,7 @@ class JourneyViewModel(
             trustedContactsPage = TrustedContactsPage.LIST,
             invitationReadyId = null,
             invitationReadyName = null, invitationReadyEmail = null,
-            invitationShareUrl = null)
+             invitationShareUrl = null, trustedContactActionError = null)
     }
 
     fun backToHome() {
@@ -456,22 +484,65 @@ class JourneyViewModel(
     fun endJourney(expectedJourneyId: String) {
         if (_uiState.value.isActionInProgress ||
             _uiState.value.activeJourney?.id != expectedJourneyId) return
-        _uiState.update { it.copy(isActionInProgress = true, message = null) }
+        _uiState.update { it.copy(isActionInProgress = true, message = null, endError = null) }
         viewModelScope.launch {
             runCatching { lifecycle.completeExact(expectedJourneyId) }.fold(
                 onSuccess = { result ->
                     when (result) {
                         is CompleteJourneyResult.Completed -> {
-                            setMessage("Journey completed.")
+                            _uiState.update { current ->
+                                if (current.activeJourney?.id == expectedJourneyId ||
+                                    current.endFlowJourneyId == expectedJourneyId)
+                                    current.copy(productRoute = JourneyProductRoute.END_RESULT,
+                                        endFlowJourneyId = expectedJourneyId, endResult = result.journey)
+                                else current
+                            }
                         }
                         CompleteJourneyResult.NoActiveJourney -> {
-                            setMessage("Journey status changed. Check the saved Journey status.")
+                            _uiState.update { it.copy(endError =
+                                "Journey status changed. Check the saved Journey status.") }
                         }
                     }
                 },
-                onFailure = { setMessage("Could not end journey: ${it.message}") },
+                onFailure = { _uiState.update { state -> state.copy(endError =
+                    "Could not complete this Journey. Please try again.") } },
             )
             _uiState.update { it.copy(isActionInProgress = false) }
+        }
+    }
+
+    fun stopJourney(expectedJourneyId: String) {
+        val current = _uiState.value
+        if (current.productRoute != JourneyProductRoute.END || current.isActionInProgress ||
+            current.endStopPending || current.activeJourney?.id != expectedJourneyId ||
+            current.endFlowJourneyId != expectedJourneyId) return
+        _uiState.update { it.copy(isActionInProgress = true, endError = null) }
+        viewModelScope.launch {
+            val accepted = try { requestOrdinaryStop(expectedJourneyId) }
+                catch (cancelled: CancellationException) { throw cancelled }
+                catch (_: Exception) { false }
+            if (!accepted) {
+                _uiState.update { it.copy(isActionInProgress = false,
+                    endError = "Stop could not be saved. Check your account and try again.") }
+                return@launch
+            }
+            _uiState.update { it.copy(isActionInProgress = false, endStopPending = true) }
+            // Only an exact persisted authoritative CANCELLED state may display the Stop result.
+            val terminal = combine(repository.observeJourney(expectedJourneyId),
+                repository.observeAcknowledgedStop(expectedJourneyId)) { journey, acknowledged ->
+                if (journey?.status == JourneyStatus.CANCELLED) acknowledged
+                else journey?.takeIf { it.status != JourneyStatus.ACTIVE }
+            }.first { it != null } ?: return@launch
+            _uiState.update { state ->
+                if (state.endFlowJourneyId != expectedJourneyId || !state.endStopPending ||
+                    state.activeJourney?.id?.let { it != expectedJourneyId } == true) state
+                else if (terminal.status == JourneyStatus.CANCELLED && terminal.endedAt != null)
+                    state.copy(productRoute = JourneyProductRoute.END_RESULT,
+                        endResult = terminal, endStopPending = false, endError = null)
+                else state.copy(productRoute = JourneyProductRoute.HOME, endFlowJourneyId = null,
+                    endStopPending = false, endError = null,
+                    message = "Journey status changed. Check the saved Journey status.")
+            }
         }
     }
 
@@ -480,14 +551,6 @@ class JourneyViewModel(
     fun refreshTrustedContacts() {
         if (_uiState.value.trustedContactActionInProgress || trustedRefreshInFlight) return
         trustedRefreshInFlight = true
-        _uiState.update {
-            it.copy(
-                trustedContactsAvailability = if (it.trustedContactsAvailability ==
-                    TrustedContactsAvailability.AVAILABLE) TrustedContactsAvailability.AVAILABLE
-                else TrustedContactsAvailability.LOADING,
-                trustedContactsUnavailableMessage = null,
-            )
-        }
         viewModelScope.launch {
             try {
                 runCatching { trustedContactRequests.withLock { trustedContactGateway.list() } }.fold(
@@ -496,9 +559,7 @@ class JourneyViewModel(
                     },
                     onFailure = { error ->
                         if (error is CancellationException) throw error
-                        val presentation = trustedContactsFailurePresentation(error)
                         _uiState.update { it.withTrustedContactsFailure(error) }
-                        setMessage(presentation.message)
                     },
                 )
             } finally {
@@ -520,10 +581,12 @@ class JourneyViewModel(
             return
         }
         if (!trustedContactGateway.invitationSharingAvailable) {
-            setMessage("Trusted contact invitation sharing is unavailable.")
+            _uiState.update { it.copy(trustedContactActionError =
+                "Invitation sharing is unavailable right now.") }
             return
         }
-        _uiState.update { it.copy(trustedContactActionInProgress = true, invitationShareUrl = null) }
+        _uiState.update { it.copy(trustedContactActionInProgress = true, invitationShareUrl = null,
+            trustedContactActionError = null) }
         viewModelScope.launch {
             runCatching { trustedContactRequests.withLock {
                 trustedContactGateway.create(normalizedName, normalizedEmail)
@@ -541,6 +604,7 @@ class JourneyViewModel(
                         } ?: true
                         refreshed.copy(
                             trustedContactActionInProgress = false,
+                            trustedContactActionError = null,
                             trustedContactsPage = if (stillPending) TrustedContactsPage.READY
                                 else TrustedContactsPage.LIST,
                             invitationReadyId = if (stillPending) invitation.id else null,
@@ -551,8 +615,9 @@ class JourneyViewModel(
                     }
                 },
                 onFailure = { error ->
-                    _uiState.update { it.copy(trustedContactActionInProgress = false) }
-                    setMessage("Could not create invitation: ${error.message}")
+                    if (error is CancellationException) throw error
+                    _uiState.update { it.copy(trustedContactActionInProgress = false,
+                        trustedContactActionError = "Could not create the invitation. Try again.") }
                 },
             )
         }
@@ -560,7 +625,8 @@ class JourneyViewModel(
 
     fun revokeTrustedContact(subjectId: String) {
         if (_uiState.value.trustedContactActionInProgress) return
-        _uiState.update { it.copy(trustedContactActionInProgress = true, invitationShareUrl = null) }
+        _uiState.update { it.copy(trustedContactActionInProgress = true, invitationShareUrl = null,
+            trustedContactActionError = null) }
         viewModelScope.launch {
             runCatching { trustedContactRequests.withLock { trustedContactGateway.revoke(subjectId) } }.fold(
                 onSuccess = { revoked ->
@@ -572,13 +638,15 @@ class JourneyViewModel(
                         )
                         refreshed.copy(
                             trustedContactActionInProgress = false,
+                            trustedContactActionError = null,
                         )
                     }
                     setMessage(if (revoked) "Trusted contact access revoked." else "This contact was already inactive.")
                 },
                 onFailure = { error ->
-                    _uiState.update { it.copy(trustedContactActionInProgress = false) }
-                    setMessage("Could not revoke trusted contact: ${error.message}")
+                    if (error is CancellationException) throw error
+                    _uiState.update { it.copy(trustedContactActionInProgress = false,
+                        trustedContactActionError = "Could not remove the trusted contact. Try again.") }
                 },
             )
         }
@@ -606,9 +674,10 @@ class JourneyViewModelFactory(
     private val serviceController: JourneyMonitoringController,
     private val trustedContactGateway: TrustedContactGateway,
     private val degradedConnectivityCoordinator: DegradedConnectivityCoordinator,
+    private val requestOrdinaryStop: suspend (String) -> Boolean = { false },
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T =
         JourneyViewModel(repository, lifecycle, serviceController, trustedContactGateway,
-            degradedConnectivityCoordinator) as T
+            degradedConnectivityCoordinator, requestOrdinaryStop = requestOrdinaryStop) as T
 }

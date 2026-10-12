@@ -1,6 +1,7 @@
 package com.journeycontinuity.app.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -13,23 +14,35 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.ripple
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.res.painterResource
+import com.journeycontinuity.app.R
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.error
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
@@ -37,6 +50,8 @@ import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -83,6 +98,10 @@ fun CreateAccountDetailsScreen(
     val feedback = handleFeedback?.takeIf { it.handle == handle }?.status
     val canContinue = submissionEnabled && (feedback == CreateAccountHandleStatus.AVAILABLE ||
         (allowUncheckedHandle && feedback == null))
+    val handleFocus = remember { FocusRequester() }
+    val emailFocus = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
 
     Column(
         modifier = modifier.fillMaxSize().background(Background)
@@ -90,13 +109,16 @@ fun CreateAccountDetailsScreen(
     ) {
         Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
             BackAction(onBack)
-            Spacer(Modifier.height(42.dp))
+            Spacer(Modifier.height(34.dp))
             ScreenHeading("Create your account")
             Spacer(Modifier.height(10.dp))
             SupportingCopy("Create your Alabarin identity, then verify an email you can access.", 44)
             Spacer(Modifier.height(24.dp))
 
-            LabeledField("Full name", fullName, "Abdulrahman Saheed", onFullNameChange)
+            LabeledField("Full name", fullName, "Abdulrahman Saheed", onFullNameChange,
+                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words,
+                    imeAction = ImeAction.Next),
+                keyboardActions = KeyboardActions(onNext = { handleFocus.requestFocus() }))
             Text(
                 "Trusted contacts will see your full name.",
                 modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 17.dp),
@@ -110,7 +132,12 @@ fun CreateAccountDetailsScreen(
                 null -> FieldBorder
             }
             LabeledField("Alabarin handle", handle, "@rahmvn", onHandleChange,
-                borderColor = handleBorder)
+                borderColor = handleBorder, modifier = Modifier.focusRequester(handleFocus),
+                errorMessage = if (feedback == CreateAccountHandleStatus.TAKEN)
+                    "That handle is taken. Try another." else null,
+                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.None,
+                    autoCorrectEnabled = false, imeAction = ImeAction.Next),
+                keyboardActions = KeyboardActions(onNext = { emailFocus.requestFocus() }))
             val feedbackCopy = when (feedback) {
                 CreateAccountHandleStatus.CHECKING -> "Checking availability…"
                 CreateAccountHandleStatus.AVAILABLE -> "Available"
@@ -131,7 +158,13 @@ fun CreateAccountDetailsScreen(
             )
 
             LabeledField("Email address", email, "you@example.com", onEmailChange,
-                keyboardType = KeyboardType.Email)
+                modifier = Modifier.focusRequester(emailFocus),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email,
+                    capitalization = KeyboardCapitalization.None, autoCorrectEnabled = false,
+                    imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = {
+                    focusManager.clearFocus(force = true); keyboard?.hide()
+                }))
             if (serviceNotice != null) {
                 AuthInlineNotice(serviceNotice)
                 Spacer(Modifier.height(16.dp))
@@ -163,18 +196,22 @@ fun CreateAccountCheckEmailScreen(
     serviceNotice: String? = null,
     requestInProgress: Boolean = false,
 ) {
+    val keyboard = LocalSoftwareKeyboardController.current
     Column(
         modifier = modifier.fillMaxSize().background(Background)
             .padding(start = 24.dp, top = 34.dp, end = 24.dp, bottom = 24.dp),
     ) {
         Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
             BackAction(onBack)
-            Spacer(Modifier.height(42.dp))
+            Spacer(Modifier.height(34.dp))
             ScreenHeading("Check your email")
             Spacer(Modifier.height(10.dp))
             SupportingCopy("If this email can be used to create an Alabarin account, a one-time code will arrive shortly.", 64)
             Spacer(Modifier.height(28.dp))
-            SixDigitCodeField(code, onCodeChange, if (invalidOrExpired) Color(0xFF992E2E) else OtpBorder)
+            SixDigitCodeField(code, onCodeChange, if (invalidOrExpired) Color(0xFF992E2E) else OtpBorder,
+                errorMessage = if (invalidOrExpired)
+                    "That code is invalid or has expired. Request a new code and try again." else null,
+                onDone = { keyboard?.hide(); if (submissionEnabled) onVerify() })
             Spacer(Modifier.height(if (invalidOrExpired) 10.dp else 14.dp))
             if (invalidOrExpired) {
                 Text("That code is invalid or has expired. Request a new code and try again.",
@@ -201,12 +238,15 @@ fun CreateAccountCheckEmailScreen(
 @Composable
 private fun BackAction(onClick: () -> Unit) {
     Box(
-        Modifier.fillMaxWidth().height(40.dp).clickable(role = Role.Button, onClick = onClick)
+        Modifier.size(48.dp).clip(CircleShape)
+            .clickable(interactionSource = null,
+            indication = ripple(bounded = false, radius = TravellerNavigationRippleRadius,
+                color = TravellerNavigationRippleColor),
+            role = Role.Button, onClick = onClick)
             .semantics { contentDescription = "Back" },
-        contentAlignment = Alignment.TopStart,
+        contentAlignment = Alignment.Center,
     ) {
-        Text("‹", color = Brand, style = TextStyle(fontFamily = FontFamily.SansSerif,
-            fontSize = 28.sp, lineHeight = 30.sp, platformStyle = NoFontPadding))
+        TravellerBackVisual()
     }
 }
 
@@ -234,7 +274,10 @@ private fun LabeledField(
     placeholder: String,
     onValueChange: (String) -> Unit,
     borderColor: Color? = FieldBorder,
-    keyboardType: KeyboardType = KeyboardType.Text,
+    modifier: Modifier = Modifier,
+    errorMessage: String? = null,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    keyboardActions: KeyboardActions = KeyboardActions.Default,
 ) {
     Text(label, color = Heading,
         style = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Medium,
@@ -243,15 +286,19 @@ private fun LabeledField(
     BasicTextField(
         value = value,
         onValueChange = onValueChange,
-        modifier = Modifier.fillMaxWidth().height(58.dp)
+        modifier = Modifier.fillMaxWidth().height(58.dp).then(modifier)
             .then(if (borderColor != null) Modifier.border(1.dp, borderColor, RoundedCornerShape(4.dp))
                 else Modifier)
-            .semantics { contentDescription = label },
+            .semantics {
+                contentDescription = label
+                if (errorMessage != null) error(errorMessage)
+            },
         singleLine = true,
-        keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
+        keyboardOptions = keyboardOptions,
+        keyboardActions = keyboardActions,
         cursorBrush = SolidColor(Brand),
-        textStyle = TextStyle(fontFamily = FontFamily.SansSerif, fontSize = 14.sp,
-            lineHeight = 19.sp, color = Body, platformStyle = NoFontPadding),
+        textStyle = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Medium,
+            fontSize = 16.sp, lineHeight = 22.sp, color = Heading, platformStyle = NoFontPadding),
         decorationBox = { innerTextField ->
             Box(Modifier.fillMaxSize().padding(horizontal = 16.dp), contentAlignment = Alignment.CenterStart) {
                 if (value.isEmpty()) Text(placeholder, color = Body,
@@ -264,14 +311,20 @@ private fun LabeledField(
 }
 
 @Composable
-private fun SixDigitCodeField(code: String, onCodeChange: (String) -> Unit, borderColor: Color) {
+private fun SixDigitCodeField(code: String, onCodeChange: (String) -> Unit, borderColor: Color,
+    errorMessage: String?, onDone: () -> Unit) {
     BasicTextField(
         value = code,
         onValueChange = { changed -> onCodeChange(changed.filter { it in '0'..'9' }.take(6)) },
         modifier = Modifier.fillMaxWidth().height(58.dp)
-            .semantics { contentDescription = "Six-digit code" },
+            .semantics {
+                contentDescription = "Six-digit code"
+                if (errorMessage != null) error(errorMessage)
+            },
         singleLine = true,
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword,
+            imeAction = ImeAction.Done, autoCorrectEnabled = false),
+        keyboardActions = KeyboardActions(onDone = { onDone() }),
         cursorBrush = SolidColor(Color.Transparent),
         textStyle = TextStyle(color = Color.Transparent),
         decorationBox = { innerTextField ->
@@ -317,7 +370,8 @@ private fun PrimaryAction(label: String, enabled: Boolean, onClick: () -> Unit) 
 @Composable
 private fun TextAction(label: String, color: Color, onClick: () -> Unit) {
     Box(
-        Modifier.fillMaxWidth().height(44.dp).clickable(role = Role.Button, onClick = onClick),
+        Modifier.fillMaxWidth().height(44.dp).clip(RoundedCornerShape(12.dp))
+            .clickable(role = Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Text(label, color = color, style = TextStyle(fontFamily = FontFamily.SansSerif,

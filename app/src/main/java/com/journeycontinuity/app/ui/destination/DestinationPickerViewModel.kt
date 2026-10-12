@@ -194,7 +194,10 @@ class DestinationPickerViewModel(
 
     fun requestMap(): DestinationPickerAction.Map? {
         val current = mutableState.value
-        if (current.searchState == DestinationSearchState.VERIFICATION_UNAVAILABLE) return null
+        // The search-error frame offers locality instead of a map action. Returning to setup
+        // restores its independently approved map entry for the same selected area.
+        if (current.page == DestinationPickerPage.SEARCH &&
+            current.searchState == DestinationSearchState.VERIFICATION_UNAVAILABLE) return null
         return DestinationPickerAction.Map(MapRefinementRequest(current.region ?: return null,
             current.unit ?: return null, null))
     }

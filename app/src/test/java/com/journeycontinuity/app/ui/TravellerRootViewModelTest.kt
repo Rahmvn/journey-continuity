@@ -16,6 +16,8 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
@@ -579,6 +581,125 @@ class TravellerRootViewModelTest {
         assertEquals(0, auth.establishCalls)
     }
 
+    @Test fun transientStartupRecoversWithinBoundedRechecksWithoutUserAction() = rootTest {
+        val auth = FakeAuth().apply { resolved = TravellerAuthOutcome.TemporaryAuthUnavailable }
+        val root = newRoot(auth, FakeIntro(true))
+        runCurrent()
+        assertEquals(TravellerRootRoute.CHECKING, root.state.value.route)
+        auth.resolved = authenticated(a)
+        advanceUntilIdle()
+        assertEquals(TravellerRootRoute.ADMITTED_EXISTING, root.state.value.route)
+        assertEquals(2, auth.resolveCalls)
+        assertEquals(0, auth.establishCalls)
+    }
+
+    @Test fun outageExhaustsBudgetAndSdkRefreshSuccessAutomaticallyContinues() = rootTest {
+        val auth = FakeAuth().apply { resolved = TravellerAuthOutcome.TemporaryAuthUnavailable }
+        val root = newRoot(auth, FakeIntro(true))
+        advanceUntilIdle()
+        assertEquals(3, auth.resolveCalls)
+        assertEquals(TravellerRootRoute.RECOVERY, root.state.value.route)
+        assertTrue(root.state.value.startupTemporarilyUnavailable)
+        assertFalse(root.state.value.recoveryLoginAllowed)
+        advanceTimeBy(300_000)
+        runCurrent()
+        assertEquals(3, auth.resolveCalls)
+        auth.resolved = authenticated(a)
+        auth.sessions.value = TravellerSessionState.Authenticated(a)
+        advanceUntilIdle()
+        assertEquals(TravellerRootRoute.ADMITTED_EXISTING, root.state.value.route)
+        assertFalse(root.state.value.startupTemporarilyUnavailable)
+    }
+
+    @Test fun tryAgainStartsFreshBoundedAttemptAndRepeatedTapsAreCoalesced() = rootTest {
+        val auth = FakeAuth().apply { resolved = TravellerAuthOutcome.TemporaryAuthUnavailable }
+        val root = newRoot(auth, FakeIntro(true))
+        advanceUntilIdle()
+        repeat(10) { root.assessStartup() }
+        runCurrent()
+        assertEquals(TravellerRootRoute.CHECKING, root.state.value.route)
+        assertEquals(4, auth.resolveCalls)
+        advanceUntilIdle()
+        assertEquals(6, auth.resolveCalls)
+        assertTrue(root.state.value.startupTemporarilyUnavailable)
+        auth.resolved = authenticated(a)
+        root.assessStartup()
+        advanceUntilIdle()
+        assertEquals(7, auth.resolveCalls)
+        assertEquals(TravellerRootRoute.ADMITTED_EXISTING, root.state.value.route)
+    }
+
+    @Test fun unconfiguredBuildReportsConfigurationInsteadOfOfferingFakeRetry() = rootTest {
+        val auth = FakeAuth().apply { startupConfigured = false }
+        val root = newRoot(auth, FakeIntro(true))
+        advanceUntilIdle()
+        assertEquals(TravellerRootRoute.RECOVERY, root.state.value.route)
+        assertFalse(root.state.value.startupRetryAllowed)
+        assertFalse(root.state.value.recoveryLoginAllowed)
+        assertEquals(0, auth.resolveCalls)
+        assertTrue(root.state.value.notice!!.contains("not configured"))
+    }
+
+    @Test fun stuckInitializationHasFiniteWaitAndDoesNotCancelSdkSessionWork() = rootTest {
+        val sessionReady = CompletableDeferred<TravellerAuthOutcome>()
+        val auth = FakeAuth().apply { resolveBlock = { sessionReady.await() } }
+        val root = newRoot(auth, FakeIntro(true))
+        advanceUntilIdle()
+        assertEquals(19_000L, testScheduler.currentTime)
+        assertEquals(TravellerRootRoute.RECOVERY, root.state.value.route)
+        assertEquals(3, auth.resolveCalls)
+        assertFalse(sessionReady.isCancelled)
+        sessionReady.complete(authenticated(a))
+        auth.sessions.value = TravellerSessionState.Authenticated(a)
+        advanceUntilIdle()
+        assertEquals(TravellerRootRoute.ADMITTED_EXISTING, root.state.value.route)
+    }
+
+    @Test fun activeJourneyShellIsAvailableWhileInitializationIsStuck() = rootTest {
+        val auth = FakeAuth().apply {
+            hasActiveJourney = true
+            resolveBlock = { CompletableDeferred<TravellerAuthOutcome>().await() }
+        }
+        val root = newRoot(auth, FakeIntro(true))
+        runCurrent()
+        advanceTimeBy(5_000)
+        runCurrent()
+        assertEquals(TravellerRootRoute.ACTIVE_AUTH_PENDING, root.state.value.route)
+        advanceUntilIdle()
+        assertEquals(TravellerRootRoute.ACTIVE_AUTH_PENDING, root.state.value.route)
+        assertFalse(root.state.value.activeJourneyReauthentication)
+        assertEquals(0, auth.establishCalls)
+    }
+
+    @Test fun mismatchAndLocalReadErrorsAreNotSilentlyRetriedOrAdmitted() = rootTest {
+        val auth = FakeAuth().apply { resolved = TravellerAuthOutcome.TravellerIdentityMismatch }
+        val root = newRoot(auth, FakeIntro(true))
+        advanceUntilIdle()
+        assertEquals(1, auth.resolveCalls)
+        assertEquals(TravellerRootRoute.RECOVERY, root.state.value.route)
+        assertFalse(root.state.value.recoveryLoginAllowed)
+        assertFalse(root.state.value.startupTemporarilyUnavailable)
+        auth.resolveBlock = { error("local storage unavailable") }
+        root.assessStartup()
+        advanceUntilIdle()
+        assertEquals(2, auth.resolveCalls)
+        assertTrue(root.state.value.notice!!.contains("account state"))
+        assertEquals(0, auth.establishCalls)
+    }
+
+    @Test fun terminalSdkSessionLossAfterOutageRequiresSameOwnerRecovery() = rootTest {
+        val auth = FakeAuth().apply { resolved = TravellerAuthOutcome.TemporaryAuthUnavailable }
+        val root = newRoot(auth, FakeIntro(true))
+        advanceUntilIdle()
+        auth.resolved = TravellerAuthOutcome.TravellerIdentityRecoveryRequired
+        auth.sessions.value = TravellerSessionState.NotAuthenticated
+        advanceUntilIdle()
+        assertTrue(root.state.value.recoveryLoginAllowed)
+        assertFalse(root.state.value.startupTemporarilyUnavailable)
+        assertEquals(4, auth.resolveCalls)
+        assertEquals(0, auth.establishCalls)
+    }
+
     private fun newRoot(auth: FakeAuth, intro: FakeIntro, progress: FakeProgress = FakeProgress(),
         loginEntry: FakeLoginEntry = FakeLoginEntry(), createEntry: FakeCreateEntry = FakeCreateEntry()) =
         TravellerRootViewModel(auth, intro, progress, createEntry, loginEntry)
@@ -634,6 +755,9 @@ class TravellerRootViewModelTest {
     private inner class FakeAuth : TravellerRootAuth {
         val sessions = MutableStateFlow<TravellerSessionState>(TravellerSessionState.Initializing)
         override val sessionStates = sessions
+        override var startupConfigured = true
+        var resolveCalls = 0
+        var resolveBlock: (suspend () -> TravellerAuthOutcome)? = null
         var hasActiveJourney = false
         override suspend fun hasActiveJourneyForPersistedOwner() = hasActiveJourney
         var resolved: TravellerAuthOutcome = TravellerAuthOutcome.TravellerIdentityNotEstablished
@@ -644,7 +768,10 @@ class TravellerRootViewModelTest {
         val login = FakeLogin(this)
         override val createAccount: CreateAccountActions = create
         override val returningLogin: ReturningLoginActions = login
-        override suspend fun resolve() = resolved
+        override suspend fun resolve(): TravellerAuthOutcome {
+            resolveCalls++
+            return resolveBlock?.invoke() ?: resolved
+        }
         override suspend fun establishAnonymousOwner(): TravellerAuthOutcome {
             establishCalls++
             events += "establish"

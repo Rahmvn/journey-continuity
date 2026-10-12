@@ -1,6 +1,7 @@
 package com.journeycontinuity.app.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -17,7 +18,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.ripple
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
@@ -28,9 +32,13 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.error
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
@@ -39,6 +47,8 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -71,13 +81,15 @@ fun ReturningLoginEmailScreen(
     requestInProgress: Boolean = false,
     showCreateAccount: Boolean = true,
 ) {
+    val focusManager = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
     Column(
         modifier = modifier.fillMaxSize().background(LoginBackground)
             .padding(start = 24.dp, top = 34.dp, end = 24.dp, bottom = 24.dp),
     ) {
         Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
             LoginBackAction(onBack)
-            Spacer(Modifier.height(42.dp))
+            Spacer(Modifier.height(34.dp))
             LoginHeadingText("Log in")
             Spacer(Modifier.height(10.dp))
             LoginBodyText(
@@ -95,12 +107,21 @@ fun ReturningLoginEmailScreen(
                 onValueChange = onEmailChange,
                 modifier = Modifier.fillMaxWidth().height(58.dp)
                     .border(1.dp, LoginFieldBorder, RoundedCornerShape(4.dp))
-                    .semantics { contentDescription = "Email address" },
+                    .semantics {
+                        contentDescription = "Email address"
+                        if (serviceNotice == "Enter a valid email address.") error(serviceNotice)
+                    },
                 singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email,
+                    capitalization = KeyboardCapitalization.None, autoCorrectEnabled = false,
+                    imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = {
+                    focusManager.clearFocus(force = true); keyboard?.hide()
+                }),
                 cursorBrush = SolidColor(LoginBrand),
-                textStyle = TextStyle(fontFamily = FontFamily.SansSerif, fontSize = 14.sp,
-                    lineHeight = 19.sp, color = LoginBody, platformStyle = LoginNoFontPadding),
+                textStyle = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Medium,
+                    fontSize = 16.sp, lineHeight = 22.sp, color = LoginHeading,
+                    platformStyle = LoginNoFontPadding),
                 decorationBox = { innerTextField ->
                     Box(Modifier.fillMaxSize().padding(horizontal = 16.dp),
                         contentAlignment = Alignment.CenterStart) {
@@ -145,13 +166,14 @@ fun ReturningLoginCheckEmailScreen(
     requestInProgress: Boolean = false,
     showCreateAccount: Boolean = true,
 ) {
+    val keyboard = LocalSoftwareKeyboardController.current
     Column(
         modifier = modifier.fillMaxSize().background(LoginBackground)
             .padding(start = 24.dp, top = 34.dp, end = 24.dp, bottom = 24.dp),
     ) {
         Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
             LoginBackAction(onBack)
-            Spacer(Modifier.height(42.dp))
+            Spacer(Modifier.height(34.dp))
             LoginHeadingText("Check your email")
             Spacer(Modifier.height(10.dp))
             LoginBodyText(
@@ -159,7 +181,8 @@ fun ReturningLoginCheckEmailScreen(
                 minimumHeight = 64,
             )
             Spacer(Modifier.height(28.dp))
-            LoginSixDigitCodeField(code, feedback, onCodeChange)
+            LoginSixDigitCodeField(code, feedback, onCodeChange,
+                onDone = { keyboard?.hide(); if (submissionEnabled) onVerify() })
             if (feedback == ReturningLoginOtpFeedback.INVALID_OR_EXPIRED) {
                 Spacer(Modifier.height(10.dp))
                 Text(
@@ -197,7 +220,7 @@ fun AuthRateLimitScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
     ) {
         Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
             LoginBackAction(onBack)
-            Spacer(Modifier.height(72.dp))
+            Spacer(Modifier.height(64.dp))
             LoginHeadingText("Try again later")
             Spacer(Modifier.height(10.dp))
             LoginBodyText(
@@ -270,17 +293,20 @@ fun AuthVerifiedDeviceConflictScreen(
 @Composable
 private fun LoginBackAction(onClick: () -> Unit) {
     Box(
-        Modifier.fillMaxWidth().height(40.dp).clickable(role = Role.Button, onClick = onClick)
+        Modifier.size(48.dp).clip(CircleShape)
+            .clickable(interactionSource = null,
+            indication = ripple(bounded = false, radius = TravellerNavigationRippleRadius,
+                color = TravellerNavigationRippleColor),
+            role = Role.Button, onClick = onClick)
             .semantics { contentDescription = "Back" },
-        contentAlignment = Alignment.TopStart,
+        contentAlignment = Alignment.Center,
     ) {
-        Text("‹", color = LoginBrand, style = TextStyle(fontFamily = FontFamily.SansSerif,
-            fontSize = 28.sp, lineHeight = 30.sp, platformStyle = LoginNoFontPadding))
+        TravellerBackVisual()
     }
 }
 
 @Composable
-private fun LoginHeadingText(text: String, modifier: Modifier = Modifier) {
+internal fun LoginHeadingText(text: String, modifier: Modifier = Modifier) {
     Text(text, modifier = modifier.semantics { heading() }, color = LoginHeading,
         style = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Bold,
             fontSize = 30.sp, lineHeight = 36.sp, platformStyle = LoginNoFontPadding))
@@ -298,6 +324,7 @@ private fun LoginSixDigitCodeField(
     code: String,
     feedback: ReturningLoginOtpFeedback,
     onCodeChange: (String) -> Unit,
+    onDone: () -> Unit,
 ) {
     val visibleCode = code.filter { it in '0'..'9' }.take(6)
     val border = if (feedback == ReturningLoginOtpFeedback.INVALID_OR_EXPIRED)
@@ -306,9 +333,15 @@ private fun LoginSixDigitCodeField(
         value = visibleCode,
         onValueChange = { changed -> onCodeChange(changed.filter { it in '0'..'9' }.take(6)) },
         modifier = Modifier.fillMaxWidth().height(58.dp)
-            .semantics { contentDescription = "Six-digit code" },
+            .semantics {
+                contentDescription = "Six-digit code"
+                if (feedback == ReturningLoginOtpFeedback.INVALID_OR_EXPIRED)
+                    error("That code is invalid or has expired. Request a new code and try again.")
+            },
         singleLine = true,
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword,
+            imeAction = ImeAction.Done, autoCorrectEnabled = false),
+        keyboardActions = KeyboardActions(onDone = { onDone() }),
         cursorBrush = SolidColor(Color.Transparent),
         textStyle = TextStyle(color = Color.Transparent),
         decorationBox = { innerTextField ->
@@ -336,7 +369,7 @@ private fun LoginSixDigitCodeField(
 }
 
 @Composable
-private fun LoginPrimaryAction(label: String, enabled: Boolean, onClick: () -> Unit) {
+internal fun LoginPrimaryAction(label: String, enabled: Boolean, onClick: () -> Unit) {
     Box(
         Modifier.fillMaxWidth().height(58.dp).clip(RoundedCornerShape(18.dp))
             .alpha(if (enabled) 1f else 0.45f).background(LoginBrand)
@@ -351,7 +384,8 @@ private fun LoginPrimaryAction(label: String, enabled: Boolean, onClick: () -> U
 
 @Composable
 private fun LoginTextAction(label: String, color: Color, onClick: () -> Unit) {
-    Box(Modifier.fillMaxWidth().height(44.dp).clickable(role = Role.Button, onClick = onClick),
+    Box(Modifier.fillMaxWidth().height(44.dp).clip(RoundedCornerShape(12.dp))
+        .clickable(role = Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center) {
         Text(label, color = color, style = TextStyle(fontFamily = FontFamily.SansSerif,
             fontWeight = FontWeight.Medium, fontSize = 14.sp, lineHeight = 18.sp,
@@ -360,9 +394,10 @@ private fun LoginTextAction(label: String, color: Color, onClick: () -> Unit) {
 }
 
 @Composable
-private fun LoginSecondaryAction(label: String, height: Int, onClick: () -> Unit) {
+internal fun LoginSecondaryAction(label: String, height: Int, onClick: () -> Unit) {
     Box(
         Modifier.fillMaxWidth().height(height.dp)
+            .clip(RoundedCornerShape(18.dp))
             .border(1.dp, LoginOtpBorder, RoundedCornerShape(18.dp))
             .clickable(role = Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center,

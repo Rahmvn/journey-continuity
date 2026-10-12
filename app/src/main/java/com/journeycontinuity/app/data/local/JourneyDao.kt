@@ -12,6 +12,17 @@ abstract class JourneyDao {
     @Query("SELECT * FROM journeys WHERE activeSlot = 1 LIMIT 1")
     abstract fun observeActive(): Flow<JourneyEntity?>
 
+    @Query("SELECT * FROM journeys WHERE id = :journeyId LIMIT 1")
+    abstract fun observeById(journeyId: String): Flow<JourneyEntity?>
+
+    /** A Stop result requires both the server terminal receipt and exact runtime teardown. */
+    @Query("""SELECT j.* FROM journeys j JOIN journey_terminal_reconciliations r
+        ON r.journeyId = j.id WHERE j.id = :journeyId AND j.status = 'CANCELLED'
+        AND j.endedAt IS NOT NULL AND j.completedAt IS NULL AND j.activeSlot IS NULL
+        AND r.explicitAction = 'STOP' AND r.explicitState = 'ACKNOWLEDGED'
+        AND r.effectsPending = 0 LIMIT 1""")
+    abstract fun observeAcknowledgedStop(journeyId: String): Flow<JourneyEntity?>
+
     /** ACTIVE remains occupied while a privacy pause removes collection permission. */
     @Query("""SELECT j.* FROM journeys j LEFT JOIN journey_operational_boundaries o
         ON o.journeyId = j.id WHERE j.activeSlot = 1 AND j.status = 'ACTIVE'

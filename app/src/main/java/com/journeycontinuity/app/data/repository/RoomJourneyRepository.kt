@@ -38,6 +38,12 @@ class RoomJourneyRepository(
     override val activeJourney: Flow<Journey?> =
         journeyDao.observeActive().map { it?.toDomain() }
 
+    override fun observeJourney(journeyId: String): Flow<Journey?> =
+        journeyDao.observeById(journeyId).map { it?.toDomain() }
+
+    override fun observeAcknowledgedStop(journeyId: String): Flow<Journey?> =
+        journeyDao.observeAcknowledgedStop(journeyId).map { it?.toDomain() }
+
     override suspend fun createIfNoActive(journey: Journey): Boolean = admissionGate.withLock {
         try {
             journeyDao.insertIfNoActive(journey.toEntity(), admissionReceipt()).also { created ->

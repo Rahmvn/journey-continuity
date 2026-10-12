@@ -124,6 +124,21 @@ class DestinationMapViewModelTest {
         model.cameraIdle(MapCamera(other, 14.0)); advanceUntilIdle()
         assertEquals(other, (model.position().phase as MapPinPhase.Inside).point.coordinate)
     }
+    @Test fun harmlessGestureAtSameCentreRestoresExactProofWithoutReverification() = test {
+        val fake = Fake(); val model = vm(fake); inside(model)
+        val proof = (model.position().phase as MapPinPhase.Inside).point
+        model.userCameraMoveStarted()
+        assertEquals(MapPinPhase.Moving, model.position().phase)
+        model.cameraMoving(coordinate)
+        model.cameraIdle(MapCamera(coordinate, 14.0)); advanceUntilIdle()
+        assertSame(proof, (model.position().phase as MapPinPhase.Inside).point)
+        assertEquals(1, fake.verified.size)
+        model.userCameraMoveStarted()
+        model.cameraMoving(other)
+        model.cameraIdle(MapCamera(other, 14.0)); advanceUntilIdle()
+        assertEquals(other, (model.position().phase as MapPinPhase.Inside).point.coordinate)
+        assertEquals(2, fake.verified.size)
+    }
     @Test fun actualProgrammaticCoordinateChangeInvalidatesProof() = test {
         val model = vm(Fake()); inside(model); model.cameraMoving(other)
         assertEquals(MapPinPhase.Moving, model.position().phase)

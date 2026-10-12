@@ -183,6 +183,9 @@ class DestinationPickerViewModelTest {
         assertTrue(vm.state.value.results.isEmpty())
         assertEquals("Abuja Municipal Area Council, Federal Capital Territory", vm.selectLocality()!!.value.displayLabel)
         assertNull(vm.requestMap())
+        assertTrue(vm.back())
+        assertEquals(DestinationPickerPage.SETUP, vm.state.value.page)
+        assertEquals("ng-fct-abuja-municipal", vm.requestMap()!!.value.localUnit.id)
     }
 
     @Test fun offlineDuringDebounceSkipsDispatch() = pickerTest {

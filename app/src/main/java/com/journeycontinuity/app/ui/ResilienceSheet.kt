@@ -2,6 +2,7 @@ package com.journeycontinuity.app.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -11,19 +12,25 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.PlatformTextStyle
@@ -57,16 +64,22 @@ internal fun ResilienceSheet(
     Column(Modifier.fillMaxWidth().heightIn(max = maxHeight)
         .height((targetHeight - 40.dp).coerceAtMost(maxHeight))
         .padding(horizontal = 24.dp)) {
-        Row(Modifier.fillMaxWidth().height(40.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().height(48.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(if (page == ResiliencePage.CHOOSE_SIM) "Choose SIM" else "Resilience",
                 color = Ink, style = resilienceStyle(22, 27, FontWeight.Bold),
                 modifier = Modifier.weight(1f).semantics { heading() })
-            Box(Modifier.size(40.dp).clickable(role = Role.Button, onClick = onDismiss)
-                .testTag("resilience_close"), contentAlignment = Alignment.Center) {
-                Text("×", color = Navy, style = resilienceStyle(22, 22))
+            Box(Modifier.size(48.dp).clip(CircleShape)
+                .clickable(interactionSource = null,
+                    indication = ripple(bounded = false, radius = TravellerNavigationRippleRadius,
+                        color = TravellerNavigationRippleColor),
+                    role = Role.Button, onClick = onDismiss)
+                .testTag("resilience_close")
+                .semantics { contentDescription = "Close Resilience" },
+                contentAlignment = Alignment.Center) {
+                TravellerCloseVisual()
             }
         }
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(8.dp))
         Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState())) {
             if (page == ResiliencePage.CHOOSE_SIM) {
                 Text("Select the SIM Alabarin may use for device SMS fallback.", color = Muted,
@@ -75,11 +88,13 @@ internal fun ResilienceSheet(
                 status.activeSubscriptions.forEachIndexed { index, choice ->
                     if (index > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(Rule))
                     val selected = choice.subscriptionId == status.selectedSubscriptionId
-                    Row(Modifier.fillMaxWidth().height(66.dp)
-                        .clickable(role = Role.RadioButton) { onSelectSim(choice.subscriptionId) }
+                    Row(Modifier.fillMaxWidth().height(66.dp).clip(RoundedCornerShape(12.dp))
+                        .selectable(selected = selected, role = Role.RadioButton) {
+                            onSelectSim(choice.subscriptionId)
+                        }
                         .testTag("resilience_sim_choice"), verticalAlignment = Alignment.CenterVertically) {
                         RadioButton(selected = selected,
-                            onClick = { onSelectSim(choice.subscriptionId) })
+                            onClick = null)
                         Spacer(Modifier.width(10.dp))
                         Column {
                             Text(choice.safeDisplayName, color = Ink,
@@ -147,9 +162,11 @@ private fun ResilienceRow(
         }
         if (action != null) {
             Spacer(Modifier.width(8.dp))
-            Text(action, color = Navy, style = resilienceStyle(14, 20, FontWeight.Medium),
-                modifier = Modifier.clickable(role = Role.Button, onClick = onAction)
-                    .padding(vertical = 12.dp).testTag("resilience_row_action"))
+            Box(Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+                .clip(RoundedCornerShape(12.dp)).clickable(role = Role.Button, onClick = onAction)
+                .testTag("resilience_row_action"), contentAlignment = Alignment.Center) {
+                Text(action, color = Navy, style = resilienceStyle(14, 20, FontWeight.Medium))
+            }
         }
     }
     if (divider) Box(Modifier.fillMaxWidth().height(1.dp).background(Rule))

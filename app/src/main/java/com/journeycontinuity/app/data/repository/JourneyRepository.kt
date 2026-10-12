@@ -8,9 +8,13 @@ import com.journeycontinuity.app.domain.TelemetrySample
 import com.journeycontinuity.app.domain.TelemetrySummary
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 
 interface JourneyRepository {
     val activeJourney: Flow<Journey?>
+    /** Exact persisted Journey, including its terminal state, for a foreground result. */
+    fun observeJourney(journeyId: String): Flow<Journey?> = flowOf(null)
+    fun observeAcknowledgedStop(journeyId: String): Flow<Journey?> = flowOf(null)
     suspend fun createIfNoActive(journey: Journey): Boolean
     suspend fun completeActive(completedAt: Long): Journey?
     suspend fun completeExact(journeyId: String, completedAt: Long): Journey? =

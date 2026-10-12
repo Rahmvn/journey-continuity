@@ -1,6 +1,8 @@
 package com.journeycontinuity.app.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
-import androidx.compose.material3.Button
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -17,6 +18,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -44,7 +47,7 @@ fun TravellerRootHost(
     }
     Box(Modifier.fillMaxSize().safeDrawingPadding().imePadding().background(Color(0xFFFBFBF8))) {
         when (state.route) {
-            TravellerRootRoute.CHECKING -> SupportContent("Checking this Traveller", "Please wait.", null, null)
+            TravellerRootRoute.CHECKING -> SupportContent("Opening Alabarin", "Checking your saved session?", null, null)
             TravellerRootRoute.INTRO -> FirstUseIntroFlow(onCompleted = {
                 if (it == FirstUseCompletion.INTRODUCTION_FINISHED) controller.completeIntro()
             })
@@ -95,9 +98,12 @@ fun TravellerRootHost(
                 requestInProgress = state.busy,
                 showCreateAccount = !state.activeJourneyReauthentication,
             )
-            TravellerRootRoute.RECOVERY -> SupportContent("Account recovery needed",
+            TravellerRootRoute.RECOVERY -> SupportContent(
+                if (state.startupTemporarilyUnavailable) "Unable to connect"
+                else if (state.recoveryLoginAllowed) "Sign in to continue" else "Unable to open Alabarin",
                 state.notice ?: "This Traveller cannot be safely opened right now.",
-                "Try again", controller::assessStartup,
+                if (state.startupRetryAllowed) "Try again" else null,
+                if (state.startupRetryAllowed) controller::assessStartup else null,
                 if (state.recoveryLoginAllowed) "Recover with email" else null,
                 if (state.recoveryLoginAllowed) controller::recoverSameOwnerWithEmail else null)
             TravellerRootRoute.ADMITTED_EXISTING, TravellerRootRoute.ADMITTED_NEW,
@@ -109,22 +115,23 @@ fun TravellerRootHost(
 
 @Composable
 internal fun AuthInlineNotice(message: String) {
-    Text(message, modifier = Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 8.dp),
+    Text(message, modifier = Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 8.dp)
+        .semantics { liveRegion = LiveRegionMode.Polite },
         color = Color(0xFF992E2E))
 }
 
 @Composable
 private fun SupportContent(title: String, body: String, action: String?, onAction: (() -> Unit)?,
     secondaryAction: String? = null, onSecondaryAction: (() -> Unit)? = null) {
-    Column(Modifier.fillMaxSize().padding(24.dp)) {
-        Text(title, modifier = Modifier.semantics { heading() }, color = Color(0xFF161B20))
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp)) {
+        LoginHeadingText(title)
         Text(body, modifier = Modifier.padding(top = 12.dp), color = Color(0xFF676F74))
         if (action != null && onAction != null) {
-            Button(onClick = onAction, modifier = Modifier.padding(top = 24.dp)) { Text(action) }
+            Box(Modifier.padding(top = 24.dp)) { LoginPrimaryAction(action, true, onAction) }
         }
         if (secondaryAction != null && onSecondaryAction != null) {
-            Button(onClick = onSecondaryAction, modifier = Modifier.padding(top = 12.dp)) {
-                Text(secondaryAction)
+            Box(Modifier.padding(top = 12.dp)) {
+                LoginSecondaryAction(secondaryAction, 56, onSecondaryAction)
             }
         }
     }

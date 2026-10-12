@@ -16,28 +16,44 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.error
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -79,14 +95,20 @@ internal fun TrustedContactsSheet(
     onDone: () -> Unit,
     onRemove: (String) -> Unit,
     onShare: (String) -> Unit,
+    onRetry: () -> Unit = {},
 ) {
-    var name by remember { mutableStateOf("") }
-    var email by remember { mutableStateOf("") }
+    var name by rememberSaveable { mutableStateOf("") }
+    var email by rememberSaveable { mutableStateOf("") }
+    var nameError by remember { mutableStateOf<String?>(null) }
+    var emailError by remember { mutableStateOf<String?>(null) }
+    val emailFocus = remember { FocusRequester() }
     var removalCandidate by remember { mutableStateOf<TrustedContactSummary?>(null) }
     LaunchedEffect(state.trustedContactsPage) {
         if (state.trustedContactsPage == TrustedContactsPage.LIST) {
             name = ""
             email = ""
+            nameError = null
+            emailError = null
         }
     }
     LaunchedEffect(removalCandidate, state.trustedContacts) {
@@ -105,30 +127,42 @@ internal fun TrustedContactsSheet(
     val maxHeight = LocalConfiguration.current.screenHeightDp.dp * 0.88f
     Column(Modifier.fillMaxWidth().heightIn(max = maxHeight)
         .height((targetHeight - 40.dp).coerceAtMost(maxHeight)).padding(horizontal = 24.dp)) {
-        Row(Modifier.fillMaxWidth().height(40.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().height(48.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(when (page) {
                 TrustedContactsPage.LIST -> "Trusted Contacts"
                 TrustedContactsPage.ADD -> "Add trusted contact"
                 TrustedContactsPage.READY -> "Invitation ready"
             }, color = Ink, style = contactStyle(22, 27, FontWeight.Bold),
                 modifier = Modifier.weight(1f).semantics { heading() })
-            Box(Modifier.size(40.dp).clickable(role = Role.Button, onClick = onDismiss)
-                .testTag("trusted_contacts_close"), contentAlignment = Alignment.Center) {
-                Text("×", color = Navy, style = contactStyle(22, 22))
+            Box(Modifier.size(48.dp).clip(CircleShape)
+                .clickable(interactionSource = null,
+                    indication = ripple(bounded = false, radius = TravellerNavigationRippleRadius,
+                        color = TravellerNavigationRippleColor),
+                    role = Role.Button, onClick = onDismiss)
+                .testTag("trusted_contacts_close")
+                .semantics { contentDescription = "Close Trusted Contacts" },
+                contentAlignment = Alignment.Center) {
+                TravellerCloseVisual()
             }
         }
-        Spacer(Modifier.height(18.dp))
+        Spacer(Modifier.height(10.dp))
         Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
             when (page) {
-                TrustedContactsPage.LIST -> TrustedContactsList(state) { removalCandidate = it }
+                TrustedContactsPage.LIST -> TrustedContactsList(state, onRetry) { removalCandidate = it }
                 TrustedContactsPage.ADD -> {
                     Text("Invite a person using the email they will verify with Alabarin.",
                         color = Muted, style = contactStyle(15, 21))
                     Spacer(Modifier.height(20.dp))
-                    ContactInput("Name", "e.g. Aisha", name, { name = it }, KeyboardType.Text)
+                    ContactInput("Name", "e.g. Aisha", name, {
+                        name = it; nameError = null
+                    }, KeyboardType.Text, ImeAction.Next, nameError,
+                        onImeAction = { emailFocus.requestFocus() })
+                    nameError?.let { ContactFieldError(it) }
                     Spacer(Modifier.height(18.dp))
                     ContactInput("Email address", "aisha@example.com", email,
-                        { email = it }, KeyboardType.Email)
+                        { email = it; emailError = null }, KeyboardType.Email, ImeAction.Done,
+                        emailError, modifier = Modifier.focusRequester(emailFocus))
+                    emailError?.let { ContactFieldError(it) }
                 }
                 TrustedContactsPage.READY -> {
                     val invitedName = state.invitationReadyName.orEmpty()
@@ -144,17 +178,27 @@ internal fun TrustedContactsSheet(
                     ContactIdentityRow(invitedName, invitedEmail, "Pending", false, null)
                 }
             }
+            state.trustedContactActionError?.let { ContactFieldError(it) }
         }
         when (page) {
             TrustedContactsPage.LIST -> ContactPrimaryAction("Add trusted contact", onAdd,
                 enabled = state.trustedContactsAvailability == TrustedContactsAvailability.AVAILABLE)
-            TrustedContactsPage.ADD -> ContactPrimaryAction("Create invitation",
-                { onCreate(name, email) }, enabled = !state.trustedContactActionInProgress)
+            TrustedContactsPage.ADD -> ContactPrimaryAction(
+                if (state.trustedContactActionInProgress) "Creating invitation…" else "Create invitation",
+                {
+                    nameError = if (name.trim().length !in 1..100)
+                        "Enter the trusted contact's name." else null
+                    val normalizedEmail = email.trim().lowercase()
+                    emailError = if ('@' !in normalizedEmail || normalizedEmail.length !in 3..320)
+                        "Enter a valid trusted contact email." else null
+                    if (nameError == null && emailError == null) onCreate(name, email)
+                }, enabled = !state.trustedContactActionInProgress)
             TrustedContactsPage.READY -> {
                 ContactPrimaryAction("Share invitation",
                     { state.invitationShareUrl?.let(onShare) },
                     enabled = state.invitationShareUrl != null)
-                Box(Modifier.fillMaxWidth().height(44.dp).clickable(role = Role.Button,
+                Box(Modifier.fillMaxWidth().height(44.dp).clip(RoundedCornerShape(12.dp))
+                    .clickable(role = Role.Button,
                     onClick = onDone), contentAlignment = Alignment.Center) {
                     Text("Done", color = Navy, style = contactStyle(15, 21, FontWeight.Medium))
                 }
@@ -178,14 +222,22 @@ internal fun TrustedContactsSheet(
 @Composable
 private fun TrustedContactsList(
     state: JourneyUiState,
+    onRetry: () -> Unit,
     onAcceptedClick: (TrustedContactSummary) -> Unit,
 ) {
     when (state.trustedContactsAvailability) {
         TrustedContactsAvailability.LOADING -> Text("Checking trusted contacts…", color = Muted,
             style = contactStyle(15, 21))
-        TrustedContactsAvailability.UNAVAILABLE -> Text(
-            state.trustedContactsUnavailableMessage ?: "Trusted contacts are currently unavailable.",
-            color = Muted, style = contactStyle(15, 21))
+        TrustedContactsAvailability.UNAVAILABLE -> {
+            Text(state.trustedContactsUnavailableMessage ?: "Trusted contacts are currently unavailable.",
+                color = Muted, style = contactStyle(15, 21),
+                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+            Spacer(Modifier.height(12.dp))
+            Box(Modifier.fillMaxWidth().height(48.dp).clip(RoundedCornerShape(12.dp))
+                .clickable(role = Role.Button, onClick = onRetry), contentAlignment = Alignment.Center) {
+                Text("Try again", color = Navy, style = contactStyle(15, 21, FontWeight.Medium))
+            }
+        }
         TrustedContactsAvailability.AVAILABLE -> {
             val contacts = activeTrustedContacts(state.trustedContacts)
             if (contacts.isEmpty()) {
@@ -217,7 +269,8 @@ private fun TrustedContactsList(
 private fun ContactIdentityRow(name: String, email: String, status: String,
     interactive: Boolean, onClick: (() -> Unit)?) {
     val modifier = if (interactive && onClick != null)
-        Modifier.fillMaxWidth().height(70.dp).clickable(role = Role.Button, onClick = onClick)
+        Modifier.fillMaxWidth().height(70.dp).clip(RoundedCornerShape(12.dp))
+            .clickable(role = Role.Button, onClick = onClick)
             .testTag("trusted_contact_accepted_row")
     else Modifier.fillMaxWidth().height(70.dp)
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
@@ -234,14 +287,29 @@ private fun ContactIdentityRow(name: String, email: String, status: String,
 
 @Composable
 private fun ContactInput(label: String, hint: String, value: String,
-    onValueChange: (String) -> Unit, keyboardType: KeyboardType) {
+    onValueChange: (String) -> Unit, keyboardType: KeyboardType,
+    imeAction: ImeAction, errorMessage: String?, modifier: Modifier = Modifier,
+    onImeAction: (() -> Unit)? = null) {
+    val focusManager = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
     Text(label, color = Ink, style = contactStyle(15, 21, FontWeight.Medium))
     Spacer(Modifier.height(7.dp))
     BasicTextField(value, onValueChange, singleLine = true,
-        textStyle = contactStyle(15, 21).copy(color = Ink),
-        keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
-        modifier = Modifier.fillMaxWidth().testTag(
-            if (keyboardType == KeyboardType.Email) "trusted_contact_email" else "trusted_contact_name"),
+        textStyle = contactStyle(16, 22, FontWeight.Medium).copy(color = Ink),
+        cursorBrush = SolidColor(Navy),
+        keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = imeAction,
+            capitalization = if (keyboardType == KeyboardType.Email) KeyboardCapitalization.None
+                else KeyboardCapitalization.Words,
+            autoCorrectEnabled = keyboardType != KeyboardType.Email),
+        keyboardActions = KeyboardActions(onNext = { onImeAction?.invoke() }, onDone = {
+            focusManager.clearFocus(force = true); keyboard?.hide()
+        }),
+        modifier = Modifier.fillMaxWidth().then(modifier).testTag(
+            if (keyboardType == KeyboardType.Email) "trusted_contact_email" else "trusted_contact_name")
+            .semantics {
+                contentDescription = label
+                if (errorMessage != null) error(errorMessage)
+            },
         decorationBox = { inner ->
             Box(Modifier.fillMaxWidth().height(56.dp)
                 .border(1.dp, Muted, RoundedCornerShape(4.dp)).padding(horizontal = 16.dp),
@@ -250,6 +318,12 @@ private fun ContactInput(label: String, hint: String, value: String,
                 inner()
             }
         })
+}
+
+@Composable private fun ContactFieldError(message: String) {
+    Text(message, color = RemoveRed, style = contactStyle(13, 18),
+        modifier = Modifier.padding(top = 6.dp)
+            .semantics { liveRegion = LiveRegionMode.Polite })
 }
 
 @Composable
@@ -280,7 +354,8 @@ private fun ContactRemovalDialog(name: String, onKeep: () -> Unit,
                 Text("Remove trusted contact", color = Color.White,
                     style = contactStyle(16, 22, FontWeight.Bold))
             }
-            Box(Modifier.fillMaxWidth().height(44.dp).clickable(role = Role.Button,
+            Box(Modifier.fillMaxWidth().height(44.dp).clip(RoundedCornerShape(12.dp))
+                .clickable(role = Role.Button,
                 onClick = onKeep), contentAlignment = Alignment.Center) {
                 Text("Keep trusted contact", color = Navy,
                     style = contactStyle(15, 21, FontWeight.Medium))

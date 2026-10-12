@@ -29,6 +29,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.unit.dp
@@ -66,6 +67,30 @@ class ReturningLoginScreensTest {
 
     @After fun closeHost() {
         compose.runOnUiThread { host?.finish() }
+    }
+
+    @Test fun emailDoneOnlyFinishesEditingAndCodeDoneVerifiesOnce() {
+        var email by mutableStateOf("")
+        var code by mutableStateOf("")
+        var submissions = 0
+        setContent {
+            ReturningLoginEmailScreen(email, true, onEmailChange = { email = it },
+                onContinue = { submissions++ }, onCreateAccount = {}, onBack = {})
+        }
+        compose.onNodeWithContentDescription("Email address").performTextInput("a@example.com")
+        compose.onNodeWithContentDescription("Email address").performImeAction()
+        compose.runOnIdle { assertEquals("a@example.com", email); assertEquals(0, submissions) }
+        compose.runOnUiThread {
+            host!!.setContent {
+                ReturningLoginCheckEmailScreen(code, code.length == 6,
+                    ReturningLoginOtpFeedback.NEUTRAL, onCodeChange = { code = it },
+                    onVerify = { submissions++ }, onSendNewCode = {},
+                    onUseDifferentEmail = {}, onCreateAccount = {}, onBack = {})
+            }
+        }
+        compose.onNodeWithContentDescription("Six-digit code").performTextInput("012345")
+        compose.onNodeWithContentDescription("Six-digit code").performImeAction()
+        compose.runOnIdle { assertEquals("012345", code); assertEquals(1, submissions) }
     }
 
     @Test fun emailScreenOnlyEmitsItsSelectedActionAtNarrowWidth() {

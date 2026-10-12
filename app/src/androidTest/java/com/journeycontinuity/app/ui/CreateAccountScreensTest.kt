@@ -21,6 +21,7 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.captureToImage
@@ -30,6 +31,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.unit.dp
 import androidx.test.platform.app.InstrumentationRegistry
@@ -67,6 +69,37 @@ class CreateAccountScreensTest {
     @After
     fun closeHost() {
         compose.runOnUiThread { host?.finish() }
+    }
+
+    @Test fun createFieldsAdvanceInOrderAndCodeDoneVerifiesOnce() {
+        var fullName by mutableStateOf("")
+        var handle by mutableStateOf("")
+        var email by mutableStateOf("")
+        var submissions = 0
+        setContent {
+            CreateAccountDetailsScreen(fullName, handle, email, null, true,
+                onFullNameChange = { fullName = it }, onHandleChange = { handle = it },
+                onEmailChange = { email = it }, onContinue = { submissions++ },
+                onBack = {}, onLogIn = {}, allowUncheckedHandle = true)
+        }
+        compose.onNodeWithContentDescription("Full name").performClick().performImeAction()
+        compose.onNodeWithContentDescription("Alabarin handle").assertIsFocused()
+        compose.onNodeWithContentDescription("Alabarin handle").performImeAction()
+        compose.onNodeWithContentDescription("Email address").assertIsFocused()
+        compose.onNodeWithContentDescription("Email address").performImeAction()
+        compose.runOnIdle { assertEquals(0, submissions) }
+
+        var code by mutableStateOf("")
+        compose.runOnUiThread {
+            host!!.setContent {
+                CreateAccountCheckEmailScreen(code, code.length == 6,
+                    onCodeChange = { code = it }, onVerify = { submissions++ },
+                    onSendNewCode = {}, onUseDifferentEmail = {}, onLogIn = {}, onBack = {})
+            }
+        }
+        compose.onNodeWithContentDescription("Six-digit code").performTextInput("012345")
+        compose.onNodeWithContentDescription("Six-digit code").performImeAction()
+        compose.runOnIdle { assertEquals("012345", code); assertEquals(1, submissions) }
     }
 
     @Test
@@ -109,6 +142,7 @@ class CreateAccountScreensTest {
         compose.onNodeWithContentDescription("Back").performClick()
         compose.runOnIdle { assertEquals(listOf("back"), events) }
     }
+
 
     @Test
     fun handleFeedbackIsBoundToCurrentInputAndActionsFitNarrowPhone() {

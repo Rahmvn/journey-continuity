@@ -16,6 +16,8 @@ import com.journeycontinuity.app.auth.TravellerSessionState
 import com.journeycontinuity.app.auth.TravellerProfileIdentityInput
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -41,6 +43,8 @@ data class TravellerRootState(
     val profileRequired: Boolean = false,
     val recoveryLoginAllowed: Boolean = false,
     val activeJourneyReauthentication: Boolean = false,
+    val startupTemporarilyUnavailable: Boolean = false,
+    val startupRetryAllowed: Boolean = true,
 )
 
 /** Activity-scoped. Application-scoped auth engines retain an OTP attempt across Activity recreation. */
@@ -58,6 +62,8 @@ class TravellerRootViewModel(
     private var handleGeneration = 0L
     private var operationGeneration = 0L
     private var handleJob: Job? = null
+    private var assessmentJob: Job? = null
+    private var awaitingStartupSession = false
 
     init {
         assessStartup()
@@ -65,6 +71,12 @@ class TravellerRootViewModel(
             auth.sessionStates.collect { session ->
                 val current = state.value
                 when {
+                    awaitingStartupSession && current.route in setOf(
+                        TravellerRootRoute.CHECKING, TravellerRootRoute.RECOVERY,
+                        TravellerRootRoute.ACTIVE_AUTH_PENDING) &&
+                        (session == TravellerSessionState.NotAuthenticated ||
+                            session is TravellerSessionState.Authenticated && !session.accessTokenExpired) ->
+                        launchAssessment(true)
                     session == TravellerSessionState.NotAuthenticated &&
                         current.route in setOf(TravellerRootRoute.ADMITTED_EXISTING,
                             TravellerRootRoute.ADMITTED_NEW) -> launchAssessment(true)
@@ -78,51 +90,97 @@ class TravellerRootViewModel(
         }
     }
 
-    fun assessStartup() = launchAssessment(false)
+    fun assessStartup() { launchAssessment(false) }
 
-    private fun launchAssessment(preserveShell: Boolean) = viewModelScope.launch {
-        if (!preserveShell) mutableState.value = TravellerRootState()
-        recoveringExistingOwner = false
-        try {
-            when (val outcome = auth.resolve()) {
-                is TravellerAuthOutcome.Authenticated -> {
-                    val pending = createProgress.pendingOwnerId()
-                    when {
-                        pending == outcome.traveller.userId ||
-                            (pending == null && createEntry.isPending()) -> {
-                            establishedCreateOwner = outcome.traveller.userId
-                            route(TravellerRootRoute.CREATE_DETAILS)
-                        }
-                        pending == null -> route(TravellerRootRoute.ADMITTED_EXISTING)
-                        else -> recovery("This installation's account progress does not match its Traveller owner.")
+    /** Rechecks only existing state. The SDK owns refresh and its network retry loop. */
+    private fun launchAssessment(preserveShell: Boolean): Job {
+        assessmentJob?.takeIf { it.isActive }?.let { return it }
+        return viewModelScope.launch {
+            if (!preserveShell) mutableState.value = state.value.copy(
+                route = TravellerRootRoute.CHECKING, notice = null, recoveryLoginAllowed = false,
+                startupTemporarilyUnavailable = false, startupRetryAllowed = true,
+                activeJourneyReauthentication = false)
+            recoveringExistingOwner = false
+            awaitingStartupSession = false
+            val generation = operationGeneration
+            fun stillRelevant() = operationGeneration == generation && state.value.route in setOf(
+                TravellerRootRoute.CHECKING, TravellerRootRoute.RECOVERY,
+                TravellerRootRoute.ADMITTED_EXISTING, TravellerRootRoute.ADMITTED_NEW,
+                TravellerRootRoute.ACTIVE_REAUTHENTICATION, TravellerRootRoute.ACTIVE_AUTH_PENDING)
+            try {
+                // Read local eligibility separately, but do not expose the shell before checking identity.
+                val active = withTimeoutOrNull(2_000) { auth.hasActiveJourneyForPersistedOwner() }
+                if (!stillRelevant()) return@launch
+                if (active == null) {
+                    recovery("Could not read this device's Journey state. Try again.")
+                    return@launch
+                }
+                if (!auth.startupConfigured) {
+                    if (active) route(TravellerRootRoute.ACTIVE_AUTH_PENDING)
+                    else {
+                        recovery("Sign-in is not configured in this installation. Retrying cannot connect it. Use the configured Alabarin app.")
+                        mutableState.value = state.value.copy(startupRetryAllowed = false)
                     }
+                    return@launch
                 }
-                TravellerAuthOutcome.TravellerIdentityNotEstablished ->
-                    route(if (!intro.isCompleted()) TravellerRootRoute.INTRO
-                        else if (createEntry.isPending()) TravellerRootRoute.CREATE_DETAILS
-                        else if (loginEntry.shouldReturnToEmailEntry()) TravellerRootRoute.LOGIN_EMAIL
-                        else TravellerRootRoute.IDENTITY_CHOICE)
-                TravellerAuthOutcome.TravellerIdentityRecoveryRequired -> {
-                    recoveringExistingOwner = true
-                    if (auth.hasActiveJourneyForPersistedOwner()) {
-                        mutableState.value = state.value.copy(
-                            route = TravellerRootRoute.ACTIVE_REAUTHENTICATION,
-                            activeJourneyReauthentication = true)
-                    } else if (loginEntry.shouldReturnToEmailEntry()) route(TravellerRootRoute.LOGIN_EMAIL)
-                    else recovery("Recover this Traveller with the same verified email account.",
-                        allowSameOwnerLogin = true)
+                for (waitMillis in listOf(0L, 1_000L, 3_000L)) {
+                    delay(waitMillis)
+                    val outcome = withTimeoutOrNull(5_000) { auth.resolve() }
+                        ?: TravellerAuthOutcome.TemporaryAuthUnavailable
+                    if (!stillRelevant()) return@launch
+                    if (outcome == TravellerAuthOutcome.TemporaryAuthUnavailable) {
+                        awaitingStartupSession = true
+                        if (active) route(TravellerRootRoute.ACTIVE_AUTH_PENDING)
+                        continue
+                    }
+                    awaitingStartupSession = false
+                    when (outcome) {
+                        is TravellerAuthOutcome.Authenticated -> {
+                            mutableState.value = state.value.copy(activeJourneyReauthentication = false)
+                            val pending = createProgress.pendingOwnerId()
+                            when {
+                                pending == outcome.traveller.userId ||
+                                    (pending == null && createEntry.isPending()) -> {
+                                    establishedCreateOwner = outcome.traveller.userId
+                                    route(TravellerRootRoute.CREATE_DETAILS)
+                                }
+                                pending == null -> route(TravellerRootRoute.ADMITTED_EXISTING)
+                                else -> recovery("This installation's account progress does not match its Traveller owner.")
+                            }
+                        }
+                        TravellerAuthOutcome.TravellerIdentityNotEstablished ->
+                            route(if (!intro.isCompleted()) TravellerRootRoute.INTRO
+                                else if (createEntry.isPending()) TravellerRootRoute.CREATE_DETAILS
+                                else if (loginEntry.shouldReturnToEmailEntry()) TravellerRootRoute.LOGIN_EMAIL
+                                else TravellerRootRoute.IDENTITY_CHOICE)
+                        TravellerAuthOutcome.TravellerIdentityRecoveryRequired -> {
+                            recoveringExistingOwner = true
+                            if (active) mutableState.value = state.value.copy(
+                                route = TravellerRootRoute.ACTIVE_REAUTHENTICATION,
+                                activeJourneyReauthentication = true,
+                                startupTemporarilyUnavailable = false)
+                            else if (loginEntry.shouldReturnToEmailEntry()) route(TravellerRootRoute.LOGIN_EMAIL)
+                            else recovery("Recover this Traveller with the same verified email account.",
+                                allowSameOwnerLogin = true)
+                        }
+                        TravellerAuthOutcome.TravellerIdentityMismatch ->
+                            recovery("The signed-in account does not match this device's Traveller. Access remains blocked.")
+                        TravellerAuthOutcome.TemporaryAuthUnavailable -> Unit
+                    }
+                    return@launch
                 }
-                TravellerAuthOutcome.TemporaryAuthUnavailable -> {
-                    if (auth.hasActiveJourneyForPersistedOwner())
-                        route(TravellerRootRoute.ACTIVE_AUTH_PENDING)
-                    else recovery("Authentication is temporarily unavailable. Try again.")
+                if (!active) {
+                    recovery("Authentication is temporarily unavailable. Alabarin will continue automatically when your session is ready. You can also try again.")
+                    mutableState.value = state.value.copy(startupTemporarilyUnavailable = true)
                 }
-                else -> recovery("This Traveller identity needs a safe recovery before continuing.")
+            } catch (error: Throwable) {
+                if (error is CancellationException) throw error
+                if (stillRelevant()) {
+                    awaitingStartupSession = false
+                    recovery("Could not read this device's account state. Try again.")
+                }
             }
-        } catch (error: Throwable) {
-            if (error is CancellationException) throw error
-            recovery("Authentication is temporarily unavailable. Try again.")
-        }
+        }.also { assessmentJob = it }
     }
 
     fun completeIntro() {
@@ -525,14 +583,16 @@ class TravellerRootViewModel(
 
     private fun invalidateOperation() { operationGeneration++; handleGeneration++; handleJob?.cancel() }
     private fun route(destination: TravellerRootRoute) {
-        mutableState.value = state.value.copy(route = destination, busy = false, notice = null)
+        mutableState.value = state.value.copy(route = destination, busy = false, notice = null,
+            startupTemporarilyUnavailable = false)
     }
     private fun busy(value: Boolean) { mutableState.value = state.value.copy(
         busy = value, notice = if (value) null else state.value.notice) }
     private fun notice(value: String) { mutableState.value = state.value.copy(notice = value) }
     private fun recovery(value: String, allowSameOwnerLogin: Boolean = false) {
         mutableState.value = state.value.copy(route = TravellerRootRoute.RECOVERY, busy = false,
-            notice = value, recoveryLoginAllowed = allowSameOwnerLogin)
+            notice = value, recoveryLoginAllowed = allowSameOwnerLogin,
+            startupTemporarilyUnavailable = false)
     }
 
     private fun loginFailure(message: String) {

@@ -20,30 +20,41 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.ripple
+import androidx.compose.material3.SheetValue
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import com.journeycontinuity.app.data.repository.isPendingAuthority
@@ -51,17 +62,22 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalInputModeManager
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.findRootCoordinates
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.role
@@ -72,6 +88,7 @@ import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.input.InputMode
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -82,6 +99,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.journeycontinuity.app.R
 import com.journeycontinuity.app.degraded.SmsFallbackStatus
 import com.journeycontinuity.app.domain.Journey
+import com.journeycontinuity.app.domain.JourneyStatus
 import com.journeycontinuity.app.data.local.ProbableEndPresentationEntity
 import com.journeycontinuity.app.data.local.ProbableEndPresentationStatus
 import com.journeycontinuity.app.data.repository.ProbableEndResponseRequest
@@ -99,6 +117,7 @@ import java.time.LocalTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 internal suspend fun pollTrustedContacts(refresh: () -> Unit, intervalMillis: Long = 30_000L) {
     require(intervalMillis > 0)
@@ -165,6 +184,26 @@ fun JourneyProductRoot(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val accountState = accountViewModel?.state?.collectAsStateWithLifecycle()?.value
+    val accountCanDismiss = accountState?.let {
+        !it.saving && it.signOutStatus !in setOf(
+            AccountSignOutStatus.CHECKING, AccountSignOutStatus.CONFIRMING,
+            AccountSignOutStatus.SIGNING_OUT, AccountSignOutStatus.CONFIRMING_ACTIVE,
+            AccountSignOutStatus.STOPPING_ACTIVE)
+    } ?: true
+    val currentAccountCanDismiss by rememberUpdatedState(accountCanDismiss)
+    val accountSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true,
+        confirmValueChange = { it != SheetValue.Hidden || currentAccountCanDismiss })
+    val journeySheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val contactsSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val resilienceSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val checkpointSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val sheetScope = rememberCoroutineScope()
+    var accountSheetHeightPx by remember { mutableFloatStateOf(0f) }
+    var journeySheetHeightPx by remember { mutableFloatStateOf(0f) }
+    var contactsSheetHeightPx by remember { mutableFloatStateOf(0f) }
+    var resilienceSheetHeightPx by remember { mutableFloatStateOf(0f) }
+    var checkpointSheetHeightPx by remember { mutableFloatStateOf(0f) }
+    var accountCloseInFlight by remember { mutableStateOf(false) }
     val lifecycleOwner = LocalLifecycleOwner.current
     val context = LocalContext.current
     val journeySheetHeight = LocalConfiguration.current.screenHeightDp.dp * 0.84f
@@ -218,7 +257,9 @@ fun JourneyProductRoot(
     LaunchedEffect(state.productRoute) {
         if (state.productRoute == JourneyProductRoute.RESILIENCE) onRefreshSmsFallback()
     }
-    if (pendingAuthority != null && (pendingOpen ||
+    if (pendingAuthority != null && (pendingOpen || state.productRoute == JourneyProductRoute.END &&
+            state.endStopPending &&
+            pendingAuthority.journey.id == state.endFlowJourneyId ||
             state.productRoute == JourneyProductRoute.ACTIVE && pendingAuthority.journey.id == state.activeJourney?.id)) {
         PendingAuthorityScreen(pendingAuthority, authorityState,
             onBack = { pendingOpen = false; viewModel.backToHome() },
@@ -231,13 +272,41 @@ fun JourneyProductRoot(
     }
     BackHandler(!pickerOpen && !mapOpen && state.productRoute != JourneyProductRoute.HOME &&
         state.productRoute != JourneyProductRoute.ACTIVE) {
-        if (state.productRoute == JourneyProductRoute.CHECKPOINT) viewModel.backToStart()
+        if (state.productRoute == JourneyProductRoute.END) viewModel.returnToActiveFromEnd()
+        else if (state.productRoute == JourneyProductRoute.END_RESULT) viewModel.doneWithEndResult()
+        else if (state.productRoute == JourneyProductRoute.CHECKPOINT) viewModel.backToStart()
         else if (state.productRoute == JourneyProductRoute.CONTACTS ||
             state.productRoute == JourneyProductRoute.RESILIENCE) viewModel.closeUtility()
         else viewModel.backToHome()
     }
 
-    Box(Modifier.fillMaxSize().background(Background).safeDrawingPadding().imePadding()) {
+    Box(Modifier.fillMaxSize().background(Background).drawWithContent {
+        drawContent()
+        val visibleSheetState = when {
+            accountOpen -> accountSheetState
+            (state.productRoute == JourneyProductRoute.ACTIVE || showProbableEnd) &&
+                authorityState.records != null && state.activeJourney != null -> journeySheetState
+            state.productRoute == JourneyProductRoute.CONTACTS -> contactsSheetState
+            state.productRoute == JourneyProductRoute.RESILIENCE -> resilienceSheetState
+            state.productRoute == JourneyProductRoute.CHECKPOINT -> checkpointSheetState
+            else -> null
+        }
+        val visibleSheetHeightPx = when (visibleSheetState) {
+            accountSheetState -> accountSheetHeightPx
+            journeySheetState -> journeySheetHeightPx
+            contactsSheetState -> contactsSheetHeightPx
+            resilienceSheetState -> resilienceSheetHeightPx
+            checkpointSheetState -> checkpointSheetHeightPx
+            else -> 0f
+        }
+        if (visibleSheetState != null && visibleSheetHeightPx > 0f) {
+            val offset = try { visibleSheetState.requireOffset() }
+                catch (_: IllegalStateException) { size.height }
+            val fraction = sheetVisibleFraction(size.height, visibleSheetHeightPx, offset)
+            val fullAlpha = if (visibleSheetState == accountSheetState) 0.16f else 0.32f
+            if (fraction > 0f) drawRect(Color.Black.copy(alpha = fullAlpha * fraction))
+        }
+    }.safeDrawingPadding().imePadding()) {
         when {
             state.isRestoring -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = Brand)
@@ -255,9 +324,7 @@ fun JourneyProductRoot(
                     state = state,
                     accountEmail = if (accountState?.reauthenticationNeeded == true)
                         "Account connection needs attention"
-                    else accountState?.profile?.let {
-                        "${it.fullName} · @${it.handle}"
-                    } ?: accountEmail,
+                    else accountEmail,
                     resilienceSummary = resilience.homeSummary,
                     onPrimary = {
                         val active = state.activeJourney
@@ -289,9 +356,11 @@ fun JourneyProductRoot(
                                 }
                                 viewModel.backToHome()
                             },
-                            modifier = Modifier.testTag(if (showProbableEnd) "probable_end_sheet" else "journey_sheet"),
-                            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+                            modifier = Modifier.testTag(if (showProbableEnd) "probable_end_sheet" else "journey_sheet")
+                                .onSizeChanged { journeySheetHeightPx = it.height.toFloat() },
+                            sheetState = journeySheetState,
                             containerColor = Background,
+                            scrimColor = Color.Transparent,
                             shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
                             dragHandle = { JourneySheetHandle() },
                         ) {
@@ -308,10 +377,7 @@ fun JourneyProductRoot(
                                     viewModel.backToHome()
                                 },
                                 onRetry = onRetryMonitoring,
-                                onEndCompleted = {
-                                    if (pendingAuthority?.journey?.id == journey.id) pendingOpen = true
-                                    else viewModel.endJourney(journey.id)
-                                },
+                                onEndCompleted = { viewModel.openEndJourney(journey.id) },
                                 probableEnd = if (showProbableEnd) probableEndPresentation else null,
                                 onProbableEndRendered = onProbableEndRendered,
                                 onProbableEndResponse = onProbableEndResponse,
@@ -324,21 +390,33 @@ fun JourneyProductRoot(
                     }
                 }
                 if (state.productRoute == JourneyProductRoute.CONTACTS) {
+                    val closeContacts = {
+                        sheetScope.launch {
+                            contactsSheetState.hide()
+                            if (viewModel.uiState.value.productRoute == JourneyProductRoute.CONTACTS)
+                                viewModel.closeUtility()
+                        }
+                        Unit
+                    }
                     ModalBottomSheet(
                         onDismissRequest = viewModel::closeUtility,
-                        modifier = Modifier.testTag("trusted_contacts_sheet"),
-                        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+                        modifier = Modifier.testTag("trusted_contacts_sheet")
+                            .onSizeChanged { contactsSheetHeightPx = it.height.toFloat() },
+                        sheetState = contactsSheetState,
                         containerColor = SheetBackground,
+                        scrimColor = Color.Transparent,
                         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-                        dragHandle = { JourneySheetHandle() },
+                        dragHandle = null,
                     ) {
+                        PassiveSheetGrabber()
                         TrustedContactsSheet(
                             state = state,
-                            onDismiss = viewModel::closeUtility,
+                            onDismiss = closeContacts,
                             onAdd = viewModel::openAddTrustedContact,
                             onCreate = viewModel::createTrustedContact,
                             onDone = viewModel::doneWithInvitation,
                             onRemove = viewModel::revokeTrustedContact,
+                            onRetry = viewModel::refreshTrustedContacts,
                             onShare = { url ->
                                 context.startActivity(Intent.createChooser(
                                     trustedContactShareIntent(url), "Share invitation"))
@@ -347,19 +425,30 @@ fun JourneyProductRoot(
                     }
                 }
                 if (state.productRoute == JourneyProductRoute.RESILIENCE) {
+                    val closeResilience = {
+                        sheetScope.launch {
+                            resilienceSheetState.hide()
+                            if (viewModel.uiState.value.productRoute == JourneyProductRoute.RESILIENCE)
+                                viewModel.closeUtility()
+                        }
+                        Unit
+                    }
                     ModalBottomSheet(
                         onDismissRequest = viewModel::closeUtility,
-                        modifier = Modifier.testTag("resilience_sheet"),
-                        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+                        modifier = Modifier.testTag("resilience_sheet")
+                            .onSizeChanged { resilienceSheetHeightPx = it.height.toFloat() },
+                        sheetState = resilienceSheetState,
                         containerColor = Color(0xFFFEFEFC),
+                        scrimColor = Color.Transparent,
                         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-                        dragHandle = { JourneySheetHandle() },
+                        dragHandle = null,
                     ) {
+                        PassiveSheetGrabber()
                         ResilienceSheet(
                             presentation = resilience,
                             status = smsFallbackStatus,
                             page = state.resiliencePage,
-                            onDismiss = viewModel::closeUtility,
+                            onDismiss = closeResilience,
                             onAddContact = viewModel::openContacts,
                             onAllowSms = onRequestSmsPermissions,
                             onAllowPhoneAccess = onRequestPhoneStatePermission,
@@ -407,7 +496,10 @@ fun JourneyProductRoot(
                     }
                     ModalBottomSheet(
                         onDismissRequest = viewModel::backToStart,
+                        modifier = Modifier.onSizeChanged { checkpointSheetHeightPx = it.height.toFloat() },
+                        sheetState = checkpointSheetState,
                         containerColor = SheetBackground,
+                        scrimColor = Color.Transparent,
                         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
                     ) {
                         JourneyCheckpoint(
@@ -425,48 +517,92 @@ fun JourneyProductRoot(
                     }
                 }
             }
+            state.productRoute == JourneyProductRoute.END -> {
+                if (state.activeJourney?.id == state.endFlowJourneyId && !state.endStopPending) {
+                    OrdinaryEndChoiceScreen(state, viewModel::returnToActiveFromEnd,
+                        onComplete = { viewModel.endJourney(requireNotNull(state.endFlowJourneyId)) },
+                        onStop = { viewModel.stopJourney(requireNotNull(state.endFlowJourneyId)) })
+                } else if (state.endStopPending) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = Brand)
+                    }
+                }
+            }
+            state.productRoute == JourneyProductRoute.END_RESULT -> {
+                state.endResult?.takeIf { it.id == state.endFlowJourneyId }?.let { result ->
+                    OrdinaryEndResultScreen(result, viewModel::doneWithEndResult)
+                }
+            }
         }
-        SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
+        SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter)
+            .padding(bottom = if (state.productRoute == JourneyProductRoute.HOME) 96.dp else 0.dp))
     }
     if (accountOpen) {
         val presentedState = accountState ?: TravellerAccountState(
             loadError = "Account profile is unavailable. Try again.",
         )
+        val dismissAccountSheet = {
+            if (accountCanDismiss && !accountCloseInFlight) {
+                accountCloseInFlight = true
+                sheetScope.launch {
+                    try {
+                        accountSheetState.hide()
+                        if (!accountSheetState.isVisible) accountOpen = false
+                    } finally { accountCloseInFlight = false }
+                }
+            }
+        }
         ModalBottomSheet(
-            onDismissRequest = { if (!presentedState.saving &&
-                presentedState.signOutStatus != AccountSignOutStatus.CHECKING &&
-                presentedState.signOutStatus != AccountSignOutStatus.CONFIRMING &&
-                presentedState.signOutStatus != AccountSignOutStatus.SIGNING_OUT &&
-                presentedState.signOutStatus != AccountSignOutStatus.CONFIRMING_ACTIVE &&
-                presentedState.signOutStatus != AccountSignOutStatus.STOPPING_ACTIVE) accountOpen = false },
-            modifier = Modifier.testTag("account_sheet"),
-            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            onDismissRequest = {
+                if (presentedState.editOpen) {
+                    if (!presentedState.saving) {
+                        accountViewModel?.cancelEdit()
+                        // A drag or system Back can hide the sheet before this callback.
+                        // Restore the same host with Account content, never a second sheet.
+                        sheetScope.launch {
+                            accountSheetState.show()
+                            withFrameNanos { }
+                            accountSheetState.expand()
+                        }
+                    }
+                } else dismissAccountSheet()
+            },
+            modifier = Modifier.testTag("account_sheet")
+                .onSizeChanged { accountSheetHeightPx = it.height.toFloat() },
+            sheetState = accountSheetState,
             containerColor = Color(0xFFFEFEFC),
-            scrimColor = Color.Black.copy(alpha = 0.16f),
+            // Material fades its scrim at target Hidden, before a dragged sheet reaches the bottom.
+            // The host draws the same color from the actual offset while Material retains gestures.
+            scrimColor = Color.Transparent,
             shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
             dragHandle = null,
         ) {
-            TravellerAccountSheet(
+            BackHandler(presentedState.editOpen) {
+                // The IME consumes the first Back while visible; the next returns to Account.
+                accountViewModel?.cancelEdit()
+            }
+            if (presentedState.editOpen) {
+                TravellerEditIdentitySheet(
+                    state = presentedState,
+                    onNameChange = { accountViewModel?.updateFullName(it) },
+                    onHandleChange = { accountViewModel?.updateHandle(it) },
+                    onSave = { accountViewModel?.save() },
+                    onClose = { accountViewModel?.cancelEdit() },
+                )
+            } else TravellerAccountSheet(
                 state = presentedState,
-                onClose = { if (presentedState.signOutStatus != AccountSignOutStatus.CHECKING &&
-                    presentedState.signOutStatus != AccountSignOutStatus.CONFIRMING &&
-                    presentedState.signOutStatus != AccountSignOutStatus.SIGNING_OUT &&
-                    presentedState.signOutStatus != AccountSignOutStatus.CONFIRMING_ACTIVE &&
-                    presentedState.signOutStatus != AccountSignOutStatus.STOPPING_ACTIVE) accountOpen = false },
+                onClose = dismissAccountSheet,
                 onEdit = { accountViewModel?.openEdit() },
                 onRetry = { accountViewModel?.load() },
                 onSignOutRequested = onSignOutRequested,
                 onReauthenticate = onReauthenticateRequested,
             )
         }
-        if (presentedState.editOpen) {
-            TravellerEditIdentityOverlay(
-                state = presentedState,
-                onNameChange = { accountViewModel?.updateFullName(it) },
-                onHandleChange = { accountViewModel?.updateHandle(it) },
-                onSave = { accountViewModel?.save() },
-                onCancel = { accountViewModel?.cancelEdit() },
-            )
+        LaunchedEffect(presentedState.editOpen) {
+            if (!presentedState.editOpen && accountSheetState.isVisible) {
+                withFrameNanos { }
+                accountSheetState.expand()
+            }
         }
         if (presentedState.signOutStatus == AccountSignOutStatus.CONFIRMING ||
             presentedState.signOutStatus == AccountSignOutStatus.SIGNING_OUT) {
@@ -496,6 +632,13 @@ private fun JourneySheetHandle() {
 }
 
 @Composable
+private fun PassiveSheetGrabber() {
+    Box(Modifier.fillMaxWidth().height(24.dp), contentAlignment = Alignment.TopCenter) {
+        Box(Modifier.padding(top = 12.dp)) { TravellerSheetGrabberPill() }
+    }
+}
+
+@Composable
 internal fun JourneyHome(
     state: JourneyUiState,
     accountEmail: String?,
@@ -511,13 +654,13 @@ internal fun JourneyHome(
         Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
             Text("Alabarin", color = Brand, style = textStyle(18, 22, FontWeight.SemiBold,
                 InstrumentSans), modifier = Modifier.semantics { heading() })
-            Spacer(Modifier.height(50.dp))
+            Spacer(Modifier.height(46.dp))
             UtilityRow(R.drawable.alabarin_contacts, "Trusted Contacts",
                 trustedContactsSummary(state), onContacts)
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(4.dp))
             UtilityRow(R.drawable.alabarin_resilience, "Resilience",
                 resilienceSummary, onResilience)
-            Spacer(Modifier.height(18.dp))
+            Spacer(Modifier.height(10.dp))
             UtilityRow(R.drawable.alabarin_account, "Account",
                 accountEmail ?: "Signed in to Alabarin", onAccount)
             if (pendingAuthority != null) {
@@ -569,7 +712,16 @@ internal fun trustedContactsSummary(state: JourneyUiState): String {
 
 @Composable
 private fun UtilityRow(icon: Int, title: String, summary: String, onClick: () -> Unit) {
-    Row(Modifier.fillMaxWidth().height(62.dp).clickable(role = Role.Button, onClick = onClick),
+    var focused by remember { mutableStateOf(false) }
+    val inputMode = LocalInputModeManager.current
+    val shape = RoundedCornerShape(14.dp)
+    Row(Modifier.fillMaxWidth().height(70.dp)
+        .onFocusChanged { focused = it.isFocused }
+        .clip(shape)
+        .then(if (focused && inputMode.inputMode == InputMode.Keyboard)
+            Modifier.border(2.dp, Brand, shape) else Modifier)
+        .clickable(interactionSource = null, indication = null,
+            role = Role.Button, onClick = onClick),
         verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) {
             Image(painterResource(icon), null, Modifier.size(17.dp))
@@ -605,7 +757,7 @@ internal fun JourneyStartScreen(
     Column(Modifier.fillMaxSize().padding(start = 24.dp, end = 24.dp, top = 28.dp, bottom = 24.dp)) {
         Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
             JourneyHeader("Start Journey", onBack)
-            Spacer(Modifier.height(38.dp))
+            Spacer(Modifier.height(30.dp))
             Text("Where are you going?", color = Heading,
                 style = textStyle(16, 22, FontWeight.Medium))
             Spacer(Modifier.height(8.dp))
@@ -614,6 +766,7 @@ internal fun JourneyStartScreen(
             } else {
                 Row(Modifier.fillMaxWidth().heightIn(min = 58.dp)
                     .border(1.dp, Color(0xBF676F74), RoundedCornerShape(4.dp))
+                    .clip(RoundedCornerShape(4.dp))
                     .clickable(enabled = !state.isActionInProgress, role = Role.Button, onClick = onChooseDestination)
                     .testTag("choose_structured_destination")
                     .padding(horizontal = 16.dp, vertical = 10.dp),
@@ -621,7 +774,7 @@ internal fun JourneyStartScreen(
                     Text(structuredDraft?.displayLabel ?: "Choose destination",
                         color = if (structuredDraft == null) Body else Heading,
                         style = textStyle(15, 21), modifier = Modifier.weight(1f),
-                        maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text("›", color = Body, style = textStyle(24, 24))
                 }
             }
@@ -631,6 +784,7 @@ internal fun JourneyStartScreen(
             Spacer(Modifier.height(8.dp))
             Row(Modifier.fillMaxWidth().height(58.dp)
                 .border(1.dp, Color(0xBF676F74), RoundedCornerShape(4.dp))
+                .clip(RoundedCornerShape(4.dp))
                 .clickable(enabled = !state.isActionInProgress, role = Role.Button) {
                     val suggested = Instant.ofEpochMilli(state.draftExpectedArrivalAt ?: now + 3_600_000L)
                         .atZone(zone)
@@ -732,7 +886,6 @@ internal fun JourneyActiveScreen(
     probableEndResponseError: String? = null,
     modifier: Modifier = Modifier,
 ) {
-    var confirmCompletion by remember { mutableStateOf(false) }
     val sheetView = LocalView.current
     val scrollState = rememberScrollState()
     var promptLaidOut by remember(probableEnd?.id) { mutableStateOf(false) }
@@ -773,7 +926,7 @@ internal fun JourneyActiveScreen(
     Column(modifier.fillMaxSize().padding(start = 24.dp, end = 24.dp, bottom = 24.dp)) {
         Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(scrollState)) {
             BackIcon(onBack)
-            Spacer(Modifier.height(22.dp))
+            Spacer(Modifier.height(14.dp))
             Text(journey.destination, color = Heading, style = textStyle(40, 46, FontWeight.Bold),
                 maxLines = 2, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.semantics { heading() })
@@ -871,25 +1024,168 @@ internal fun JourneyActiveScreen(
         Spacer(Modifier.height(8.dp))
         if (probableEnd == null) {
             Box(Modifier.fillMaxWidth().height(1.dp).background(Border))
-            Box(Modifier.fillMaxWidth().height(52.dp)
-                .clickable(role = Role.Button) { confirmCompletion = true },
+            Box(Modifier.fillMaxWidth().height(52.dp).clip(RoundedCornerShape(12.dp))
+                .clickable(role = Role.Button) { onEndCompleted() },
                 contentAlignment = Alignment.Center) {
                 Text("End Journey", color = Heading, style = textStyle(16, 22, FontWeight.Medium))
             }
         }
     }
-    if (confirmCompletion) AlertDialog(
-        onDismissRequest = { confirmCompletion = false },
-        title = { Text("Journey completed?") },
-        text = { Text("Confirm only if this Journey has ended. This does not independently confirm safe arrival.") },
-        dismissButton = { TextButton(onClick = { confirmCompletion = false }) {
-            Text("Keep Journey running")
-        } },
-        confirmButton = { TextButton(onClick = {
-            confirmCompletion = false
-            onEndCompleted()
-        }) { Text("Journey completed") } },
-    )
+}
+
+internal fun sheetVisibleFraction(viewportHeightPx: Float, sheetHeightPx: Float, offsetPx: Float): Float {
+    if (viewportHeightPx <= 0f || sheetHeightPx <= 0f || !offsetPx.isFinite()) return 0f
+    return ((viewportHeightPx - offsetPx) / sheetHeightPx).coerceIn(0f, 1f)
+}
+
+@Composable
+internal fun OrdinaryEndChoiceScreen(state: JourneyUiState, onBack: () -> Unit,
+    onComplete: () -> Unit, onStop: () -> Unit) {
+    var confirmation by rememberSaveable(state.endFlowJourneyId) { mutableStateOf<String?>(null) }
+    val busy = state.isActionInProgress || state.endStopPending
+    Column(Modifier.fillMaxSize().padding(horizontal = 24.dp).padding(top = 28.dp, bottom = 24.dp)) {
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+            Box(Modifier.size(48.dp).clip(CircleShape)
+                .clickable(interactionSource = null,
+                    indication = ripple(bounded = false, radius = TravellerNavigationRippleRadius,
+                        color = TravellerNavigationRippleColor),
+                    enabled = !busy, role = Role.Button, onClick = onBack)
+                .testTag("ordinary_end_back")
+                .semantics { contentDescription = "Back to Journey" },
+                contentAlignment = Alignment.Center) {
+                TravellerBackVisual()
+            }
+            Spacer(Modifier.height(40.dp))
+            Text("End Journey", color = Heading, style = textStyle(30, 36, FontWeight.Bold),
+                modifier = Modifier.semantics { heading() }.testTag("ordinary_end_title"))
+            Spacer(Modifier.height(12.dp))
+            Text("Choose what happened with this Journey.", color = Body, style = textStyle(15, 21))
+            Spacer(Modifier.height(34.dp))
+            OrdinaryEndChoiceRow("Journey completed",
+                "You completed this Journey and want Alabarin to stop monitoring it.",
+                !busy, "ordinary_end_complete_choice") { confirmation = "COMPLETE" }
+            Box(Modifier.fillMaxWidth().height(1.dp).background(Border))
+            OrdinaryEndChoiceRow("Stop monitoring",
+                "Stop monitoring without marking the Journey completed.",
+                !busy, "ordinary_end_stop_choice") { confirmation = "STOP" }
+            state.endError?.let {
+                Spacer(Modifier.height(16.dp))
+                Text(it, color = Warning, style = textStyle(14, 20),
+                    modifier = Modifier.testTag("ordinary_end_error"))
+            }
+        }
+        Box(Modifier.fillMaxWidth().height(52.dp).clip(RoundedCornerShape(12.dp))
+            .clickable(enabled = !busy, role = Role.Button, onClick = onBack)
+            .testTag("ordinary_end_keep_running"), contentAlignment = Alignment.Center) {
+            Text("Keep Journey running", color = Brand,
+                style = textStyle(16, 22, FontWeight.Medium))
+        }
+    }
+    if (confirmation != null) {
+        val complete = confirmation == "COMPLETE"
+        Dialog(onDismissRequest = { if (!busy) confirmation = null },
+            properties = DialogProperties(usePlatformDefaultWidth = false)) {
+            val window = (LocalView.current.parent as? DialogWindowProvider)?.window
+            SideEffect { window?.setDimAmount(0.22f) }
+            Box(Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+                contentAlignment = Alignment.Center) {
+            Column(Modifier.widthIn(max = 320.dp).fillMaxWidth().clip(RoundedCornerShape(26.dp))
+                .background(Color(0xFFFEFEFC)).verticalScroll(rememberScrollState())
+                .padding(start = 24.dp, end = 24.dp, top = 24.dp, bottom = 18.dp)
+                .testTag("ordinary_end_confirmation")) {
+                Text(if (complete) "Complete Journey?" else "Stop monitoring?",
+                    color = Heading, style = textStyle(22, 27, FontWeight.Bold),
+                    modifier = Modifier.semantics { heading() })
+                Spacer(Modifier.height(12.dp))
+                Text(if (complete)
+                    "Alabarin will stop monitoring this Journey and record it as completed. This does not independently confirm safe arrival."
+                    else "Alabarin will stop monitoring this Journey without marking it completed.",
+                    color = Body, style = textStyle(15, 21),
+                    modifier = Modifier.heightIn(min = 76.dp))
+                state.endError?.let {
+                    Spacer(Modifier.height(8.dp))
+                    Text(it, color = Warning, style = textStyle(14, 20),
+                        modifier = Modifier.testTag("ordinary_end_confirm_error"))
+                }
+                Spacer(Modifier.height(31.dp))
+                Box(Modifier.fillMaxWidth().height(52.dp).clip(RoundedCornerShape(16.dp))
+                    .background(if (busy) Color(0xFFD5D7D7) else Brand)
+                    .clickable(enabled = !busy, role = Role.Button,
+                        onClick = if (complete) onComplete else onStop)
+                    .testTag("ordinary_end_confirm_action"), contentAlignment = Alignment.Center) {
+                    if (busy) CircularProgressIndicator(Modifier.size(20.dp), color = Color.White,
+                        strokeWidth = 2.dp)
+                    else Text(if (complete) "Complete Journey" else "Stop monitoring",
+                        color = Color.White, style = textStyle(16, 22, FontWeight.Bold))
+                }
+                Box(Modifier.fillMaxWidth().height(48.dp).clip(RoundedCornerShape(12.dp))
+                    .clickable(enabled = !busy, role = Role.Button) { confirmation = null }
+                    .testTag("ordinary_end_confirm_cancel"), contentAlignment = Alignment.Center) {
+                    Text("Keep monitoring", color = Brand,
+                        style = textStyle(15, 21, FontWeight.Medium))
+                }
+            }
+            }
+        }
+    }
+}
+
+@Composable
+private fun OrdinaryEndChoiceRow(title: String, description: String, enabled: Boolean,
+    tag: String, onClick: () -> Unit) {
+    Row(Modifier.fillMaxWidth().heightIn(min = 92.dp).clip(RoundedCornerShape(12.dp))
+        .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+        .padding(vertical = 14.dp).testTag(tag), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(title, color = Heading, style = textStyle(16, 21, FontWeight.Medium))
+            Spacer(Modifier.height(4.dp))
+            Text(description, color = Body, style = textStyle(14, 20))
+        }
+        Spacer(Modifier.width(12.dp))
+        Text("›", color = Body, style = textStyle(24, 24))
+    }
+}
+
+@Composable
+internal fun OrdinaryEndResultScreen(journey: Journey, onDone: () -> Unit) {
+    val completed = journey.status == JourneyStatus.COMPLETED
+    Column(Modifier.fillMaxSize().padding(horizontal = 24.dp).padding(top = 34.dp, bottom = 24.dp)) {
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+            Spacer(Modifier.height(76.dp))
+            Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+                Image(painterResource(if (completed) R.drawable.probable_end_completed_icon
+                    else R.drawable.ordinary_end_stopped_icon), null, Modifier.size(28.dp))
+            }
+            Spacer(Modifier.height(24.dp))
+            Text(if (completed) "Journey completed" else "Monitoring stopped",
+                color = Heading, style = textStyle(30, 36, FontWeight.Bold),
+                modifier = Modifier.semantics { heading() }.testTag("ordinary_end_result_title"))
+            Spacer(Modifier.height(10.dp))
+            Text(if (completed) "Alabarin has stopped monitoring this Journey."
+                else "You stopped monitoring for this Journey.", color = Body,
+                style = textStyle(15, 21))
+            Spacer(Modifier.height(34.dp))
+            OrdinaryEndSummaryRow("Destination", journey.destination)
+            Spacer(Modifier.height(12.dp))
+            OrdinaryEndSummaryRow("Expected arrival", formatTime(journey.expectedArrivalAt))
+        }
+        Box(Modifier.fillMaxWidth().height(56.dp).clip(RoundedCornerShape(18.dp))
+            .background(Brand).clickable(role = Role.Button, onClick = onDone)
+            .testTag("ordinary_end_done"), contentAlignment = Alignment.Center) {
+            Text("Done", color = Color.White, style = textStyle(16, 20, FontWeight.Bold))
+        }
+    }
+}
+
+@Composable
+private fun OrdinaryEndSummaryRow(label: String, value: String) {
+    Row(Modifier.fillMaxWidth().heightIn(min = 24.dp),
+        verticalAlignment = Alignment.CenterVertically) {
+        Text(label, color = Body, style = textStyle(15, 21))
+        Spacer(Modifier.width(16.dp).weight(1f))
+        Text(value, color = Heading, style = textStyle(15, 21, FontWeight.Medium),
+            maxLines = 2, overflow = TextOverflow.Ellipsis)
+    }
 }
 
 @Composable
@@ -921,9 +1217,14 @@ private fun JourneyHeader(title: String, onBack: () -> Unit) {
 
 @Composable
 private fun BackIcon(onClick: () -> Unit) {
-    Box(Modifier.size(40.dp).clickable(role = Role.Button, onClick = onClick),
+    Box(Modifier.size(48.dp).clip(CircleShape)
+        .clickable(interactionSource = null,
+            indication = ripple(bounded = false, radius = TravellerNavigationRippleRadius,
+                color = TravellerNavigationRippleColor),
+            role = Role.Button, onClick = onClick)
+        .semantics { contentDescription = "Back" },
         contentAlignment = Alignment.Center) {
-        Image(painterResource(R.drawable.alabarin_back), "Return to Home", Modifier.size(20.dp))
+        TravellerBackVisual()
     }
 }
 

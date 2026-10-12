@@ -11,6 +11,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performScrollToNode
@@ -34,6 +35,50 @@ import org.junit.Test
 
 class DestinationPickerScreenTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+
+    @Test fun keyboardSearchRetriesThroughTheGuardedSearchPath() {
+        var offline = true
+        var calls = 0
+        val vm = DestinationPickerViewModel(
+            BundledAdminCatalogue(compose.activity).snapshot(),
+            DestinationSearchGateway { calls++; DestinationSearchResponse.NoResults },
+            { offline })
+        compose.setContent { DestinationPickerScreen(vm, {}, {}, {}) }
+        compose.runOnIdle {
+            vm.selectRegion("ng-kwara")
+            vm.selectUnit("ng-kwara-offa")
+            vm.showSearch()
+        }
+        compose.onNodeWithTag("destination_query").performTextInput("hospital")
+        compose.runOnIdle {
+            assertEquals(DestinationSearchState.OFFLINE, vm.state.value.searchState)
+            offline = false
+        }
+        compose.onNodeWithTag("destination_query").performImeAction()
+        compose.waitUntil(5_000) { calls == 1 &&
+            vm.state.value.searchState == DestinationSearchState.NO_RESULTS }
+        compose.runOnIdle { assertEquals("hospital", vm.state.value.query) }
+    }
+
+    @Test fun setupUsesDirectMapEntryAndKeepsSelectedArea() {
+        val maps = mutableListOf<MapRefinementRequest>()
+        val vm = DestinationPickerViewModel(
+            BundledAdminCatalogue(compose.activity).snapshot(),
+            DestinationSearchGateway { DestinationSearchResponse.NoResults }, { false })
+        compose.setContent { DestinationPickerScreen(vm, {}, {}, { maps += it }) }
+        compose.onNodeWithText("Choose destination").assertIsDisplayed()
+        compose.onNodeWithText("Choose state").assertIsDisplayed()
+        compose.onNodeWithTag("destination_search_open").assertIsNotEnabled()
+        compose.onNodeWithTag("destination_map_request").assertIsNotEnabled()
+        compose.runOnIdle { vm.selectRegion("ng-kwara"); vm.selectUnit("ng-kwara-offa") }
+        compose.onNodeWithText("Offa").assertIsDisplayed()
+        compose.onNodeWithTag("destination_map_request").assertIsDisplayed().performClick()
+        compose.runOnIdle {
+            assertEquals("ng-kwara-offa", maps.single().localUnit.id)
+            assertNull(maps.single().candidate)
+            assertEquals(DestinationPickerPage.SETUP, vm.state.value.page)
+        }
+    }
 
     @Test fun fctCatalogueLabelsAndOfflineFallbackAppearWithoutNetwork() {
         var calls = 0
@@ -85,8 +130,8 @@ class DestinationPickerScreenTest {
             vm.state.value.searchState == DestinationSearchState.VERIFICATION_UNAVAILABLE
         }
         compose.onNodeWithTag("destination_search_content").performScrollToNode(
-            hasText("We can’t verify exact places right now"))
-        compose.onNodeWithText("We can’t verify exact places right now").assertIsDisplayed()
+            hasText("We can't verify exact places right now"))
+        compose.onNodeWithText("We can't verify exact places right now").assertIsDisplayed()
         compose.onNodeWithTag("destination_search_content").performScrollToNode(hasTestTag("destination_retry"))
         compose.onNodeWithTag("destination_retry").assertIsDisplayed()
         compose.onNodeWithTag("destination_search_content").performScrollToNode(hasTestTag("destination_locality"))
@@ -128,7 +173,7 @@ class DestinationPickerScreenTest {
             if (suitability == SearchSuitability.SELECTABLE_POINT) "alabarin-2026-10-03-v1" else null,
             ProviderAttribution("OSM", "© OpenStreetMap", "ODbL", "https://osm.org"))
 
-    @Test fun resultsScrollAtShortHeightAndEmitGeneralOrCandidateMapRequestsOnly() {
+    @Test fun roadResultAndExactPointActionKeepCandidateOnShortHeight() {
         val candidate = result(SearchSuitability.NEEDS_MAP_PIN, SearchResultType.ROAD)
         val maps = mutableListOf<MapRefinementRequest>()
         var exactSelections = 0
@@ -154,7 +199,7 @@ class DestinationPickerScreenTest {
         compose.runOnIdle {
             assertEquals(0, exactSelections)
             assertEquals(candidate, maps[0].candidate)
-            assertNull(maps[1].candidate)
+            assertEquals(candidate, maps[1].candidate)
             assertEquals("ng-fct-abuja-municipal", maps[1].localUnit.id)
         }
     }

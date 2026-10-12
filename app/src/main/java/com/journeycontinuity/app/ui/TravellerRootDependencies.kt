@@ -103,6 +103,7 @@ interface ReturningLoginActions {
 }
 
 interface TravellerRootAuth {
+    val startupConfigured: Boolean get() = true
     suspend fun resolve(): TravellerAuthOutcome
     suspend fun establishAnonymousOwner(): TravellerAuthOutcome
     val createAccount: CreateAccountActions?
@@ -120,6 +121,7 @@ class ProductionTravellerRootAuth(
     private val ownerStore: com.journeycontinuity.app.auth.TravellerIdentityStore? = null,
     private val journeyRepository: com.journeycontinuity.app.data.repository.JourneyRepository? = null,
 ) : TravellerRootAuth {
+    override val startupConfigured: Boolean get() = coordinator != null
     override val sessionStates = authBackend?.observeSessionStates() ?: kotlinx.coroutines.flow.emptyFlow()
 
     override suspend fun hasActiveJourneyForPersistedOwner(): Boolean =

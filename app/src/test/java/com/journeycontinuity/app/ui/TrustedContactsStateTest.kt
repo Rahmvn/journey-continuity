@@ -30,7 +30,7 @@ class TrustedContactsStateTest {
     }
 
     @Test
-    fun identityFailureUsesExplicitBlockedMessageRatherThanEmptySuccess() {
+    fun authenticationFailureStaysUnavailableWithoutClaimingReauthentication() {
         val state = JourneyUiState().withTrustedContactsFailure(
             CloudSyncException(
                 SyncFailureKind.AUTHENTICATION,
@@ -40,7 +40,7 @@ class TrustedContactsStateTest {
 
         assertEquals(TrustedContactsAvailability.UNAVAILABLE, state.trustedContactsAvailability)
         assertEquals(
-            "Trusted contacts unavailable because traveller identity needs attention.",
+            "Trusted contacts are unavailable right now. Try again here.",
             state.trustedContactsUnavailableMessage,
         )
     }

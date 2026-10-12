@@ -10,6 +10,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -116,6 +117,7 @@ class JourneyProductFlowTest {
         val gateway = FakeAccountGateway()
         var signOutRequests = 0
         val (journey, account) = showAccount(gateway) { signOutRequests++ }
+        compose.onNodeWithText("test@example.com").assertIsDisplayed()
         compose.onNodeWithText("Account").performClick()
         compose.waitUntil("Account profile did not load", 10_000) { account.state.value.profile != null }
         compose.onNodeWithTag("account_sheet").assertIsDisplayed()
@@ -131,17 +133,24 @@ class JourneyProductFlowTest {
         compose.onNodeWithTag("account_sheet").assertIsDisplayed()
         compose.onNodeWithTag("account_close").performClick()
         compose.onNodeWithTag("account_sheet").assertDoesNotExist()
+        compose.onNodeWithText("test@example.com").assertIsDisplayed()
     }
 
-    @Test fun accountEditOverlayPreservesEmailAndSavesIdentity() {
+    @Test fun accountEditSheetPreservesEmailAndSavesIdentity() {
         val gateway = FakeAccountGateway()
         val (_, account) = showAccount(gateway) {}
         compose.onNodeWithText("Account").performClick()
         compose.waitUntil("Account profile did not load", 10_000) { account.state.value.profile != null }
         compose.onNodeWithTag("account_edit").performClick()
         compose.onNodeWithTag("account_edit_overlay").assertIsDisplayed()
+        compose.onNodeWithTag("account_sheet").assertIsDisplayed()
+        compose.onNodeWithTag("account_cancel").assertDoesNotExist()
         compose.onNodeWithTag("account_full_name_input").performTextReplacement("Ada New")
         compose.onNodeWithTag("account_handle_input").performTextReplacement("@new_handle")
+        compose.onNodeWithTag("account_handle_input").assertTextEquals("new_handle")
+        compose.onNodeWithTag("account_handle_input").performTextInput("@")
+        compose.onNodeWithTag("account_handle_input").assertTextEquals("new_handle")
+        compose.runOnIdle { assertEquals("@new_handle", account.state.value.handleInput) }
         compose.waitUntil("Handle was not checked", 10_000) {
             account.state.value.handleStatus == AccountHandleStatus.AVAILABLE
         }
@@ -153,6 +162,20 @@ class JourneyProductFlowTest {
         compose.onNodeWithText("@new_handle").assertIsDisplayed()
         compose.onNodeWithTag("account_verified_email").assertIsDisplayed()
         compose.runOnIdle { assertEquals(1, gateway.saves) }
+    }
+
+    @Test fun accountEditSheetCloseDiscardsInputAndReturnsToAccount() {
+        val gateway = FakeAccountGateway()
+        val (_, account) = showAccount(gateway) {}
+        compose.onNodeWithText("Account").performClick()
+        compose.waitUntil("Account profile did not load", 10_000) { account.state.value.profile != null }
+        compose.onNodeWithTag("account_edit").performClick()
+        compose.onNodeWithTag("account_full_name_input").performTextReplacement("Unsaved name")
+        compose.onNodeWithTag("account_edit_close").performClick()
+        compose.onNodeWithTag("account_edit_overlay").assertDoesNotExist()
+        compose.onNodeWithTag("account_sheet").assertIsDisplayed()
+        compose.onNodeWithText("Ada Owner").assertIsDisplayed()
+        compose.runOnIdle { assertEquals(0, gateway.saves) }
     }
 
     @Test fun noActiveSignOutConfirmationStaysOverAccountAndStaySignedInDismissesOnlyDialog() {
@@ -785,6 +808,7 @@ class JourneyProductFlowTest {
             .assertIsDisplayed()
         compose.onNodeWithText("Create invitation").performClick()
         compose.runOnIdle { assertEquals(0, contacts.createCalls) }
+        compose.onNodeWithText("Enter the trusted contact's name.").assertIsDisplayed()
         compose.onNodeWithTag("trusted_contact_name").performTextInput("Aisha")
         compose.onNodeWithTag("trusted_contact_email").performTextInput("aisha@example.com")
         compose.onNodeWithText("Create invitation").performClick()
@@ -887,9 +911,12 @@ class JourneyProductFlowTest {
         val contacts = FakeContacts().apply { failList = true; sharingAvailable = false }
         val viewModel = showContacts(contacts)
         compose.onNodeWithText("Currently unavailable").assertIsDisplayed()
+        compose.runOnIdle { assertEquals(null, viewModel.uiState.value.message) }
         compose.onNodeWithText("Trusted Contacts").performClick()
         compose.onNodeWithText("No trusted contacts yet").assertDoesNotExist()
-        compose.runOnIdle { contacts.failList = false; viewModel.refreshTrustedContacts() }
+        compose.onNodeWithText("Try again").assertIsDisplayed()
+        compose.runOnIdle { contacts.failList = false }
+        compose.onNodeWithText("Try again").performClick()
         compose.waitUntil("Contacts did not recover", 10_000) {
             viewModel.uiState.value.trustedContactsAvailability == TrustedContactsAvailability.AVAILABLE
         }
@@ -897,6 +924,7 @@ class JourneyProductFlowTest {
         compose.onNodeWithTag("trusted_contact_name").performTextInput("Aisha")
         compose.onNodeWithTag("trusted_contact_email").performTextInput("aisha@example.com")
         compose.onNodeWithText("Create invitation").performClick()
+        compose.onNodeWithText("Invitation sharing is unavailable right now.").assertIsDisplayed()
         compose.runOnIdle {
             assertEquals(0, contacts.createCalls)
             assertEquals(TrustedContactsPage.ADD, viewModel.uiState.value.trustedContactsPage)

@@ -24,8 +24,10 @@ class DestinationMapViewModel(
     private var online = initiallyOnline
     private var generation = 0L
     private var work: Job? = null
+    private var gestureProof: VerifiedMapPoint? = null
 
     fun open(request: MapRefinementRequest) {
+        gestureProof = null
         cancelWork()
         val area = MapArea(request.region, request.localUnit, catalogue.metadata.version)
         if (catalogue.region(request.region.id) != request.region ||
@@ -51,7 +53,7 @@ class DestinationMapViewModel(
         }
     }
 
-    fun close() { cancelWork(); mutableState.value = DestinationMapState.Closed }
+    fun close() { gestureProof = null; cancelWork(); mutableState.value = DestinationMapState.Closed }
 
     private fun cancelWork() { generation++; work?.cancel(); work = null }
 
@@ -86,6 +88,7 @@ class DestinationMapViewModel(
     fun userCameraMoveStarted() {
         val current = mutableState.value as? DestinationMapState.Positioning ?: return
         if (current.phase == MapPinPhase.InvalidContext || current.phase == MapPinPhase.MapLoadError) return
+        gestureProof = (current.phase as? MapPinPhase.Inside)?.point
         cancelWork()
         mutableState.value = current.copy(intent = PinIntent.USER_POSITIONED, phase = MapPinPhase.Moving)
     }
@@ -93,6 +96,7 @@ class DestinationMapViewModel(
     /** Programmatic movement only invalidates a proof when its actual centre changes. */
     fun cameraMoving(coordinate: MapCoordinate) {
         val current = mutableState.value as? DestinationMapState.Positioning ?: return
+        if (gestureProof?.coordinate != coordinate) gestureProof = null
         val proof = (current.phase as? MapPinPhase.Inside)?.point ?: return
         if (proof.coordinate != coordinate) {
             cancelWork()
@@ -103,8 +107,14 @@ class DestinationMapViewModel(
     fun cameraIdle(camera: MapCamera) {
         val current = mutableState.value as? DestinationMapState.Positioning ?: return
         if (current.phase == MapPinPhase.InvalidContext || current.phase == MapPinPhase.MapLoadError) return
+        val unchangedGestureProof = gestureProof?.takeIf { it.coordinate == camera.target }
+        gestureProof = null
         val updated = current.copy(camera = camera)
         mutableState.value = updated
+        if (unchangedGestureProof != null) {
+            mutableState.value = updated.copy(phase = MapPinPhase.Inside(unchangedGestureProof))
+            return
+        }
         if ((current.phase as? MapPinPhase.Inside)?.point?.coordinate == camera.target) return
         // Initialization/recreation can repeat idle without selecting a new coordinate.
         if ((current.phase as? MapPinPhase.Checking)?.coordinate == camera.target) return
@@ -256,6 +266,7 @@ class DestinationMapViewModel(
     fun mapLoadFailed() {
         val current = mutableState.value
         if ((current as? DestinationMapState.Positioning)?.phase == MapPinPhase.InvalidContext) return
+        gestureProof = null
         cancelWork()
         mutableState.value = when (current) {
             is DestinationMapState.Positioning -> current.copy(phase = MapPinPhase.MapLoadError)
