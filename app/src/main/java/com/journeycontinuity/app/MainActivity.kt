@@ -5,6 +5,7 @@ import android.content.Intent
 import android.os.Bundle
 import android.provider.Settings
 import android.view.View
+import android.view.ViewTreeObserver
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -121,6 +122,16 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Keep Android's launch surface until the existing owner/session check settles.
+        // Once released, later retries render their progress inside the app normally.
+        val content = findViewById<View>(android.R.id.content)
+        content.viewTreeObserver.addOnPreDrawListener(object : ViewTreeObserver.OnPreDrawListener {
+            override fun onPreDraw(): Boolean {
+                if (rootViewModel.state.value.route == TravellerRootRoute.CHECKING) return false
+                content.viewTreeObserver.removeOnPreDrawListener(this)
+                return true
+            }
+        })
         startPermissions = com.journeycontinuity.app.ui.JourneyStartPermissions(
             this, { journeyViewModel }, { !signOutBlocksJourneyStart() },
             ::refreshPrerequisiteState, ::startServiceForActiveJourneyIfReady,

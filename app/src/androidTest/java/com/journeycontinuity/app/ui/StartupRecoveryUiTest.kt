@@ -6,6 +6,7 @@ import androidx.compose.material3.Text
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.ViewModelProvider
@@ -85,7 +86,8 @@ class StartupRecoveryUiTest {
         open(auth)
         awaitFailure()
         compose.onNodeWithText("Try again").performClick()
-        compose.onNodeWithText("Opening Alabarin").assertIsDisplayed()
+        compose.onNodeWithTag("startup_progress").assertIsDisplayed()
+        compose.onNodeWithText("Opening Alabarin").assertDoesNotExist()
         compose.onNodeWithText("Try again").assertDoesNotExist()
         awaitFailure()
         compose.runOnIdle { assertEquals(6, auth.checks); auth.outcome = TravellerAuthOutcome.Authenticated(AuthenticatedTraveller("owner-a")) }

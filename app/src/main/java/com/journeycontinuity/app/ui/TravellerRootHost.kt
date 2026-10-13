@@ -12,10 +12,12 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material3.Text
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
@@ -47,7 +49,10 @@ fun TravellerRootHost(
     }
     Box(Modifier.fillMaxSize().safeDrawingPadding().imePadding().background(Color(0xFFFBFBF8))) {
         when (state.route) {
-            TravellerRootRoute.CHECKING -> SupportContent("Opening Alabarin", "Checking your saved session?", null, null)
+            TravellerRootRoute.CHECKING -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = Color(0xFF1B3250),
+                    modifier = Modifier.testTag("startup_progress"))
+            }
             TravellerRootRoute.INTRO -> FirstUseIntroFlow(onCompleted = {
                 if (it == FirstUseCompletion.INTRODUCTION_FINISHED) controller.completeIntro()
             })

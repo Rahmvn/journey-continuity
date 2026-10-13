@@ -204,6 +204,17 @@ fun JourneyProductRoot(
     var resilienceSheetHeightPx by remember { mutableFloatStateOf(0f) }
     var checkpointSheetHeightPx by remember { mutableFloatStateOf(0f) }
     var accountCloseInFlight by remember { mutableStateOf(false) }
+    var keepJourneySheetForEnd by remember { mutableStateOf(false) }
+    var endPageDrawn by remember { mutableStateOf(false) }
+    LaunchedEffect(state.productRoute, endPageDrawn) {
+        if (state.productRoute == JourneyProductRoute.END && endPageDrawn) {
+            // Release the separate dialog window only after the Activity has drawn its destination.
+            withFrameNanos { }
+            keepJourneySheetForEnd = false
+        } else if (state.productRoute != JourneyProductRoute.END) {
+            keepJourneySheetForEnd = false
+        }
+    }
     val lifecycleOwner = LocalLifecycleOwner.current
     val context = LocalContext.current
     val journeySheetHeight = LocalConfiguration.current.screenHeightDp.dp * 0.84f
@@ -282,6 +293,9 @@ fun JourneyProductRoot(
 
     Box(Modifier.fillMaxSize().background(Background).drawWithContent {
         drawContent()
+        if (keepJourneySheetForEnd && state.productRoute == JourneyProductRoute.END) {
+            endPageDrawn = true
+        }
         val visibleSheetState = when {
             accountOpen -> accountSheetState
             (state.productRoute == JourneyProductRoute.ACTIVE || showProbableEnd) &&
@@ -346,49 +360,6 @@ fun JourneyProductRoot(
                     pendingAuthority = pendingAuthority,
                     onPendingAuthority = { pendingOpen = true },
                 )
-                if (authorityState.records != null && (state.productRoute == JourneyProductRoute.ACTIVE || showProbableEnd)) {
-                    state.activeJourney?.let { journey ->
-                        ModalBottomSheet(
-                            onDismissRequest = {
-                                if (showProbableEnd) {
-                                    dismissedProbableEndId = probableEndPresentation.id
-                                    onProbableEndDismissed()
-                                }
-                                viewModel.backToHome()
-                            },
-                            modifier = Modifier.testTag(if (showProbableEnd) "probable_end_sheet" else "journey_sheet")
-                                .onSizeChanged { journeySheetHeightPx = it.height.toFloat() },
-                            sheetState = journeySheetState,
-                            containerColor = Background,
-                            scrimColor = Color.Transparent,
-                            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-                            dragHandle = { JourneySheetHandle() },
-                        ) {
-                            JourneyActiveScreen(
-                                journey = journey,
-                                state = state,
-                                locationUiState = locationUiState,
-                                smsFallbackStatus = smsFallbackStatus,
-                                onBack = {
-                                    if (showProbableEnd) {
-                                        dismissedProbableEndId = probableEndPresentation.id
-                                        onProbableEndDismissed()
-                                    }
-                                    viewModel.backToHome()
-                                },
-                                onRetry = onRetryMonitoring,
-                                onEndCompleted = { viewModel.openEndJourney(journey.id) },
-                                probableEnd = if (showProbableEnd) probableEndPresentation else null,
-                                onProbableEndRendered = onProbableEndRendered,
-                                onProbableEndResponse = onProbableEndResponse,
-                                probableEndResponseInFlight = probableEndResponseInFlight,
-                                probableEndResponseError = probableEndResponseError,
-                                // Material 3 measures the handle and bottom inset outside this content.
-                                modifier = Modifier.fillMaxWidth().height(journeySheetHeight - 40.dp),
-                            )
-                        }
-                    }
-                }
                 if (state.productRoute == JourneyProductRoute.CONTACTS) {
                     val closeContacts = {
                         sheetScope.launch {
@@ -531,6 +502,55 @@ fun JourneyProductRoot(
             state.productRoute == JourneyProductRoute.END_RESULT -> {
                 state.endResult?.takeIf { it.id == state.endFlowJourneyId }?.let { result ->
                     OrdinaryEndResultScreen(result, viewModel::doneWithEndResult)
+                }
+            }
+        }
+        if (authorityState.records != null && (state.productRoute == JourneyProductRoute.ACTIVE || showProbableEnd ||
+            keepJourneySheetForEnd && state.productRoute == JourneyProductRoute.END &&
+                state.activeJourney?.id == state.endFlowJourneyId)) {
+            state.activeJourney?.let { journey ->
+                ModalBottomSheet(
+                    onDismissRequest = {
+                        if (showProbableEnd) {
+                            dismissedProbableEndId = probableEndPresentation.id
+                            onProbableEndDismissed()
+                        }
+                        viewModel.backToHome()
+                    },
+                    modifier = Modifier.testTag(if (showProbableEnd) "probable_end_sheet" else "journey_sheet")
+                        .onSizeChanged { journeySheetHeightPx = it.height.toFloat() },
+                    sheetState = journeySheetState,
+                    containerColor = Background,
+                    scrimColor = Color.Transparent,
+                    shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+                    dragHandle = { JourneySheetHandle() },
+                ) {
+                    JourneyActiveScreen(
+                        journey = journey,
+                        state = state,
+                        locationUiState = locationUiState,
+                        smsFallbackStatus = smsFallbackStatus,
+                        onBack = {
+                            if (showProbableEnd) {
+                                dismissedProbableEndId = probableEndPresentation.id
+                                onProbableEndDismissed()
+                            }
+                            viewModel.backToHome()
+                        },
+                        onRetry = onRetryMonitoring,
+                        onEndCompleted = {
+                            endPageDrawn = false
+                            viewModel.openEndJourney(journey.id)
+                            keepJourneySheetForEnd = viewModel.uiState.value.productRoute == JourneyProductRoute.END
+                        },
+                        probableEnd = if (showProbableEnd) probableEndPresentation else null,
+                        onProbableEndRendered = onProbableEndRendered,
+                        onProbableEndResponse = onProbableEndResponse,
+                        probableEndResponseInFlight = probableEndResponseInFlight,
+                        probableEndResponseError = probableEndResponseError,
+                        // Material 3 measures the handle and bottom inset outside this content.
+                        modifier = Modifier.fillMaxWidth().height(journeySheetHeight - 40.dp),
+                    )
                 }
             }
         }
